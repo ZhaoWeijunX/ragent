@@ -30,7 +30,7 @@ services:
       - "8082:8082"                              # ← dashboard 端口也从这里暴露
     environment:
       NAMESRV_ADDR: "rmqnamesrv:9876"
-      JAVA_OPT_EXT: "-Xms512m -Xmx512m"
+      JAVA_OPT_EXT: "-Xms512m -Xmx512m -XX:-UseContainerSupport"
     depends_on:
       rmqnamesrv:
         condition: service_healthy
@@ -48,9 +48,10 @@ services:
         flushDiskType = ASYNC_FLUSH
         brokerIP1 = 127.0.0.1
         timerMaxDelaySec = 31622400
+        coldDataScanEnable = false
+        coldDataFlowControlEnable = false
         EOF
-        sh mqbroker --enable-proxy \
-          -c /home/rocketmq/rocketmq-5.2.0/conf/broker.conf
+        sh mqbroker -c /home/rocketmq/rocketmq-5.2.0/conf/broker.conf
     networks:
       - rocketmq
     restart: unless-stopped
