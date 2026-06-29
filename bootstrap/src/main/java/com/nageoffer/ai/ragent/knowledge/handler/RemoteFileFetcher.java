@@ -19,7 +19,13 @@ package com.nageoffer.ai.ragent.knowledge.handler;
 
 import com.nageoffer.ai.ragent.framework.exception.ClientException;
 import com.nageoffer.ai.ragent.framework.exception.ServiceException;
+import com.nageoffer.ai.ragent.ingestion.domain.context.DocumentSource;
+import com.nageoffer.ai.ragent.ingestion.domain.enums.SourceType;
+import com.nageoffer.ai.ragent.ingestion.strategy.fetcher.FeishuFetcher;
+import com.nageoffer.ai.ragent.ingestion.strategy.fetcher.FeishuUrlParser;
+import com.nageoffer.ai.ragent.ingestion.strategy.fetcher.FetchResult;
 import com.nageoffer.ai.ragent.ingestion.util.HttpClientHelper;
+import com.nageoffer.ai.ragent.knowledge.config.FeishuCredentialsProvider;
 import com.nageoffer.ai.ragent.rag.dto.StoredFileDTO;
 import com.nageoffer.ai.ragent.rag.service.FileStorageService;
 import lombok.RequiredArgsConstructor;
@@ -49,6 +55,8 @@ public class RemoteFileFetcher {
 
     private final HttpClientHelper httpClientHelper;
     private final FileStorageService fileStorageService;
+    private final FeishuFetcher feishuFetcher;
+    private final FeishuCredentialsProvider feishuCredentialsProvider;
 
     @Value("${spring.servlet.multipart.max-file-size:50MB}")
     private DataSize maxFileSize;
@@ -57,8 +65,12 @@ public class RemoteFileFetcher {
      * 流式拉取远程文件并上传到存储（用于文档上传场景）
      */
     public StoredFileDTO fetchAndStore(String bucketName, String url) {
-        long maxBytes = maxFileSize.toBytes();
         url = url.trim();
+        // 来源为飞书，走专用路径，否则保持原始 http 路径
+        if (FeishuUrlParser.isFeishuHost(url)) {
+            return fetchFeishuAndStore(bucketName, url);
+        }
+        long maxBytes = maxFileSize.toBytes();
         HttpClientHelper.HttpHeadResponse headResponse = tryHead(url);
         Long headContentLength = headResponse == null ? null : headResponse.contentLength();
         checkSizeLimit(maxBytes, headContentLength);
@@ -78,8 +90,12 @@ public class RemoteFileFetcher {
      */
     public RemoteFetchResult fetchIfChanged(String url, String lastEtag, String lastModified,
                                             String lastContentHash, String fallbackFileName) {
-        long maxBytes = maxFileSize.toBytes();
         url = url.trim();
+        // 来源为飞书，走专用路径，否则保持原始 http 路径
+        if (FeishuUrlParser.isFeishuHost(url)) {
+            return fetchFeishuIfChanged(url, lastContentHash, fallbackFileName);
+        }
+        long maxBytes = maxFileSize.toBytes();
         HttpClientHelper.HttpHeadResponse headResponse = tryHead(url);
 
         if (headResponse != null) {
@@ -120,6 +136,55 @@ public class RemoteFileFetcher {
             deleteTempFileQuietly(tempFile);
             throw e;
         }
+    }
+
+    private StoredFileDTO fetchFeishuAndStore(String bucketName, String url) {
+        FetchResult result = fetchFeishuContent(url);
+        long maxBytes = maxFileSize.toBytes();
+        checkSizeLimit(maxBytes, (long) result.content().length);
+        if (result.content().length == 0) {
+            throw new ClientException("飞书文档内容为空");
+        }
+        return fileStorageService.upload(bucketName, result.content(), result.fileName(), result.mimeType());
+    }
+
+    private RemoteFetchResult fetchFeishuIfChanged(String url, String lastContentHash, String fallbackFileName) {
+        FetchResult result = fetchFeishuContent(url);
+        long maxBytes = maxFileSize.toBytes();
+        checkSizeLimit(maxBytes, (long) result.content().length);
+        if (result.content().length == 0) {
+            throw new ClientException("飞书文档内容为空");
+        }
+
+        String hash = sha256Hex(result.content());
+        if (StringUtils.hasText(hash) && hash.equals(trimOrNull(lastContentHash))) {
+            return RemoteFetchResult.skipped("飞书文档内容未变化", null, null, hash);
+        }
+
+        Path tempFile = null;
+        try {
+            tempFile = Files.createTempFile("knowledge-schedule-feishu-", ".tmp");
+            Files.write(tempFile, result.content());
+            String fileName = StringUtils.hasText(result.fileName()) ? result.fileName() : fallbackFileName;
+            return RemoteFetchResult.changed(tempFile, result.content().length, result.mimeType(), fileName, hash, null, null);
+        } catch (IOException e) {
+            deleteTempFileQuietly(tempFile);
+            throw new ServiceException("飞书文档临时文件写入失败: " + e.getMessage());
+        }
+    }
+
+    private FetchResult fetchFeishuContent(String url) {
+        feishuCredentialsProvider.validateConfigured();
+        FeishuUrlParser.ParseResult parsed = FeishuUrlParser.parse(url);
+        if (FeishuUrlParser.LinkType.UNSUPPORTED == parsed.linkType()) {
+            throw new ClientException("不支持的飞书链接格式: " + url);
+        }
+        DocumentSource source = DocumentSource.builder()
+                .type(SourceType.FEISHU)
+                .location(url)
+                .credentials(feishuCredentialsProvider.resolve())
+                .build();
+        return feishuFetcher.fetch(source);
     }
 
     private HttpClientHelper.HttpHeadResponse tryHead(String url) {
@@ -201,6 +266,14 @@ public class RemoteFileFetcher {
     }
 
     private record CopyResult(long size, String sha256Hex) {
+    }
+
+    private static String sha256Hex(byte[] content) {
+        try {
+            return hexEncode(MessageDigest.getInstance("SHA-256").digest(content));
+        } catch (NoSuchAlgorithmException e) {
+            throw new ServiceException("SHA-256 算法不可用");
+        }
     }
 
     private static String hexEncode(byte[] hash) {
