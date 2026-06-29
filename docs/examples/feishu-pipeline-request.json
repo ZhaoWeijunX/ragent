@@ -1,0 +1,44 @@
+{
+  "name": "feishu-ingestion-pipeline",
+  "description": "飞书云文档 / 知识库 Wiki 摄取流水线 - 拉取纯文本、分块、向量化",
+  "nodes": [
+    {
+      "nodeId": "fetcher-1",
+      "nodeType": "fetcher",
+      "nextNodeId": "parser-1"
+    },
+    {
+      "nodeId": "parser-1",
+      "nodeType": "parser",
+      "settings": {
+        "rules": [
+          {
+            "mimeType": "TEXT"
+          }
+        ]
+      },
+      "nextNodeId": "chunker-1"
+    },
+    {
+      "nodeId": "chunker-1",
+      "nodeType": "chunker",
+      "settings": {
+        "strategy": "fixed_size",
+        "chunkSize": 512,
+        "overlapSize": 128
+      },
+      "nextNodeId": "indexer-1"
+    },
+    {
+      "nodeId": "indexer-1",
+      "nodeType": "indexer",
+      "settings": {
+        "embeddingModel": "qwen-emb-8b",
+        "metadataFields": [
+          "source_type",
+          "source_location"
+        ]
+      }
+    }
+  ]
+}
