@@ -61,4 +61,23 @@ class FeishuUrlParserTest {
                 "https://example.feishu.cn/drive/folder/abc");
         assertEquals(FeishuUrlParser.LinkType.UNSUPPORTED, result.linkType());
     }
+
+    @Test
+    void shouldDetectFeishuHost() {
+        assertEquals(true, FeishuUrlParser.isFeishuHost("https://example.feishu.cn/docx/doccnABC"));
+        assertEquals(true, FeishuUrlParser.isFeishuHost("https://foo.larksuite.com/wiki/wikcnXYZ"));
+        assertEquals(false, FeishuUrlParser.isFeishuHost("https://github.com/foo/bar"));
+    }
+
+    @Test
+    void shouldDetectSupportedDocumentUrl() {
+        assertEquals(true, FeishuUrlParser.isSupportedDocumentUrl(
+                "https://example.feishu.cn/docx/doccnABC"));
+        assertEquals(true, FeishuUrlParser.isSupportedDocumentUrl(
+                "https://example.feishu.cn/wiki/wikcnXYZ"));
+        assertEquals(false, FeishuUrlParser.isSupportedDocumentUrl(
+                "https://example.feishu.cn/drive/folder/abc"));
+        assertEquals(false, FeishuUrlParser.isSupportedDocumentUrl(
+                "https://example.feishu.cn/wiki/"));
+    }
 }

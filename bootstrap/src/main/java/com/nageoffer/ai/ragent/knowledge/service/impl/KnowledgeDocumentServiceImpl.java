@@ -44,6 +44,7 @@ import com.nageoffer.ai.ragent.framework.exception.ClientException;
 import com.nageoffer.ai.ragent.framework.mq.producer.MessageQueueProducer;
 import com.nageoffer.ai.ragent.ingestion.dao.entity.IngestionPipelineDO;
 import com.nageoffer.ai.ragent.ingestion.dao.mapper.IngestionPipelineMapper;
+import com.nageoffer.ai.ragent.ingestion.domain.context.DocumentSource;
 import com.nageoffer.ai.ragent.ingestion.domain.context.IngestionContext;
 import com.nageoffer.ai.ragent.ingestion.domain.pipeline.PipelineDefinition;
 import com.nageoffer.ai.ragent.ingestion.engine.IngestionEngine;
@@ -408,11 +409,18 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
             throw new RuntimeException("读取文件内容失败：docId=" + docId, e);
         }
 
+        String docName = documentDO.getDocName();
+        String mimeType = MimeTypeDetector.detect(fileBytes, docName);
+        if (mimeType == null) {
+            throw new RuntimeException("无法识别文件 MIME 类型：docId=" + docId + ", docName=" + docName);
+        }
+
         IngestionContext context = IngestionContext.builder()
                 .taskId(docId)
                 .pipelineId(pipelineId)
                 .rawBytes(fileBytes)
-                .mimeType(documentDO.getFileType())
+                .mimeType(mimeType)
+                .source(DocumentSource.builder().fileName(docName).build())
                 .vectorSpaceId(VectorSpaceId.builder()
                         .logicalName(kbDO.getCollectionName())
                         .build())
