@@ -1861,8 +1861,8 @@ function TaskDialog({ open, pipelineOptions, onOpenChange, onSubmit, onUpload }:
         };
       case "feishu":
         return {
-          locationPlaceholder: "https://open.feishu.cn/...",
-          locationHint: "填写飞书文档链接",
+          locationPlaceholder: "https://xxx.feishu.cn/docx/... 或 /wiki/wikcn...",
+          locationHint: "支持云文档 /docx/、/docs/ 或知识库具体页面 /wiki/wikcn...（非空间首页）",
           credentialsHint: '{"tenantAccessToken":"..."} 或 {"app_id":"...","app_secret":"..."}'
         };
       case "s3":

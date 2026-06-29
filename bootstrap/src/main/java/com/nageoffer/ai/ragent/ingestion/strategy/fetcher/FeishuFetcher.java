@@ -19,11 +19,10 @@ package com.nageoffer.ai.ragent.ingestion.strategy.fetcher;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.nageoffer.ai.ragent.framework.exception.ClientException;
 import com.nageoffer.ai.ragent.framework.exception.ServiceException;
 import com.nageoffer.ai.ragent.ingestion.domain.context.DocumentSource;
 import com.nageoffer.ai.ragent.ingestion.domain.enums.SourceType;
-import com.nageoffer.ai.ragent.ingestion.util.HttpClientHelper;
-import com.nageoffer.ai.ragent.ingestion.util.MimeTypeDetector;
 import lombok.RequiredArgsConstructor;
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
@@ -40,7 +39,7 @@ import java.util.Map;
 
 /**
  * 飞书文档抓取器
- * 负责从飞书平台获取文档内容，支持 docx 类型的在线文档和二进制文件
+ * 负责从飞书平台获取文档内容，支持云文档 docx 链接与知识库 wiki 页面（docx 节点）
  */
 @Component
 @RequiredArgsConstructor
@@ -50,7 +49,8 @@ public class FeishuFetcher implements DocumentFetcher {
 
     @Qualifier("syncHttpClient")
     private final OkHttpClient okHttpClient;
-    private final HttpClientHelper httpClientHelper;
+    private final FeishuDocxClient feishuDocxClient;
+    private final FeishuWikiClient feishuWikiClient;
 
     @Override
     public SourceType supportedType() {
@@ -64,49 +64,48 @@ public class FeishuFetcher implements DocumentFetcher {
             throw new ServiceException("飞书文档地址不能为空");
         }
 
-        String accessToken = resolveAccessToken(source.getCredentials());
+        Map<String, String> headers = buildAuthHeaders(resolveAccessToken(source.getCredentials()));
+        FeishuUrlParser.ParseResult parsed = FeishuUrlParser.parse(location);
+
+        return switch (parsed.linkType()) {
+            // 目前没找到这种格式的 url
+            case DOCX -> fetchDocx(parsed.token(), source.getFileName(), headers);
+            case WIKI -> fetchWiki(parsed.token(), source.getFileName(), headers);
+            case UNSUPPORTED -> throw new ClientException("不支持的飞书链接格式: " + location.trim());
+        };
+    }
+
+    private FetchResult fetchWiki(String wikiNodeToken, String preferredFileName, Map<String, String> headers) {
+        WikiNodeInfo node = feishuWikiClient.getNode(wikiNodeToken, headers);
+        if (!"docx".equalsIgnoreCase(node.objType())) {
+            throw new ClientException("暂仅支持 docx 类型的 wiki 节点，当前类型: " + node.objType());
+        }
+        String fileName = resolveFileName(preferredFileName, node.title(), node.objToken());
+        return fetchDocx(node.objToken(), fileName, headers);
+    }
+
+    private FetchResult fetchDocx(String documentToken, String preferredFileName, Map<String, String> headers) {
+        String content = feishuDocxClient.fetchRawContent(documentToken, headers);
+        String fileName = resolveFileName(preferredFileName, null, documentToken);
+        return new FetchResult(content.getBytes(StandardCharsets.UTF_8), "text/plain", fileName);
+    }
+
+    private String resolveFileName(String preferredFileName, String title, String fallbackToken) {
+        if (StringUtils.hasText(preferredFileName)) {
+            return preferredFileName;
+        }
+        if (StringUtils.hasText(title)) {
+            return title.trim() + ".txt";
+        }
+        return fallbackToken + ".txt";
+    }
+
+    private Map<String, String> buildAuthHeaders(String accessToken) {
         Map<String, String> headers = new HashMap<>();
         if (StringUtils.hasText(accessToken)) {
             headers.put("Authorization", "Bearer " + accessToken);
         }
-
-        if (isDocxUrl(location)) {
-            String docToken = extractDocToken(location);
-            String apiUrl = "https://open.feishu.cn/open-apis/docx/v1/documents/" + docToken + "/raw_content";
-            HttpClientHelper.HttpFetchResponse resp = httpClientHelper.get(apiUrl, headers);
-            String content = extractDocxContent(resp.body());
-            if (!StringUtils.hasText(content)) {
-                content = new String(resp.body(), StandardCharsets.UTF_8);
-            }
-            String fileName = StringUtils.hasText(source.getFileName()) ? source.getFileName() : docToken + ".txt";
-            return new FetchResult(content.getBytes(StandardCharsets.UTF_8), "text/plain", fileName);
-        }
-
-        HttpClientHelper.HttpFetchResponse resp = httpClientHelper.get(location, headers);
-        String fileName = StringUtils.hasText(source.getFileName()) ? source.getFileName() : resp.fileName();
-        String contentType = resp.contentType();
-        if (!StringUtils.hasText(contentType)) {
-            contentType = MimeTypeDetector.detect(resp.body(), fileName);
-        }
-        return new FetchResult(resp.body(), contentType, fileName);
-    }
-
-    private boolean isDocxUrl(String location) {
-        return location.contains("/docx/") || location.contains("/docs/");
-    }
-
-    private String extractDocToken(String location) {
-        String[] parts = location.split("/");
-        for (int i = 0; i < parts.length; i++) {
-            if ("docx".equalsIgnoreCase(parts[i]) || "docs".equalsIgnoreCase(parts[i])) {
-                if (i + 1 < parts.length) {
-                    String token = parts[i + 1];
-                    int queryIndex = token.indexOf('?');
-                    return queryIndex > 0 ? token.substring(0, queryIndex) : token;
-                }
-            }
-        }
-        throw new ServiceException("无法从飞书链接解析文档令牌: " + location);
+        return headers;
     }
 
     private String resolveAccessToken(Map<String, String> credentials) {
@@ -149,23 +148,10 @@ public class FeishuFetcher implements DocumentFetcher {
                 }
                 return null;
             }
+        } catch (ServiceException e) {
+            throw e;
         } catch (Exception e) {
             throw new ServiceException("飞书令牌请求失败: " + e.getMessage());
-        }
-    }
-
-    private String extractDocxContent(byte[] bytes) {
-        try {
-            JsonObject root = JsonParser.parseString(new String(bytes, StandardCharsets.UTF_8)).getAsJsonObject();
-            if (root.has("data")) {
-                JsonObject data = root.getAsJsonObject("data");
-                if (data.has("content")) {
-                    return data.get("content").getAsString();
-                }
-            }
-            return null;
-        } catch (Exception e) {
-            return null;
         }
     }
 }
