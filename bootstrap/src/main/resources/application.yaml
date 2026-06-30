@@ -20,7 +20,7 @@ spring:
     type: com.zaxxer.hikari.HikariDataSource
     username: postgres
     password: postgres
-    url: jdbc:postgresql://127.0.0.1:5432/ragent?client_encoding=UTF8
+    url: jdbc:postgresql://${ragent.infra.host:localhost}:5432/ragent?client_encoding=UTF8
     hikari:
       connection-timeout: 5000
       idle-timeout: 600000
@@ -31,12 +31,12 @@ spring:
 
   data:
     redis:
-      host: 127.0.0.1
+      host: ${ragent.infra.host:localhost}
       port: 6379
       password: 123456
 
 rocketmq:
-  name-server: 127.0.0.1:9876
+  name-server: ${ragent.infra.host:localhost}:9876
   producer:
     group: ragent-producer${unique-name:}_pg
     send-message-timeout: 2000
@@ -219,7 +219,7 @@ ai:
         model: qwen-vl-max
 
 rustfs:
-  url: http://localhost:9000
+  url: http://${ragent.infra.host:localhost}:9000
   access-key-id: rustfsadmin
   secret-access-key: rustfsadmin
   # 多模态解析产物 bucket（PDF 抽出来的图片、未来 PNG 原图等）
