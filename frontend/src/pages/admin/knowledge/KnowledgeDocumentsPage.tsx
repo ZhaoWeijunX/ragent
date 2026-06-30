@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
-import { Check, FileUp, FileImage, PlayCircle, RefreshCw, Trash2, Pencil, FileBarChart, X, Eye, MoreHorizontal, FileText, FileSpreadsheet, Link as LinkIcon, Download } from "lucide-react";
+import { Check, FileUp, FileImage, PlayCircle, RefreshCw, Trash2, Pencil, FileBarChart, X, Eye, MoreHorizontal, FileText, FileSpreadsheet, Link as LinkIcon, Download, BookOpen } from "lucide-react";
 import { toast } from "sonner";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
@@ -46,6 +46,7 @@ const SpreadsheetPreview = lazy(() =>
   import("@/components/admin/SpreadsheetPreview").then(m => ({ default: m.SpreadsheetPreview }))
 );
 import { getErrorMessage } from "@/utils/error";
+import { FeishuWikiImportDialog } from "@/pages/admin/knowledge/components/FeishuWikiImportDialog";
 
 const PAGE_SIZE = 10;
 
@@ -217,6 +218,7 @@ export function KnowledgeDocumentsPage() {
   const [keyword, setKeyword] = useState("");
   const [searchInput, setSearchInput] = useState("");
   const [uploadOpen, setUploadOpen] = useState(false);
+  const [feishuImportOpen, setFeishuImportOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<KnowledgeDocument | null>(null);
   const [chunkTarget, setChunkTarget] = useState<KnowledgeDocument | null>(null);
   const [detailTarget, setDetailTarget] = useState<KnowledgeDocument | null>(null);
@@ -646,6 +648,10 @@ export function KnowledgeDocumentsPage() {
           <Button variant="outline" onClick={() => navigate("/admin/knowledge")}>
             返回知识库
           </Button>
+          <Button variant="outline" onClick={() => setFeishuImportOpen(true)}>
+            <BookOpen className="mr-2 h-4 w-4" />
+            飞书 Wiki 导入
+          </Button>
           <Button className="admin-primary-gradient" onClick={() => setUploadOpen(true)}>
             <FileUp className="mr-2 h-4 w-4" />
             上传文档
@@ -908,6 +914,15 @@ export function KnowledgeDocumentsPage() {
           await loadDocuments(1, statusFilter, keyword);
         }}
       />
+
+      {kbId ? (
+        <FeishuWikiImportDialog
+          open={feishuImportOpen}
+          kbId={kbId}
+          onOpenChange={setFeishuImportOpen}
+          onCompleted={() => loadDocuments(current, statusFilter, keyword)}
+        />
+      ) : null}
 
       <AlertDialog open={Boolean(deleteTarget)} onOpenChange={(open) => (!open ? setDeleteTarget(null) : null)}>
         <AlertDialogContent>

@@ -64,6 +64,11 @@ public class KnowledgeDocumentDO {
     private String sourceLocation;
 
     /**
+     * 飞书 Wiki 节点 token（用于整库导入去重）
+     */
+    private String feishuNodeToken;
+
+    /**
      * 是否开启定时拉取：1-启用，0-禁用
      */
     private Integer scheduleEnabled;

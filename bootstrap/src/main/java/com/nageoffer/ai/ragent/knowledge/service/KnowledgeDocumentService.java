@@ -45,6 +45,14 @@ public interface KnowledgeDocumentService {
     KnowledgeDocumentVO upload(String kbId, KnowledgeDocumentUploadRequest requestParam, MultipartFile file);
 
     /**
+     * 从飞书 Wiki 远程 URL 导入或更新文档（批量导入内部使用）
+     *
+     * @return 导入结果：文档 VO 与是否为更新
+     */
+    FeishuWikiPageImportResult importFeishuWikiPage(String kbId, String wikiUrl, String feishuNodeToken,
+                                                    KnowledgeDocumentUploadRequest requestParam);
+
+    /**
      * 开始文档分片处理（校验状态并发送 MQ 消息，立即返回）
      *
      * @param docId 文档 ID

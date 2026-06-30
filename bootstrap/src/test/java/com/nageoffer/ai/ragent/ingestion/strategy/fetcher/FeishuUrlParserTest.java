@@ -47,6 +47,40 @@ class FeishuUrlParserTest {
                 "https://hcnuu3eqvd8k.feishu.cn/wiki/wikcnXYZ123?from=space");
         assertEquals(FeishuUrlParser.LinkType.WIKI, result.linkType());
         assertEquals("wikcnXYZ123", result.token());
+        assertEquals(null, result.wikiSpaceId());
+    }
+
+    @Test
+    void shouldParseWikiSpaceNodeUrl() {
+        FeishuUrlParser.ParseResult result = FeishuUrlParser.parse(
+                "https://example.feishu.cn/wiki/space/space123/nodes/EpMmw5WZQi7tYRk73gBc7Dabcef");
+        assertEquals(FeishuUrlParser.LinkType.WIKI, result.linkType());
+        assertEquals("EpMmw5WZQi7tYRk73gBc7Dabcef", result.token());
+        assertEquals("space123", result.wikiSpaceId());
+    }
+
+    @Test
+    void shouldParseWikiSpaceHomeUrl() {
+        FeishuUrlParser.ParseResult result = FeishuUrlParser.parse(
+                "https://example.feishu.cn/wiki/space/space123");
+        assertEquals(FeishuUrlParser.LinkType.WIKI, result.linkType());
+        assertEquals(null, result.token());
+        assertEquals("space123", result.wikiSpaceId());
+    }
+
+    @Test
+    void shouldParseWikiSettingsUrl() {
+        FeishuUrlParser.ParseResult result = FeishuUrlParser.parse(
+                "https://example.feishu.cn/wiki/settings/space456");
+        assertEquals(FeishuUrlParser.LinkType.WIKI, result.linkType());
+        assertEquals(null, result.token());
+        assertEquals("space456", result.wikiSpaceId());
+    }
+
+    @Test
+    void shouldNotTreatSpaceSegmentAsWikiToken() {
+        assertEquals(null, FeishuUrlParser.tryExtractWikiToken(
+                "https://example.feishu.cn/wiki/space/space123"));
     }
 
     @Test
@@ -75,9 +109,17 @@ class FeishuUrlParserTest {
                 "https://example.feishu.cn/docx/doccnABC"));
         assertEquals(true, FeishuUrlParser.isSupportedDocumentUrl(
                 "https://example.feishu.cn/wiki/wikcnXYZ"));
+        assertEquals(true, FeishuUrlParser.isSupportedDocumentUrl(
+                "https://example.feishu.cn/wiki/space/space123"));
         assertEquals(false, FeishuUrlParser.isSupportedDocumentUrl(
                 "https://example.feishu.cn/drive/folder/abc"));
         assertEquals(false, FeishuUrlParser.isSupportedDocumentUrl(
                 "https://example.feishu.cn/wiki/"));
+    }
+
+    @Test
+    void shouldBuildWikiUrl() {
+        assertEquals("https://example.feishu.cn/wiki/wikcnABC",
+                FeishuUrlParser.buildWikiUrl("example.feishu.cn", "wikcnABC"));
     }
 }

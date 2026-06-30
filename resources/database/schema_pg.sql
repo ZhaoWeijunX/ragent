@@ -141,6 +141,7 @@ CREATE TABLE t_knowledge_document (
     status           VARCHAR(16)   NOT NULL DEFAULT 'pending',
     source_type      VARCHAR(16),
     source_location  VARCHAR(1024),
+    feishu_node_token VARCHAR(64),
     schedule_enabled SMALLINT,
     schedule_cron    VARCHAR(64),
     chunk_strategy   VARCHAR(32),
@@ -153,6 +154,8 @@ CREATE TABLE t_knowledge_document (
     deleted          SMALLINT      NOT NULL DEFAULT 0
 );
 CREATE INDEX idx_kb_id ON t_knowledge_document (kb_id);
+CREATE UNIQUE INDEX uk_kb_feishu_node ON t_knowledge_document (kb_id, feishu_node_token)
+    WHERE feishu_node_token IS NOT NULL AND deleted = 0;
 COMMENT ON TABLE t_knowledge_document IS '知识库文档表';
 
 CREATE TABLE t_knowledge_chunk (
@@ -240,6 +243,48 @@ CREATE TABLE t_knowledge_document_schedule_exec (
 CREATE INDEX idx_schedule_time ON t_knowledge_document_schedule_exec (schedule_id, start_time);
 CREATE INDEX idx_doc_id_exec ON t_knowledge_document_schedule_exec (doc_id);
 COMMENT ON TABLE t_knowledge_document_schedule_exec IS '知识库文档定时刷新执行记录';
+
+CREATE TABLE t_feishu_wiki_import_job (
+    id               VARCHAR(20)   NOT NULL PRIMARY KEY,
+    kb_id            VARCHAR(20)   NOT NULL,
+    root_url         VARCHAR(1024) NOT NULL,
+    scope            VARCHAR(32)   NOT NULL,
+    space_id         VARCHAR(64),
+    status           VARCHAR(16)   NOT NULL DEFAULT 'pending',
+    total_count      INTEGER       NOT NULL DEFAULT 0,
+    success_count    INTEGER       NOT NULL DEFAULT 0,
+    failed_count     INTEGER       NOT NULL DEFAULT 0,
+    skipped_count    INTEGER       NOT NULL DEFAULT 0,
+    auto_chunk       SMALLINT      NOT NULL DEFAULT 0,
+    process_mode     VARCHAR(16),
+    chunk_strategy   VARCHAR(32),
+    chunk_config     JSONB,
+    pipeline_id      VARCHAR(20),
+    schedule_enabled SMALLINT,
+    schedule_cron    VARCHAR(64),
+    error_message    TEXT,
+    created_by       VARCHAR(20)   NOT NULL,
+    create_time      TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    update_time      TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_feishu_wiki_job_kb ON t_feishu_wiki_import_job (kb_id);
+COMMENT ON TABLE t_feishu_wiki_import_job IS '飞书 Wiki 批量导入任务表';
+
+CREATE TABLE t_feishu_wiki_import_item (
+    id            VARCHAR(20)   NOT NULL PRIMARY KEY,
+    job_id        VARCHAR(20)   NOT NULL,
+    node_token    VARCHAR(64)   NOT NULL,
+    wiki_url      VARCHAR(1024) NOT NULL,
+    title         VARCHAR(256),
+    status        VARCHAR(16)   NOT NULL DEFAULT 'pending',
+    doc_id        VARCHAR(20),
+    error_message TEXT,
+    sort_order    INTEGER       NOT NULL DEFAULT 0,
+    create_time   TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    update_time   TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_feishu_wiki_item_job ON t_feishu_wiki_import_item (job_id);
+COMMENT ON TABLE t_feishu_wiki_import_item IS '飞书 Wiki 批量导入子项表';
 
 -- ============================================
 -- RAG Intent & Query Tables

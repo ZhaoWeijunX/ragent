@@ -34,7 +34,11 @@ public final class FeishuUrlParser {
         UNSUPPORTED
     }
 
-    public record ParseResult(LinkType linkType, String token) {
+    public record ParseResult(LinkType linkType, String token, String wikiSpaceId) {
+
+        public ParseResult(LinkType linkType, String token) {
+            this(linkType, token, null);
+        }
     }
 
     private FeishuUrlParser() {
@@ -74,7 +78,8 @@ public final class FeishuUrlParser {
             return true;
         }
         if (containsWikiPath(trimmed)) {
-            return StringUtils.hasText(tryExtractWikiToken(trimmed));
+            return StringUtils.hasText(tryExtractWikiToken(trimmed))
+                    || StringUtils.hasText(tryExtractWikiSpaceId(trimmed));
         }
         return false;
     }
@@ -92,13 +97,24 @@ public final class FeishuUrlParser {
 
         if (containsWikiPath(trimmed)) {
             String wikiToken = tryExtractWikiToken(trimmed);
-            if (!StringUtils.hasText(wikiToken)) {
-                throw new ClientException("请提供具体 wiki 页面链接，不能只填写知识库空间首页");
+            String wikiSpaceId = tryExtractWikiSpaceId(trimmed);
+            if (!StringUtils.hasText(wikiToken) && !StringUtils.hasText(wikiSpaceId)) {
+                throw new ClientException("请提供具体 wiki 页面链接或带知识空间 ID 的链接");
             }
-            return new ParseResult(LinkType.WIKI, wikiToken);
+            return new ParseResult(LinkType.WIKI, wikiToken, wikiSpaceId);
         }
 
-        return new ParseResult(LinkType.UNSUPPORTED, null);
+        return new ParseResult(LinkType.UNSUPPORTED, null, null);
+    }
+
+    /**
+     * 根据域名与节点 token 构造 wiki 页面 URL
+     */
+    public static String buildWikiUrl(String host, String nodeToken) {
+        if (!StringUtils.hasText(host) || !StringUtils.hasText(nodeToken)) {
+            throw new ServiceException("构造 Wiki URL 参数不完整");
+        }
+        return "https://" + host.trim() + "/wiki/" + nodeToken.trim();
     }
 
     private static boolean containsWikiPath(String location) {
@@ -120,15 +136,54 @@ public final class FeishuUrlParser {
     private static String tryExtractWikiToken(String location) {
         String[] parts = location.split("/");
         for (int i = 0; i < parts.length; i++) {
-            if ("wiki".equalsIgnoreCase(parts[i])) {
-                if (i + 1 < parts.length) {
-                    String token = stripQuery(parts[i + 1]);
-                    return StringUtils.hasText(token) ? token : null;
+            if (!"wiki".equalsIgnoreCase(parts[i]) || i + 1 >= parts.length) {
+                continue;
+            }
+            String seg1 = stripQuery(parts[i + 1]);
+            if ("space".equalsIgnoreCase(seg1)) {
+                for (int j = i + 2; j < parts.length; j++) {
+                    if ("nodes".equalsIgnoreCase(parts[j]) && j + 1 < parts.length) {
+                        String nodeToken = stripQuery(parts[j + 1]);
+                        return StringUtils.hasText(nodeToken) ? nodeToken : null;
+                    }
                 }
                 return null;
             }
+            if (isReservedWikiSegment(seg1)) {
+                return null;
+            }
+            return StringUtils.hasText(seg1) ? seg1 : null;
         }
         return null;
+    }
+
+    /**
+     * 从 /wiki/space/{spaceId} 或 /wiki/settings/{spaceId} 提取知识空间 ID
+     */
+    public static String tryExtractWikiSpaceId(String location) {
+        if (!StringUtils.hasText(location)) {
+            return null;
+        }
+        String[] parts = location.split("/");
+        for (int i = 0; i < parts.length; i++) {
+            if (!"wiki".equalsIgnoreCase(parts[i]) || i + 1 >= parts.length) {
+                continue;
+            }
+            String seg1 = stripQuery(parts[i + 1]);
+            if (("space".equalsIgnoreCase(seg1) || "settings".equalsIgnoreCase(seg1)) && i + 2 < parts.length) {
+                String spaceId = stripQuery(parts[i + 2]);
+                return StringUtils.hasText(spaceId) ? spaceId : null;
+            }
+        }
+        return null;
+    }
+
+    private static boolean isReservedWikiSegment(String segment) {
+        if (!StringUtils.hasText(segment)) {
+            return true;
+        }
+        String lower = segment.toLowerCase();
+        return "space".equals(lower) || "settings".equals(lower) || "nodes".equals(lower);
     }
 
     private static String stripQuery(String token) {

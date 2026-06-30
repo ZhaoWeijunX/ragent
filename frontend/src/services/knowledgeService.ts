@@ -356,3 +356,102 @@ export const getChunkLogsPage = async (
     }
   );
 };
+
+// 飞书 Wiki 批量导入
+export type FeishuWikiImportScope = "PAGE_ONLY" | "SUBTREE" | "ENTIRE_SPACE";
+
+export interface FeishuWikiImportPayload {
+  rootUrl: string;
+  scope?: FeishuWikiImportScope;
+  autoChunk?: boolean;
+  processMode?: "chunk" | "pipeline";
+  chunkStrategy?: string;
+  chunkConfig?: string | null;
+  pipelineId?: string | null;
+  scheduleEnabled?: boolean;
+  scheduleCron?: string | null;
+}
+
+export interface FeishuWikiPage {
+  nodeToken: string;
+  title?: string | null;
+  wikiUrl: string;
+  objType?: string | null;
+}
+
+export interface FeishuWikiSkipped {
+  nodeToken?: string | null;
+  title?: string | null;
+  objType?: string | null;
+  reason?: string | null;
+}
+
+export interface FeishuWikiDiscoverResult {
+  spaceId?: string | null;
+  rootNodeToken?: string | null;
+  pages: FeishuWikiPage[];
+  skipped: FeishuWikiSkipped[];
+}
+
+export interface FeishuWikiImportJob {
+  id: string;
+  kbId: string;
+  rootUrl: string;
+  scope: string;
+  status: string;
+  totalCount?: number | null;
+  successCount?: number | null;
+  failedCount?: number | null;
+  skippedCount?: number | null;
+  autoChunk?: boolean | null;
+  errorMessage?: string | null;
+  createTime?: string | null;
+  updateTime?: string | null;
+}
+
+export interface FeishuWikiImportItem {
+  id: string;
+  jobId: string;
+  nodeToken: string;
+  wikiUrl: string;
+  title?: string | null;
+  status: string;
+  docId?: string | null;
+  errorMessage?: string | null;
+  sortOrder?: number | null;
+}
+
+export const discoverFeishuWiki = async (
+  kbId: string,
+  payload: FeishuWikiImportPayload
+): Promise<FeishuWikiDiscoverResult> => {
+  return api.post<FeishuWikiDiscoverResult, FeishuWikiDiscoverResult>(
+    `/knowledge-base/${kbId}/feishu-wiki/discover`,
+    payload
+  );
+};
+
+export const startFeishuWikiImport = async (
+  kbId: string,
+  payload: FeishuWikiImportPayload
+): Promise<FeishuWikiImportJob> => {
+  return api.post<FeishuWikiImportJob, FeishuWikiImportJob>(
+    `/knowledge-base/${kbId}/feishu-wiki/import`,
+    payload
+  );
+};
+
+export const getFeishuWikiImportJob = async (jobId: string): Promise<FeishuWikiImportJob> => {
+  return api.get<FeishuWikiImportJob, FeishuWikiImportJob>(`/knowledge-base/feishu-wiki/import/${jobId}`);
+};
+
+export const listFeishuWikiImportItems = async (
+  jobId: string,
+  current = 1,
+  size = 20
+): Promise<PageResult<FeishuWikiImportItem>> => {
+  return api.get<PageResult<FeishuWikiImportItem>, PageResult<FeishuWikiImportItem>>(
+    `/knowledge-base/feishu-wiki/import/${jobId}/items`,
+    { params: { current, size } }
+  );
+};

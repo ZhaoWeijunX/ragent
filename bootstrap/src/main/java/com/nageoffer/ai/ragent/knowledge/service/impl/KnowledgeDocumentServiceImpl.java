@@ -73,6 +73,7 @@ import com.nageoffer.ai.ragent.knowledge.enums.SourceType;
 import com.nageoffer.ai.ragent.knowledge.handler.RemoteFileFetcher;
 import com.nageoffer.ai.ragent.knowledge.mq.event.KnowledgeDocumentChunkEvent;
 import com.nageoffer.ai.ragent.knowledge.schedule.CronScheduleHelper;
+import com.nageoffer.ai.ragent.knowledge.service.FeishuWikiPageImportResult;
 import com.nageoffer.ai.ragent.knowledge.service.KnowledgeChunkService;
 import com.nageoffer.ai.ragent.knowledge.service.KnowledgeDocumentScheduleService;
 import com.nageoffer.ai.ragent.knowledge.service.KnowledgeDocumentService;
@@ -165,6 +166,85 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
         documentMapper.insert(documentDO);
 
         return BeanUtil.toBean(documentDO, KnowledgeDocumentVO.class);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public FeishuWikiPageImportResult importFeishuWikiPage(String kbId, String wikiUrl, String feishuNodeToken,
+                                                           KnowledgeDocumentUploadRequest requestParam) {
+        KnowledgeBaseDO kbDO = knowledgeBaseMapper.selectById(kbId);
+        Assert.notNull(kbDO, () -> new ClientException("知识库不存在"));
+
+        requestParam.setSourceType(SourceType.URL.getValue());
+        requestParam.setSourceLocation(wikiUrl);
+        validateSourceAndSchedule(SourceType.URL, requestParam);
+
+        KnowledgeDocumentDO existing = findByFeishuNodeToken(kbId, feishuNodeToken);
+        StoredFileDTO stored = remoteFileFetcher.fetchAndStore(kbDO.getCollectionName(), wikiUrl);
+        if (parserSelector.selectByMimeType(stored.getMimeType()) == null) {
+            fileStorageService.deleteByUrl(stored.getUrl());
+            throw new ClientException("暂不支持的文件类型：" + stored.getDetectedType());
+        }
+        ProcessModeConfig modeConfig = resolveProcessModeConfig(requestParam);
+
+        if (existing != null) {
+            deleteStoredFileQuietly(existing);
+            existing.setDocName(stored.getOriginalFilename());
+            existing.setFileUrl(stored.getUrl());
+            existing.setFileType(stored.getDetectedType());
+            existing.setFileSize(stored.getSize());
+            existing.setSourceLocation(wikiUrl);
+            existing.setFeishuNodeToken(feishuNodeToken);
+            existing.setScheduleEnabled(isScheduleEnabled(SourceType.URL, requestParam) ? 1 : 0);
+            existing.setScheduleCron(isScheduleEnabled(SourceType.URL, requestParam)
+                    ? StrUtil.trimToNull(requestParam.getScheduleCron()) : null);
+            existing.setProcessMode(modeConfig.processMode().getValue());
+            existing.setChunkStrategy(modeConfig.chunkingMode() != null ? modeConfig.chunkingMode().getValue() : null);
+            existing.setChunkConfig(modeConfig.chunkConfig());
+            existing.setPipelineId(modeConfig.pipelineId());
+            existing.setStatus(DocumentStatus.PENDING.getCode());
+            existing.setChunkCount(0);
+            existing.setUpdatedBy(UserContext.getUsername());
+            documentMapper.updateById(existing);
+            return new FeishuWikiPageImportResult(BeanUtil.toBean(existing, KnowledgeDocumentVO.class), true);
+        }
+
+        KnowledgeDocumentDO documentDO = KnowledgeDocumentDO.builder()
+                .kbId(kbId)
+                .docName(stored.getOriginalFilename())
+                .enabled(1)
+                .chunkCount(0)
+                .fileUrl(stored.getUrl())
+                .fileType(stored.getDetectedType())
+                .fileSize(stored.getSize())
+                .status(DocumentStatus.PENDING.getCode())
+                .sourceType(SourceType.URL.getValue())
+                .sourceLocation(wikiUrl)
+                .feishuNodeToken(feishuNodeToken)
+                .scheduleEnabled(isScheduleEnabled(SourceType.URL, requestParam) ? 1 : 0)
+                .scheduleCron(isScheduleEnabled(SourceType.URL, requestParam)
+                        ? StrUtil.trimToNull(requestParam.getScheduleCron()) : null)
+                .processMode(modeConfig.processMode().getValue())
+                .chunkStrategy(modeConfig.chunkingMode() != null ? modeConfig.chunkingMode().getValue() : null)
+                .chunkConfig(modeConfig.chunkConfig())
+                .pipelineId(modeConfig.pipelineId())
+                .createdBy(UserContext.getUsername())
+                .updatedBy(UserContext.getUsername())
+                .build();
+        documentMapper.insert(documentDO);
+        return new FeishuWikiPageImportResult(BeanUtil.toBean(documentDO, KnowledgeDocumentVO.class), false);
+    }
+
+    private KnowledgeDocumentDO findByFeishuNodeToken(String kbId, String feishuNodeToken) {
+        if (!StringUtils.hasText(feishuNodeToken)) {
+            return null;
+        }
+        return documentMapper.selectOne(
+                new LambdaQueryWrapper<KnowledgeDocumentDO>()
+                        .eq(KnowledgeDocumentDO::getKbId, kbId)
+                        .eq(KnowledgeDocumentDO::getFeishuNodeToken, feishuNodeToken)
+                        .last("LIMIT 1")
+        );
     }
 
     @Override

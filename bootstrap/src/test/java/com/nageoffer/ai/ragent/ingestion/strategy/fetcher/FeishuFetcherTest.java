@@ -50,7 +50,8 @@ class FeishuFetcherTest {
 
     @BeforeEach
     void setUp() {
-        feishuFetcher = new FeishuFetcher(new OkHttpClient(), feishuDocxClient, feishuWikiClient);
+        FeishuAuthService feishuAuthService = new FeishuAuthService(new OkHttpClient());
+        feishuFetcher = new FeishuFetcher(feishuAuthService, feishuDocxClient, feishuWikiClient);
     }
 
     @Test
