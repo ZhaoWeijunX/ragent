@@ -4,26 +4,23 @@ server:
     context-path: /api/ragent
 
 spring:
+  config:
+    import: optional:classpath:application-local.yaml
+
   application:
     name: ragent${unique-name:}-service
 
   servlet:
-    # 配置 文件上传限制
     multipart:
-      # 单个文件最大大小
       max-file-size: 50MB
-      # 整个请求最大大小
       max-request-size: 100MB
 
   datasource:
     driver-class-name: org.postgresql.Driver
     type: com.zaxxer.hikari.HikariDataSource
-    #    username: root
-    #    password: root
-    #    url: jdbc:mysql://192.168.26.150:3306/ragent?characterEncoding=utf-8&zeroDateTimeBehavior=convertToNull&transformedBitIsBoolean=true&serverTimezone=GMT%2B8&allowPublicKeyRetrieval=true
     username: postgres
     password: postgres
-    url: jdbc:postgresql://192.168.26.150:5432/ragent?client_encoding=UTF8
+    url: jdbc:postgresql://${ragent.infra.host:localhost}:5432/ragent?client_encoding=UTF8
     hikari:
       connection-timeout: 5000
       idle-timeout: 600000
@@ -34,18 +31,18 @@ spring:
 
   data:
     redis:
-      host: 192.168.26.150
+      host: ${ragent.infra.host:localhost}
       port: 6379
       password: 123456
 
 rocketmq:
-  name-server: 192.168.26.150:9876
+  name-server: ${ragent.infra.host:localhost}:9876
   producer:
     group: ragent-producer${unique-name:}_pg
     send-message-timeout: 2000
 
 milvus:
-  uri: http://192.168.26.150:19530
+  uri: http://localhost:19530
 
 rag:
   vector:
@@ -58,18 +55,18 @@ rag:
     sse-timeout-ms: 300000  # SSE 全局超时（毫秒），默认 5 分钟
 
   query-rewrite:
-    enabled: true                 # 调用 llm，否则走规则拆分
+    enabled: true
 
   rerank:
     enabled: true
 
   rate-limit:
     global:
-      enabled: true               # 限流开关
-      max-concurrent: 10          # 最大并发数
-      max-wait-seconds: 15        # 排队最大等待时间
-      lease-seconds: 30           # 许可自动过期时间（兜底）
-      poll-interval-ms: 200       # 轮询间隔
+      enabled: true
+      max-concurrent: 10
+      max-wait-seconds: 15
+      lease-seconds: 30
+      poll-interval-ms: 200
 
   memory:
     history-keep-turns: 4
@@ -81,9 +78,9 @@ rag:
   semaphore:
     document-upload:
       name: rag:document:upload
-      max-concurrent: 10        # 最多 10 个并发上传
-      max-wait-seconds: 5       # 等待许可最多 5s
-      lease-seconds: 300        # 许可有效期 5min
+      max-concurrent: 10
+      max-wait-seconds: 5
+      lease-seconds: 300
 
   knowledge:
     schedule:
@@ -132,8 +129,7 @@ ai:
         embedding: /v1/embeddings
     bailian:
       url: https://dashscope.aliyuncs.com
-      #      api-key: ${BAILIAN_API_KEY:}
-      api-key: sk-c3d57b3b03374716ac99d2085d7289ab
+      api-key: ${BAILIAN_API_KEY:}
       endpoints:
         chat: /compatible-mode/v1/chat/completions
         rerank: /api/v1/services/rerank/text-rerank/text-rerank
@@ -145,24 +141,21 @@ ai:
         embedding: /v1/embeddings
     siliconflow:
       url: https://api.siliconflow.cn
-      #      api-key: ${SILICONFLOW_API_KEY:}
-      api-key: sk-eppyidbuxoijpysejtsxbuxwvsrxjeqywuhwwfyjpddflqjd
+      api-key: ${SILICONFLOW_API_KEY:}
       endpoints:
         chat: /v1/chat/completions
         embedding: /v1/embeddings
-  # ======== 熔断策略 ==========
+
   selection:
-    failure-threshold: 2          # 连续失败两次，出发熔断
-    open-duration-ms: 30000       # 熔断持续 30 s
+    failure-threshold: 2
+    open-duration-ms: 30000
 
-  # ======== 流式配置 ==========
   stream:
-    message-chunk-size: 1         # 流式消息合并块大小
+    message-chunk-size: 1
 
-  # ======== chat 模型组 ==========
   chat:
-    default-model: qwen-plus        # 默认使用的模型
-    deep-thinking-model: qwen3-max  # 深度思考模型
+    default-model: qwen-plus
+    deep-thinking-model: qwen3-max
     candidates:
       - id: qwen-plus
         provider: bailian
@@ -187,7 +180,6 @@ ai:
         model: gpt-5.4
         priority: 5
 
-  # ======== embedding 模型组 ==========
   embedding:
     default-model: qwen-emb-8b
     candidates:
@@ -207,7 +199,6 @@ ai:
         dimension: ${rag.default.dimension}
         priority: 3
 
-  # ======== rerank 模型组 ==========
   rerank:
     default-model: qwen3-rerank
     candidates:
@@ -215,7 +206,7 @@ ai:
         provider: bailian
         model: qwen3-rerank
         priority: 1
-      - id: rerank-noop       # 如果模型挂了，直接不操作，使用原始顺序截断返回 topN 结果，不重排，不报错
+      - id: rerank-noop
         provider: noop
         model: noop
         priority: 100
@@ -228,7 +219,7 @@ ai:
         model: qwen-vl-max
 
 rustfs:
-  url: http://192.168.26.150:9000
+  url: http://${ragent.infra.host:localhost}:9000
   access-key-id: rustfsadmin
   secret-access-key: rustfsadmin
   # 多模态解析产物 bucket（PDF 抽出来的图片、未来 PNG 原图等）

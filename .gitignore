@@ -43,5 +43,7 @@ dist/
 .vite/
 .env.local
 
+bootstrap/src/main/resources/application-local.yaml
+
 ### Tmp Out ###
 .output/
