@@ -232,6 +232,8 @@ feishu:
   app-id: ${FEISHU_APP_ID:}
   app-secret: ${FEISHU_APP_SECRET:}
   tenant-access-token: ${FEISHU_TENANT_TOKEN:}
+  content-format: markdown
+  fallback-to-plain-on-error: true
   wiki-import:
     max-pages-per-job: 500
     rate-limit-per-minute: 90 # 小于飞书官网的 100/min

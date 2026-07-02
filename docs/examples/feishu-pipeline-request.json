@@ -1,6 +1,6 @@
 {
   "name": "feishu-ingestion-pipeline",
-  "description": "飞书云文档 / 知识库 Wiki 摄取流水线 - 拉取纯文本、分块、向量化",
+  "description": "飞书云文档 / 知识库 Wiki 摄取流水线 - 拉取纯文本、结构化分块、向量化",
   "nodes": [
     {
       "nodeId": "fetcher-1",
@@ -13,6 +13,9 @@
       "settings": {
         "rules": [
           {
+            "mimeType": "MARKDOWN"
+          },
+          {
             "mimeType": "TEXT"
           }
         ]
@@ -23,9 +26,10 @@
       "nodeId": "chunker-1",
       "nodeType": "chunker",
       "settings": {
-        "strategy": "fixed_size",
-        "chunkSize": 512,
-        "overlapSize": 128
+        "strategy": "structure_aware",
+        "chunkSize": 1400,
+        "overlapSize": 0,
+        "rowsPerChunk": 40
       },
       "nextNodeId": "indexer-1"
     },

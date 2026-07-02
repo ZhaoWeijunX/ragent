@@ -48,4 +48,18 @@ public class FeishuProperties {
      * 可选：直接使用 tenant_access_token，非空时优先于 app-id/secret 换 token
      */
     private String tenantAccessToken;
+
+    /**
+     * 文档导出格式：markdown（默认）或 plain（raw_content 纯文本）
+     */
+    private String contentFormat = "markdown";
+
+    /**
+     * Markdown 导出 API 失败时是否回退 raw_content 纯文本
+     */
+    private boolean fallbackToPlainOnError = true;
+
+    public boolean isMarkdownContentFormat() {
+        return !"plain".equalsIgnoreCase(contentFormat);
+    }
 }

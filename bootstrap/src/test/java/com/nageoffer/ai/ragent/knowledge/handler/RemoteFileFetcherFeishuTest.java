@@ -77,13 +77,13 @@ class RemoteFileFetcherFeishuTest {
         byte[] content = "hello feishu".getBytes(StandardCharsets.UTF_8);
         when(feishuCredentialsProvider.resolve()).thenReturn(Map.of("tenantAccessToken", "token"));
         when(feishuFetcher.fetch(any(DocumentSource.class))).thenReturn(
-                new FetchResult(content, "text/plain", "doc.txt"));
-        when(fileStorageService.upload(eq("kb-bucket"), eq(content), eq("doc.txt"), eq("text/plain")))
-                .thenReturn(StoredFileDTO.builder().originalFilename("doc.txt").detectedType("txt").build());
+                new FetchResult(content, "text/markdown", "doc.md"));
+        when(fileStorageService.upload(eq("kb-bucket"), eq(content), eq("doc.md"), eq("text/markdown")))
+                .thenReturn(StoredFileDTO.builder().originalFilename("doc.md").detectedType("markdown").build());
 
         StoredFileDTO stored = remoteFileFetcher.fetchAndStore("kb-bucket", url);
 
-        assertEquals("doc.txt", stored.getOriginalFilename());
+        assertEquals("doc.md", stored.getOriginalFilename());
         verify(feishuCredentialsProvider).validateConfigured();
         verify(feishuFetcher).fetch(any(DocumentSource.class));
     }
@@ -112,7 +112,7 @@ class RemoteFileFetcherFeishuTest {
         byte[] content = "same".getBytes(StandardCharsets.UTF_8);
         when(feishuCredentialsProvider.resolve()).thenReturn(Map.of("tenantAccessToken", "token"));
         when(feishuFetcher.fetch(any(DocumentSource.class)))
-                .thenReturn(new FetchResult(content, "text/plain", "doc.txt"));
+                .thenReturn(new FetchResult(content, "text/markdown", "doc.md"));
 
         RemoteFileFetcher.RemoteFetchResult result = remoteFileFetcher.fetchIfChanged(
                 url, null, null, sha256(content), "fallback.txt");
@@ -127,13 +127,13 @@ class RemoteFileFetcherFeishuTest {
         byte[] content = "new content".getBytes(StandardCharsets.UTF_8);
         when(feishuCredentialsProvider.resolve()).thenReturn(Map.of("tenantAccessToken", "token"));
         when(feishuFetcher.fetch(any(DocumentSource.class)))
-                .thenReturn(new FetchResult(content, "text/plain", "wiki.txt"));
+                .thenReturn(new FetchResult(content, "text/markdown", "wiki.md"));
 
         RemoteFileFetcher.RemoteFetchResult result = remoteFileFetcher.fetchIfChanged(
                 url, null, null, sha256("old".getBytes(StandardCharsets.UTF_8)), "fallback.txt");
 
         assertTrue(result.changed());
-        assertEquals("wiki.txt", result.fileName());
+        assertEquals("wiki.md", result.fileName());
         assertTrue(Files.exists(result.tempFile()));
         result.close();
     }

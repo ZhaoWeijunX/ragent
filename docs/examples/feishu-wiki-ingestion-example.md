@@ -15,9 +15,9 @@
 
 | 类型 | 链接示例 | 说明 |
 |------|---------|------|
-| 云文档 docx | `https://xxx.feishu.cn/docx/doccnXXXX` | 直接拉取文档纯文本 |
+| 云文档 docx | `https://xxx.feishu.cn/docx/doccnXXXX` | 直接拉取文档 Markdown |
 | 旧版 docs | `https://xxx.feishu.cn/docs/doccnXXXX` | 同上 |
-| 知识库 wiki 页面 | `https://xxx.feishu.cn/wiki/wikcnXXXX` | 先解析 wiki 节点，再拉取底层 docx 正文 |
+| 知识库 wiki 页面 | `https://xxx.feishu.cn/wiki/wikcnXXXX` | 先解析 wiki 节点，再拉取底层 docx Markdown |
 
 **不支持：**
 
@@ -28,7 +28,8 @@
 
 1. 在 [飞书开放平台](https://open.feishu.cn/) 创建企业自建应用
 2. 开通权限（名称以平台文档为准）：
-   - 云文档只读（docx `raw_content`）
+   - 查看云文档内容 `docs:document.content:read`（Markdown 导出）
+   - 云文档只读 `docx:document:readonly`（Markdown 失败回退）
    - 知识库节点读取（wiki `get_node`）
 3. 发布应用并安装到目标租户
 4. 确保目标文档 / wiki 页面对应用可见
@@ -56,8 +57,8 @@ feishu:
 - 来源类型：**Remote URL**
 - 来源地址：粘贴飞书 docx 或 wiki 单页链接
 - 处理模式：
-  - **chunk**：直接分块（纯文本默认策略即可）
-  - **pipeline**：选择 Parser 允许 `TEXT` 的 Pipeline（无需含 Fetcher 节点，上传时已落盘）
+  - **chunk**：直接分块（Markdown 自动走 block-aware 结构分块）
+  - **pipeline**：选择 Parser 允许 `MARKDOWN` 的 Pipeline（无需含 Fetcher 节点，上传时已落盘）
 
 ### 3. 定时同步（可选）
 
@@ -69,7 +70,7 @@ Remote URL 来源可开启 cron 定时刷新；飞书文档按内容 hash 检测
 
 ### 创建 Pipeline
 
-wiki / docx 拉取结果均为 **纯文本**（`text/plain`），Parser 需允许 TEXT：
+wiki / docx 拉取结果均为 **Markdown**（`text/markdown`），Parser 需允许 MARKDOWN：
 
 ```
 FETCHER → PARSER → CHUNKER → INDEXER
@@ -79,7 +80,7 @@ Parser settings 示例：
 
 ```json
 {
-  "rules": [{ "mimeType": "TEXT" }]
+  "rules": [{ "mimeType": "MARKDOWN" }]
 }
 ```
 

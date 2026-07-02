@@ -20,6 +20,7 @@ package com.nageoffer.ai.ragent.ingestion.strategy.fetcher;
 import com.nageoffer.ai.ragent.framework.exception.ClientException;
 import com.nageoffer.ai.ragent.ingestion.domain.context.DocumentSource;
 import com.nageoffer.ai.ragent.ingestion.domain.enums.SourceType;
+import com.nageoffer.ai.ragent.knowledge.config.FeishuProperties;
 import okhttp3.OkHttpClient;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -47,16 +48,60 @@ class FeishuFetcherTest {
     private FeishuWikiClient feishuWikiClient;
 
     private FeishuFetcher feishuFetcher;
+    private FeishuProperties feishuProperties;
 
     @BeforeEach
     void setUp() {
+        feishuProperties = new FeishuProperties();
         FeishuAuthService feishuAuthService = new FeishuAuthService(new OkHttpClient());
-        feishuFetcher = new FeishuFetcher(feishuAuthService, feishuDocxClient, feishuWikiClient);
+        feishuFetcher = new FeishuFetcher(
+                feishuAuthService, feishuDocxClient, feishuWikiClient, feishuProperties);
     }
 
     @Test
-    void shouldFetchDocxUrlViaDocxClient() {
-        when(feishuDocxClient.fetchRawContent(eq("doccnABC"), any())).thenReturn("hello docx");
+    void shouldFetchDocxUrlViaMarkdownClient() {
+        when(feishuDocxClient.fetchMarkdownContent(eq("doccnABC"), any())).thenReturn("# hello docx");
+
+        DocumentSource source = DocumentSource.builder()
+                .type(SourceType.FEISHU)
+                .location("https://example.feishu.cn/docx/doccnABC")
+                .credentials(Map.of("tenantAccessToken", "token"))
+                .build();
+
+        FetchResult result = feishuFetcher.fetch(source);
+
+        assertEquals("text/markdown", result.mimeType());
+        assertEquals("# hello docx", new String(result.content(), StandardCharsets.UTF_8));
+        assertEquals("doccnABC.md", result.fileName());
+        verify(feishuDocxClient).fetchMarkdownContent(eq("doccnABC"), any());
+    }
+
+    @Test
+    void shouldFetchWikiDocxNodeViaWikiAndMarkdownClient() {
+        when(feishuWikiClient.getNode(eq("wikcnXYZ"), any())).thenReturn(
+                new WikiNodeInfo("产品手册", "docx", "doccnFromWiki", "space123"));
+        when(feishuDocxClient.fetchMarkdownContent(eq("doccnFromWiki"), any())).thenReturn("# wiki content");
+
+        DocumentSource source = DocumentSource.builder()
+                .type(SourceType.FEISHU)
+                .location("https://example.feishu.cn/wiki/wikcnXYZ")
+                .credentials(Map.of("tenantAccessToken", "token"))
+                .build();
+
+        FetchResult result = feishuFetcher.fetch(source);
+
+        assertEquals("# wiki content", new String(result.content(), StandardCharsets.UTF_8));
+        assertEquals("产品手册.md", result.fileName());
+        assertEquals("text/markdown", result.mimeType());
+        verify(feishuWikiClient).getNode(eq("wikcnXYZ"), any());
+        verify(feishuDocxClient).fetchMarkdownContent(eq("doccnFromWiki"), any());
+    }
+
+    @Test
+    void shouldFallbackToPlainWhenMarkdownFails() {
+        when(feishuDocxClient.fetchMarkdownContent(eq("doccnABC"), any()))
+                .thenThrow(new ClientException("飞书 Markdown 导出失败: permission denied"));
+        when(feishuDocxClient.fetchRawContent(eq("doccnABC"), any())).thenReturn("plain fallback");
 
         DocumentSource source = DocumentSource.builder()
                 .type(SourceType.FEISHU)
@@ -67,29 +112,27 @@ class FeishuFetcherTest {
         FetchResult result = feishuFetcher.fetch(source);
 
         assertEquals("text/plain", result.mimeType());
-        assertEquals("hello docx", new String(result.content(), StandardCharsets.UTF_8));
+        assertEquals("plain fallback", new String(result.content(), StandardCharsets.UTF_8));
         assertEquals("doccnABC.txt", result.fileName());
         verify(feishuDocxClient).fetchRawContent(eq("doccnABC"), any());
     }
 
     @Test
-    void shouldFetchWikiDocxNodeViaWikiAndDocxClient() {
-        when(feishuWikiClient.getNode(eq("wikcnXYZ"), any())).thenReturn(
-                new WikiNodeInfo("产品手册", "docx", "doccnFromWiki", "space123"));
-        when(feishuDocxClient.fetchRawContent(eq("doccnFromWiki"), any())).thenReturn("wiki content");
+    void shouldUsePlainFormatWhenConfigured() {
+        feishuProperties.setContentFormat("plain");
+        when(feishuDocxClient.fetchRawContent(eq("doccnABC"), any())).thenReturn("plain only");
 
         DocumentSource source = DocumentSource.builder()
                 .type(SourceType.FEISHU)
-                .location("https://example.feishu.cn/wiki/wikcnXYZ")
+                .location("https://example.feishu.cn/docx/doccnABC")
                 .credentials(Map.of("tenantAccessToken", "token"))
                 .build();
 
         FetchResult result = feishuFetcher.fetch(source);
 
-        assertEquals("wiki content", new String(result.content(), StandardCharsets.UTF_8));
-        assertEquals("产品手册.txt", result.fileName());
-        verify(feishuWikiClient).getNode(eq("wikcnXYZ"), any());
-        verify(feishuDocxClient).fetchRawContent(eq("doccnFromWiki"), any());
+        assertEquals("text/plain", result.mimeType());
+        assertEquals("doccnABC.txt", result.fileName());
+        verify(feishuDocxClient).fetchRawContent(eq("doccnABC"), any());
     }
 
     @Test
