@@ -4,6 +4,9 @@ server:
     context-path: /api/ragent
 
 spring:
+  config:
+    import: optional:classpath:application-local.yaml
+
   application:
     name: ragent${unique-name:}-service
 
