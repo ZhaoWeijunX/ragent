@@ -16,10 +16,18 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { DocumentProcessModeSection } from "@/pages/admin/knowledge/components/DocumentProcessModeSection";
+import {
+  buildProcessModePayload,
+  DEFAULT_CONFIG_VALUES,
+  validateProcessModeValues,
+  type ProcessMode
+} from "@/pages/admin/knowledge/utils/documentProcessMode";
 import {
   discoverFeishuWiki,
   getFeishuWikiImportJob,
   startFeishuWikiImport,
+  type ChunkStrategyOption,
   type FeishuWikiDiscoverResult,
   type FeishuWikiImportJob,
   type FeishuWikiImportPayload,
@@ -49,6 +57,12 @@ export function FeishuWikiImportDialog({ open, kbId, onOpenChange, onCompleted }
   const [autoChunk, setAutoChunk] = useState(false);
   const [scheduleEnabled, setScheduleEnabled] = useState(false);
   const [scheduleCron, setScheduleCron] = useState("0 0 * * *");
+  const [processMode, setProcessMode] = useState<ProcessMode>("chunk");
+  const [chunkStrategy, setChunkStrategy] = useState("fixed_size");
+  const [configValues, setConfigValues] = useState<Record<string, string>>({ ...DEFAULT_CONFIG_VALUES });
+  const [pipelineId, setPipelineId] = useState("");
+  const [noChunk, setNoChunk] = useState(false);
+  const [chunkStrategies, setChunkStrategies] = useState<ChunkStrategyOption[]>([]);
   const [discovering, setDiscovering] = useState(false);
   const [importing, setImporting] = useState(false);
   const [preview, setPreview] = useState<FeishuWikiDiscoverResult | null>(null);
@@ -62,6 +76,11 @@ export function FeishuWikiImportDialog({ open, kbId, onOpenChange, onCompleted }
     setAutoChunk(false);
     setScheduleEnabled(false);
     setScheduleCron("0 0 * * *");
+    setProcessMode("chunk");
+    setChunkStrategy("fixed_size");
+    setConfigValues({ ...DEFAULT_CONFIG_VALUES });
+    setPipelineId("");
+    setNoChunk(false);
     setPreview(null);
     setJob(null);
     setDiscovering(false);
@@ -76,27 +95,49 @@ export function FeishuWikiImportDialog({ open, kbId, onOpenChange, onCompleted }
     if (!open) {
       reset();
     }
+  }, [open]);
+
+  useEffect(() => {
     return () => {
       if (pollRef.current) {
         clearInterval(pollRef.current);
       }
     };
-  }, [open]);
+  }, []);
 
-  const buildPayload = (): FeishuWikiImportPayload => ({
-    rootUrl: rootUrl.trim(),
-    scope,
-    autoChunk,
-    processMode: "chunk",
-    chunkStrategy: "fixed_size",
-    chunkConfig: JSON.stringify({ chunkSize: 512, overlapSize: 128 }),
-    scheduleEnabled,
-    scheduleCron: scheduleEnabled ? scheduleCron : undefined
-  });
+  const buildPayload = (): FeishuWikiImportPayload => {
+    const processModeInput = { processMode, chunkStrategy, configValues, pipelineId };
+    const processModePayload = buildProcessModePayload(processModeInput, chunkStrategies);
 
-  const handleDiscover = async () => {
+    return {
+      rootUrl: rootUrl.trim(),
+      scope,
+      autoChunk,
+      ...processModePayload,
+      scheduleEnabled,
+      scheduleCron: scheduleEnabled ? scheduleCron : undefined
+    };
+  };
+
+  const validateConfig = (): boolean => {
     if (!rootUrl.trim()) {
       toast.error("请输入飞书 Wiki 页面链接");
+      return false;
+    }
+    const processModeError = validateProcessModeValues({ processMode, chunkStrategy, configValues, pipelineId });
+    if (processModeError) {
+      toast.error(processModeError);
+      return false;
+    }
+    if (processMode === "chunk" && chunkStrategies.length === 0) {
+      toast.error("分块策略加载中，请稍后再试");
+      return false;
+    }
+    return true;
+  };
+
+  const handleDiscover = async () => {
+    if (!validateConfig()) {
       return;
     }
     setDiscovering(true);
@@ -142,6 +183,11 @@ export function FeishuWikiImportDialog({ open, kbId, onOpenChange, onCompleted }
   };
 
   const handleImport = async () => {
+    const processModeError = validateProcessModeValues({ processMode, chunkStrategy, configValues, pipelineId });
+    if (processModeError) {
+      toast.error(processModeError);
+      return;
+    }
     setImporting(true);
     try {
       const created = await startFeishuWikiImport(kbId, buildPayload());
@@ -198,6 +244,24 @@ export function FeishuWikiImportDialog({ open, kbId, onOpenChange, onCompleted }
                 </SelectContent>
               </Select>
             </div>
+
+            <div className="space-y-3 rounded-lg border p-3">
+              <DocumentProcessModeSection
+                active={open}
+                processMode={processMode}
+                onProcessModeChange={setProcessMode}
+                chunkStrategy={chunkStrategy}
+                onChunkStrategyChange={setChunkStrategy}
+                configValues={configValues}
+                onConfigValuesChange={setConfigValues}
+                pipelineId={pipelineId}
+                onPipelineIdChange={setPipelineId}
+                noChunk={noChunk}
+                onNoChunkChange={setNoChunk}
+                onChunkStrategiesReady={setChunkStrategies}
+              />
+            </div>
+
             <div className="flex items-center gap-2">
               <Checkbox id="auto-chunk" checked={autoChunk} onCheckedChange={(v) => setAutoChunk(v === true)} />
               <Label htmlFor="auto-chunk" className="font-normal">
@@ -299,10 +363,7 @@ export function FeishuWikiImportDialog({ open, kbId, onOpenChange, onCompleted }
               <Button variant="outline" onClick={() => setStep("config")}>
                 返回
               </Button>
-              <Button
-                onClick={handleImport}
-                disabled={importing || !(preview?.pages?.length)}
-              >
+              <Button onClick={handleImport} disabled={importing || !(preview?.pages?.length)}>
                 {importing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 确认导入
               </Button>

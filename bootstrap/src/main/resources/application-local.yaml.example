@@ -3,6 +3,10 @@
 #
 #   cp application-local.yaml.example application-local.yaml
 
+ragent:
+  infra:
+    host: localhost
+
 ai:
   providers:
     bailian:

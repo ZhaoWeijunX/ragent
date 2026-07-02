@@ -47,6 +47,12 @@ const SpreadsheetPreview = lazy(() =>
 );
 import { getErrorMessage } from "@/utils/error";
 import { FeishuWikiImportDialog } from "@/pages/admin/knowledge/components/FeishuWikiImportDialog";
+import {
+  NO_CHUNK_VALUE,
+  PROCESS_MODE_OPTIONS,
+  buildChunkConfig,
+  parseNumber
+} from "@/pages/admin/knowledge/utils/documentProcessMode";
 
 const PAGE_SIZE = 10;
 
@@ -61,13 +67,6 @@ const SOURCE_OPTIONS = [
   { value: "file", label: "Local File" },
   { value: "url", label: "Remote URL" }
 ];
-
-const PROCESS_MODE_OPTIONS = [
-  { value: "chunk", label: "直接分块" },
-  { value: "pipeline", label: "数据通道" }
-];
-
-const NO_CHUNK_VALUE = -1;
 
 const parseChunkConfig = (raw?: string | null): Record<string, unknown> => {
   if (!raw) return {};
@@ -1647,12 +1646,6 @@ function UploadDialog({ open, onOpenChange, onSubmit }: UploadDialogProps) {
     }
   };
 
-  const parseNumber = (value?: string) => {
-    if (!value || !value.trim()) return null;
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : null;
-  };
-
   const handleSubmit = async (values: UploadFormValues) => {
     if (values.sourceType === "file" && !file) {
       toast.error("请选择文件");
@@ -1664,42 +1657,25 @@ function UploadDialog({ open, onOpenChange, onSubmit }: UploadDialogProps) {
       return;
     }
 
-    // 组装 chunkConfig JSON：表格类只发真正生效的参数，其余按策略 defaultConfig keys 组装
-    let chunkConfig: string | undefined;
-    if (values.processMode === "chunk") {
-      if (isTableType) {
-        // fixed_size 载体：chunkSize 作体量预算、overlapSize 占位过校验；rowsPerChunk / excelParser 为 block-aware 自由键
-        const config: Record<string, number | string> = {
-          chunkSize: parseNumber(values.chunkSize) ?? 512,
-          overlapSize: 0,
-          rowsPerChunk: parseNumber(values.rowsPerChunk) ?? 50
-        };
-        if (!isCsv) {
-          config.excelParser = values.excelParser || "poi";
-        }
-        chunkConfig = JSON.stringify(config);
-      } else {
-        const strategy = chunkStrategies.find((s) => s.value === values.chunkStrategy);
-        if (strategy) {
-          const formAccessors: Record<string, string | undefined> = {
-            chunkSize: values.chunkSize,
-            overlapSize: values.overlapSize,
-            targetChars: values.targetChars,
-            maxChars: values.maxChars,
-            minChars: values.minChars,
-            overlapChars: values.overlapChars
-          };
-          const config: Record<string, number> = {};
-          for (const key of Object.keys(strategy.defaultConfig)) {
-            const val = parseNumber(formAccessors[key]);
-            if (val !== null) {
-              config[key] = val;
-            }
-          }
-          chunkConfig = JSON.stringify(config);
-        }
-      }
-    }
+    const chunkConfig = buildChunkConfig(
+      {
+        processMode: values.processMode,
+        chunkStrategy: values.chunkStrategy || "fixed_size",
+        configValues: {
+          chunkSize: values.chunkSize || "",
+          overlapSize: values.overlapSize || "",
+          targetChars: values.targetChars || "",
+          maxChars: values.maxChars || "",
+          minChars: values.minChars || "",
+          overlapChars: values.overlapChars || "",
+          rowsPerChunk: values.rowsPerChunk || "",
+          excelParser: values.excelParser || "poi"
+        },
+        pipelineId: values.pipelineId || ""
+      },
+      chunkStrategies,
+      { isTableType, isCsv }
+    );
 
     setSaving(true);
     try {
