@@ -45,3 +45,14 @@ CREATE TABLE IF NOT EXISTS t_feishu_wiki_import_item (
     update_time   TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_feishu_wiki_item_job ON t_feishu_wiki_import_item (job_id);
+
+
+-- t_knowledge_vector 表：新增知识库 Collection 字段
+
+ALTER TABLE t_knowledge_vector
+    ADD COLUMN collection_name VARCHAR(64) NOT NULL DEFAULT 'default';
+
+CREATE INDEX idx_kv_collection_name
+    ON t_knowledge_vector (collection_name);
+
+COMMENT ON COLUMN t_knowledge_vector.collection_name IS '知识库Collection';
