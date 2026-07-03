@@ -47,3 +47,4 @@ bootstrap/src/main/resources/application-local.yaml
 
 ### Tmp Out ###
 .output/
+docs/temp
