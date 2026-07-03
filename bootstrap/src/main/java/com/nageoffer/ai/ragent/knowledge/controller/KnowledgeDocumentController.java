@@ -171,6 +171,18 @@ public class KnowledgeDocumentController {
     }
 
     /**
+     * 开发使用工具：批量下载知识库内全部文档（ZIP 打包）
+     */
+    @GetMapping("/knowledge-base/{kb-id}/docs/batch-download")
+    public void batchDownload(@PathVariable("kb-id") String kbId, HttpServletResponse response) throws Exception {
+        String zipName = documentService.getKbZipFileName(kbId);
+        response.setContentType("application/zip");
+        response.setHeader("Content-Disposition",
+                "attachment; filename=\"" + URLEncoder.encode(zipName, StandardCharsets.UTF_8) + "\"");
+        documentService.writeKbDocumentsZip(kbId, response.getOutputStream());
+    }
+
+    /**
      * 获取文档源文件（用于 PDF/图片等浏览器原生支持的格式直接渲染）
      */
     @GetMapping("/knowledge-base/docs/{docId}/file")

@@ -87,10 +87,15 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionOperations;
+import org.springframework.util.StreamUtils;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
@@ -99,6 +104,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
 @Slf4j
 @Service
@@ -988,12 +995,93 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
             throw new ClientException("仅支持预览 markdown 格式文档");
         }
         try (InputStream in = fileStorageService.openStream(documentDO.getFileUrl())) {
-            return new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+            return new String(in.readAllBytes(), StandardCharsets.UTF_8);
         } catch (ClientException e) {
             throw e;
         } catch (Exception e) {
             throw new ClientException("读取文档内容失败: " + e.getMessage());
         }
+    }
+
+    @Override
+    public String getKbZipFileName(String kbId) {
+        KnowledgeBaseDO kb = requireKnowledgeBase(kbId);
+        String name = StringUtils.hasText(kb.getName()) ? kb.getName() : kbId;
+        return sanitizeFileName(name) + ".zip";
+    }
+
+    @Override
+    public void writeKbDocumentsZip(String kbId, OutputStream outputStream) {
+        requireKnowledgeBase(kbId);
+
+        List<KnowledgeDocumentDO> documents = documentMapper.selectList(
+                Wrappers.lambdaQuery(KnowledgeDocumentDO.class)
+                        .eq(KnowledgeDocumentDO::getKbId, kbId)
+                        .eq(KnowledgeDocumentDO::getDeleted, 0)
+                        .orderByDesc(KnowledgeDocumentDO::getCreateTime));
+
+        List<String> errors = new ArrayList<>();
+        Set<String> usedNames = new HashSet<>();
+
+        try (ZipOutputStream zos = new ZipOutputStream(outputStream, StandardCharsets.UTF_8)) {
+            if (documents.isEmpty()) {
+                errors.add("知识库内暂无文档");
+            }
+            for (KnowledgeDocumentDO doc : documents) {
+                String displayName = StringUtils.hasText(doc.getDocName()) ? doc.getDocName() : doc.getId();
+                if (!StringUtils.hasText(doc.getFileUrl())) {
+                    errors.add(doc.getId() + " (" + displayName + "): 文件地址为空");
+                    continue;
+                }
+                try {
+                    String entryName = resolveUniqueEntryName(displayName, usedNames);
+                    zos.putNextEntry(new ZipEntry(entryName));
+                    try (InputStream in = fileStorageService.openStream(doc.getFileUrl())) {
+                        StreamUtils.copy(in, zos);
+                    }
+                    zos.closeEntry();
+                } catch (Exception e) {
+                    errors.add(doc.getId() + " (" + displayName + "): 读取失败: " + e.getMessage());
+                }
+            }
+            if (!errors.isEmpty()) {
+                zos.putNextEntry(new ZipEntry("errors.txt"));
+                zos.write(String.join(System.lineSeparator(), errors).getBytes(StandardCharsets.UTF_8));
+                zos.closeEntry();
+            }
+        } catch (IOException e) {
+            throw new ClientException("打包下载失败: " + e.getMessage());
+        }
+    }
+
+    private KnowledgeBaseDO requireKnowledgeBase(String kbId) {
+        KnowledgeBaseDO kb = knowledgeBaseMapper.selectById(kbId);
+        Assert.notNull(kb, () -> new ClientException("知识库不存在"));
+        return kb;
+    }
+
+    private static String sanitizeFileName(String name) {
+        String sanitized = name.replaceAll("[\\\\/:*?\"<>|]", "_").trim();
+        return sanitized.isEmpty() ? "documents" : sanitized;
+    }
+
+    private static String resolveUniqueEntryName(String fileName, Set<String> usedNames) {
+        String base = sanitizeFileName(fileName);
+        if (!usedNames.contains(base)) {
+            usedNames.add(base);
+            return base;
+        }
+        int dot = base.lastIndexOf('.');
+        String namePart = dot > 0 ? base.substring(0, dot) : base;
+        String extPart = dot > 0 ? base.substring(dot) : "";
+        int i = 1;
+        String candidate;
+        do {
+            candidate = namePart + " (" + i + ")" + extPart;
+            i++;
+        } while (usedNames.contains(candidate));
+        usedNames.add(candidate);
+        return candidate;
     }
 
     private void deleteStoredFileQuietly(KnowledgeDocumentDO documentDO) {

@@ -27,6 +27,7 @@ import com.nageoffer.ai.ragent.knowledge.controller.vo.KnowledgeDocumentChunkLog
 import com.nageoffer.ai.ragent.knowledge.controller.vo.KnowledgeDocumentSearchVO;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.OutputStream;
 import java.util.List;
 
 /**
@@ -132,4 +133,19 @@ public interface KnowledgeDocumentService {
      * @return markdown 原始文本内容
      */
     String preview(String docId);
+
+    /**
+     * 获取知识库批量下载 ZIP 文件名（含 .zip 后缀）
+     *
+     * @param kbId 知识库 ID
+     */
+    String getKbZipFileName(String kbId);
+
+    /**
+     * 将知识库内全部未删除文档打包写入 ZIP 流
+     *
+     * @param kbId         知识库 ID
+     * @param outputStream 输出流
+     */
+    void writeKbDocumentsZip(String kbId, OutputStream outputStream);
 }
