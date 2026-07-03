@@ -15,40 +15,41 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.rag.core.retrieve.channel;
+package com.nageoffer.ai.ragent.knowledge.mq.event;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.io.Serial;
+import java.io.Serializable;
 
 /**
- * 检索通道类型枚举
+ * 知识库删除清理任务事件
+ * 负责异步回收知识库独占的底层物理资源（Milvus collection / bucket / 残留向量）
  */
-public enum SearchChannelType {
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class KnowledgeBaseCleanupEvent implements Serializable {
+
+    @Serial
+    private static final long serialVersionUID = 1L;
 
     /**
-     * 向量全局检索
-     * 在所有知识库中进行向量检索
+     * 知识库 ID
      */
-    VECTOR_GLOBAL,
+    private String kbId;
 
     /**
-     * 意图定向检索
-     * 基于意图识别结果，在特定知识库中检索
+     * 知识库 collection 名称（同时也是 bucket 名）
      */
-    INTENT_DIRECTED,
+    private String collectionName;
 
     /**
-     * 关键词检索
-     * 基于全文检索引擎（如 Elasticsearch）的关键词分词检索，后端为实现细节
+     * 操作人
      */
-    KEYWORD,
-
-    /**
-     * 知识图谱检索
-     * 基于实体与关系的图谱召回（预留，尚未实现）
-     */
-    GRAPH,
-
-    /**
-     * 混合检索
-     * 结合多种检索策略
-     */
-    HYBRID
+    private String operator;
 }

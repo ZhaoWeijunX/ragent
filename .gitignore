@@ -44,5 +44,8 @@ dist/
 .env.local
 bootstrap/src/main/resources/application-local.yaml
 
+bootstrap/src/main/resources/application-local.yaml
+
 ### Tmp Out ###
 .output/
+docs/temp
