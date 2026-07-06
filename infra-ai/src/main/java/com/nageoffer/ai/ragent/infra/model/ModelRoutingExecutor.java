@@ -49,17 +49,21 @@ public class ModelRoutingExecutor {
         }
 
         Throwable last = null;
+        // 1. 逐个遍历候选模型
         for (ModelTarget target : targets) {
+            // 2. 从全局 map 中拿到具体模型
             C client = clientResolver.apply(target);
             if (client == null) {
                 log.warn("{} provider client missing: provider={}, modelId={}", label, target.candidate().getProvider(), target.id());
                 continue;
             }
+            // 3. 熔断层判断是否通路
             if (!healthStore.allowCall(target.id())) {
                 continue;
             }
 
             try {
+                // 4. 执行具体调用，标记成功，返回响应
                 T response = caller.call(client, target);
                 healthStore.markSuccess(target.id());
                 return response;

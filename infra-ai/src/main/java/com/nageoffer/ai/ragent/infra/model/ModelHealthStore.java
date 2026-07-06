@@ -114,6 +114,7 @@ public class ModelHealthStore {
                 v.halfOpenInFlight = false;
                 return v;
             }
+            // CLOSE; OPEN 状态在allowCall就会被拦，不会到这
             v.consecutiveFailures++;
             if (v.consecutiveFailures >= properties.getSelection().getFailureThreshold()) {
                 v.state = State.OPEN;

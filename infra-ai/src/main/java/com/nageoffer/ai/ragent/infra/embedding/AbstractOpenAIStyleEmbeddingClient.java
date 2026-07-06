@@ -113,6 +113,7 @@ public abstract class AbstractOpenAIStyleEmbeddingClient implements EmbeddingCli
      * 构建请求、发送 HTTP、解析 OpenAI 格式响应
      */
     protected List<List<Float>> doEmbed(List<String> texts, ModelTarget target) {
+        // 1. 校验与 URL 解析
         AIModelProperties.ProviderConfig provider = HttpResponseHelper.requireProvider(target, provider());
         if (requiresApiKey()) {
             HttpResponseHelper.requireApiKey(provider, provider());
@@ -120,6 +121,7 @@ public abstract class AbstractOpenAIStyleEmbeddingClient implements EmbeddingCli
 
         String url = ModelUrlResolver.resolveUrl(provider, target.candidate(), ModelCapability.EMBEDDING);
 
+        // 2. 请求体构建
         JsonObject body = new JsonObject();
         body.addProperty("model", HttpResponseHelper.requireModel(target, provider()));
         JsonArray inputArray = new JsonArray();
@@ -130,6 +132,7 @@ public abstract class AbstractOpenAIStyleEmbeddingClient implements EmbeddingCli
         body.addProperty("dimensions", target.candidate().getDimension());
         customizeRequestBody(body, target);
 
+        // 3. HTTP 调用与错误处理
         Request.Builder requestBuilder = new Request.Builder()
                 .url(url)
                 .post(RequestBody.create(body.toString(), HttpMediaTypes.JSON));
@@ -156,6 +159,7 @@ public abstract class AbstractOpenAIStyleEmbeddingClient implements EmbeddingCli
                     ModelClientErrorType.NETWORK_ERROR, null, e);
         }
 
+        // 4. 响应解析 {"data": [{"embedding": [...], "index": 0}, ...]}
         if (json.has("error")) {
             JsonObject err = json.getAsJsonObject("error");
             String code = err.has("code") ? err.get("code").getAsString() : "unknown";
