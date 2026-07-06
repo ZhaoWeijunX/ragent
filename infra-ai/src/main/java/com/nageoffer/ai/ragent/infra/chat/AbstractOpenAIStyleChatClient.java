@@ -99,14 +99,12 @@ public abstract class AbstractOpenAIStyleChatClient implements ChatClient {
             HttpResponseHelper.requireApiKey(provider, provider());
         }
 
-        // 1. 将 ChatRequest 转为 OpenAI格式的 JSON
         JsonObject reqBody = buildRequestBody(request, target, false);
         Request requestHttp = newAuthorizedRequest(provider, target)
                 .post(RequestBody.create(reqBody.toString(), HttpMediaTypes.JSON))
                 .build();
 
         JsonObject respJson;
-        // 2. 发送请求
         try (Response response = syncHttpClient.newCall(requestHttp).execute()) {
             if (!response.isSuccessful()) {
                 String body = HttpResponseHelper.readBody(response.body());
@@ -124,7 +122,6 @@ public abstract class AbstractOpenAIStyleChatClient implements ChatClient {
                     ModelClientErrorType.NETWORK_ERROR, null, e);
         }
 
-        // 3. 从响应体中提取 choices[0].message.content
         return extractChatContent(respJson);
     }
 
@@ -139,10 +136,9 @@ public abstract class AbstractOpenAIStyleChatClient implements ChatClient {
         JsonObject reqBody = buildRequestBody(request, target, true);
         Request streamRequest = newAuthorizedRequest(provider, target)
                 .post(RequestBody.create(reqBody.toString(), HttpMediaTypes.JSON))
-                .addHeader("Accept", "text/event-stream")           // 区别
+                .addHeader("Accept", "text/event-stream")
                 .build();
 
-        // =================== 与同步调用doChat() 的分叉点 ==========================
         Call call = streamingHttpClient.newCall(streamRequest);
         boolean reasoningEnabled = isReasoningEnabledForStream(request);
 
@@ -173,7 +169,6 @@ public abstract class AbstractOpenAIStyleChatClient implements ChatClient {
 
     private void doStream(Call call, StreamCallback callback, AtomicBoolean cancelled, boolean reasoningEnabled) {
         try (Response response = call.execute()) {
-            // ① HTTP 校验
             if (!response.isSuccessful()) {
                 String body = HttpResponseHelper.readBody(response.body());
                 throw new ModelClientException(
@@ -188,7 +183,6 @@ public abstract class AbstractOpenAIStyleChatClient implements ChatClient {
             }
             BufferedSource source = body.source();
             boolean completed = false;
-            // ② 主循环：逐行读 SSE
             while (!cancelled.get()) {
                 String line = source.readUtf8Line();
                 if (line == null) {
@@ -214,23 +208,17 @@ public abstract class AbstractOpenAIStyleChatClient implements ChatClient {
                     log.warn("{} 流式响应解析失败: line={}", provider(), line, parseEx);
                 }
             }
-            // ③ 三种结束判定
-            // 结束方式1：用户取消，调用 handle.cancel
             if (cancelled.get()) {
                 log.info("{} 流式响应已被取消", provider());
                 return;
             }
-            // 结束方式2：异常中断
             if (!completed) {
                 throw new ModelClientException(provider() + " 流式响应异常结束", ModelClientErrorType.INVALID_RESPONSE, null);
             }
-            // 结束方式3：正常结束
         } catch (Exception e) {
             if (!cancelled.get()) {
-                // 非取消场景，真正的【异常场景】
                 callback.onError(e);
             } else {
-                // 用户取消的场景，预期行为，只打日志，不报错
                 log.info("{} 流式响应取消期间产生异常（可忽略）: {}", provider(), e.getMessage());
             }
         }

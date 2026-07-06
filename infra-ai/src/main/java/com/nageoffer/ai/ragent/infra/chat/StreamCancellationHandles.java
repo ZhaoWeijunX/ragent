@@ -53,15 +53,12 @@ public final class StreamCancellationHandles {
 
         @Override
         public void cancel() {
-            // ① CAS 保证只执行一次，幂等，多次取消只执行一次，不抛异常
             if (!once.compareAndSet(false, true)) {
                 return;
             }
-            // ② 设置取消信号
             if (cancelled != null) {
                 cancelled.set(true);
             }
-            // ③ 取消 OkHttp 连接
             if (call != null) {
                 call.cancel();
             }
