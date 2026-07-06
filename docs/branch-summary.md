@@ -1,60 +1,99 @@
 # 分支总结
 
-> 生成时间：2026-07-06  
-> 基准分支：`main` / `origin/main`（`c91656d`）  
-> 当前工作分支：`feat/feishu_source/markdown_support`（`143f53c`，已 merge 最新 `main`）
+> 生成时间：2026-07-07  
+> 基准分支：`main` / `origin/main`（`0ec5c90`）  
+> 集成预览分支：`preview` / `origin/preview`（`6670919`）
 
-本文档汇总 **origin 远程仓库** 各功能分支相对 `main` 的增量工作，便于了解进展、合并顺序与分支归档。
+本文档汇总 **origin 远程仓库** 各分支相对 `main` 的增量工作，便于了解进展、合并顺序与分支归档。
+
+## 分支策略
+
+| 分支 | 角色 |
+|------|------|
+| `main` | **干净基线**，对齐上游 fork；个人实验功能通过 revert 从工作区移除，仅保留上游核心能力 |
+| `preview` | **个人功能集成预览**，汇集所有新开发功能，用于本地验证与后期回溯代码 |
 
 ## 分支关系概览
 
 ```
-origin/main
- ├── origin/feat/feishu_source/single_wiki      （飞书单文档导入，基础能力）
- │    └── origin/feat/feishu_source/batch_wiki  （批量导入 + 前后端闭环）
- │         └── origin/feat/feishu_source/markdown_support  （Markdown 导出 + 批量下载，已同步 main）
- ├── origin/feat/mcp/weather                     （天气 MCP，已合入 main，可归档）
- ├── origin/feat/intent                          （意图树文档，已合入 main，与 main 同指针）
- └── origin/feat/model/add_model                 （DeepSeek 模型接入，独立功能线）
+origin/main（干净基线，对齐 upstream/main）
+ └── origin/preview（个人功能集成预览）
+      ├── [已合入] 飞书功能线（single_wiki → batch_wiki → markdown_support）
+      ├── [已合入] DeepSeek 模型接入（原 add_model）
+      ├── 天气 MCP、意图树文档、infra-ai 整理等（main 已 revert，preview 保留）
+      └── [已删除] origin/feat/intent、origin/feat/model/add_model
+
+origin/feat/feishu_source/single_wiki → batch_wiki → markdown_support  （中间分支，可归档）
+origin/feat/mcp/weather                                                 （天气备份线，可归档）
 ```
 
 ## 远程分支一览（origin）
 
 | 远程分支 | 领先 `main` | 落后 `main` | 最新提交 | 状态 |
 |----------|-------------|-------------|----------|------|
-| `origin/main` | — | — | `c91656d` | 稳定基线 |
-| `origin/feat/feishu_source/single_wiki` | 10 | 7 | `4989755` | 开发中，需同步 main |
-| `origin/feat/feishu_source/batch_wiki` | 15 | 7 | `84b7925` | 开发中，需同步 main |
-| `origin/feat/feishu_source/markdown_support` | 20 | 0 | `143f53c` | **推荐合入 main** |
-| `origin/feat/intent` | 0 | 0 | `c91656d` | 已合入 main，可归档 |
-| `origin/feat/mcp/weather` | 2 | 7 | `72d7b78` | 已合入 main，可归档 |
-| `origin/feat/model/add_model` | 1 | 3 | `08577db` | 待 review，合入前需同步 main |
+| `origin/main` | — | — | `0ec5c90` | 稳定基线 |
+| `origin/preview` | 23 | 5 | `6670919` | **个人功能集成预览** |
+| `origin/feat/feishu_source/single_wiki` | 10 | 12 | `4989755` | 中间分支，可归档 |
+| `origin/feat/feishu_source/batch_wiki` | 15 | 12 | `84b7925` | 中间分支，可归档 |
+| `origin/feat/feishu_source/markdown_support` | 21 | 5 | `26084e2` | 已被 `preview` 包含 |
+| `origin/feat/mcp/weather` | 2 | 12 | `72d7b78` | 天气备份，可归档 |
 
-> **上游参考**：`upstream/main`（`50afe91`）落后本地 `main` 10 个提交；`upstream/1.0.x`（`5500546`）为旧版维护线，落后 28 个提交。
+> **上游参考**：`upstream/main`（`50afe91`）；本地 `main` 领先 `upstream/main` 15 个提交、落后 0（含 merge 与个人配置历史，工作区已 revert 个人功能）。`upstream/1.0.x` 为旧版维护线。
+
+> **命名变更**：原 `my_preview` / `origin/my_preview` 已统一更名为 `preview` / `origin/preview`。
 
 ---
 
 ## origin/main
 
-当前稳定基线，与本地 `main` 同步。近期主要变更：
+**定位**：干净基线，与上游 fork 基本对齐。
 
-- MinerU 解析并发：重构为分布式信号量控制
-- Chunk 合并：优化文本流与图片处理能力；块级贪心打包
-- 知识库索引：统一 Milvus 向量与关键词索引为共享物理索引
-- 基础设施：`infra-ai` 模块补充注释与代码结构整理
-- **天气 MCP**：和风天气（QWeather）预报查询（`e16e0bc`）
-- **意图树**：ragent-test 知识库意图树设计与导入 SQL（`c91656d`）
+**工作区包含**（上游核心能力）：
+
+- MinerU 解析并发：分布式信号量控制
+- Chunk 合并：文本流与图片处理优化；块级贪心打包
+- 知识库索引：Milvus 向量与关键词索引统一为共享物理索引
 - 知识库删除时底层资源异步清理
 - 向量检索重构，支持全局跨 Collection 召回
-- 集成 Elasticsearch 关键词检索与索引
+- Elasticsearch 关键词检索与索引
+
+**已通过 revert 从工作区移除**（历史记录仍保留，代码在 `preview` 可回溯）：
+
+| Revert 提交 | 原功能 |
+|-------------|--------|
+| `90f9b95` | 天气 MCP（QWeather） |
+| `c8ced87` | 意图树文档 |
+| `bc302ba` | `infra-ai` 注释整理 |
+| `0ec5c90` | `branch-summary.md` |
+
+---
+
+## origin/preview
+
+**定位**：个人**最新集成预览分支**（原 `my_preview`），汇集所有新开发功能。
+
+**相对 `main` 额外包含**：
+
+| 模块 | 内容 |
+|------|------|
+| 飞书功能线 | 单文档 / 批量导入、Markdown 导出、ZIP 批量下载、前后端闭环 |
+| DeepSeek | `DeepSeekChatClient`、`ModelProvider` 扩展、配置项 |
+| 天气 MCP | `QWeatherClient`、`WeatherMcpExecutor` 等（`main` 已 revert） |
+| 意图树 | 设计文档与导入 SQL（`main` 已 revert） |
+| 基础设施 | `infra-ai` 注释与结构整理（`main` 已 revert） |
+| 文档 | `feishu-wiki-integration.md`、`docs/branch-summary.md` 等 |
+
+**变更规模**：约 70 个文件，+5837 / -174 行（相对 `main`）。
+
+**同步状态**：领先 `main` 23 个提交，落后 5 个（`main` 上的 revert 提交及 `a593718` 文档版本，merge 时可能产生冲突）。
+
+**本地分支**：`preview`，跟踪 `origin/preview`。
 
 ---
 
 ## origin/feat/feishu_source/single_wiki
 
 **定位**：飞书 Wiki **单文档**导入的最小可用实现。
-
-**核心能力**：
 
 | 模块 | 内容 |
 |------|------|
@@ -64,19 +103,15 @@ origin/main
 | 配置 | 飞书凭证、`application-local` 本地配置、基础设施 host 外置 |
 | 基础设施 | 修复 RocketMQ Docker Compose 版本兼容问题 |
 
-**主要新增文件**：`FeishuDocxClient`、`FeishuWikiClient`、`FeishuUrlParser`、`FeishuCredentialsProvider`、`RemoteFileFetcher` 飞书分支逻辑、集成文档 `docs/feishu-wiki-integration.md`。
-
 **变更规模**：约 20 个文件，+1560 / -65 行（相对 `main`）。
 
-**注意**：落后 `main` 7 个提交，且已被 `batch_wiki` / `markdown_support` 包含，无需单独合入。
+**状态**：已被 `preview` 包含，可归档。
 
 ---
 
 ## origin/feat/feishu_source/batch_wiki
 
-**定位**：在 `single_wiki` 全部能力之上，扩展为**批量导入**与完整前后端闭环。
-
-**在 single_wiki 基础上新增**：
+**定位**：在 `single_wiki` 之上扩展**批量导入**与完整前后端闭环。
 
 | 模块 | 内容 |
 |------|------|
@@ -84,96 +119,57 @@ origin/main
 | 任务调度 | `FeishuWikiImportJob` / `Item` 实体、MQ 消费者、导入服务 |
 | API | `FeishuWikiImportController`（发现、提交、查询任务） |
 | 前端 | `FeishuWikiImportDialog`、文档处理模式选择（chunk / pipeline） |
-| 知识库 | 集合名允许连字符；修复 RestFS → RustFS 拼写 |
-| 数据库 | `schema_pg.sql` 增量 + `upgrade_v1.2_to_v1.2.1_feishu.sql` 升级脚本 |
+| 数据库 | `upgrade_v1.2_to_v1.2.1_feishu.sql` 升级脚本 |
 
 **变更规模**：约 63 个文件，+5111 / -177 行（相对 `main`）。
 
-**注意**：落后 `main` 7 个提交，已被 `markdown_support` 包含，无需单独合入。
+**状态**：已被 `preview` 包含，可归档。
 
 ---
 
 ## origin/feat/feishu_source/markdown_support
 
-**定位**：飞书功能线**最新分支**，在 `batch_wiki` 之上增加 Markdown 导出与知识库批量下载；**已 merge 最新 `main`，可提 PR**。
-
-**在 batch_wiki 基础上新增**：
+**定位**：飞书功能线末端分支，增加 Markdown 导出与知识库批量下载。
 
 | 模块 | 内容 |
 |------|------|
-| 文档导出 | `FeishuDocxClient` 支持 Markdown 导出，失败时回退为纯文本 |
-| 流水线 | `IngestionPipelineServiceImpl` 与节点 Mapper 适配 Markdown 内容 |
-| 批量下载 | 知识库文档批量打包为 ZIP 下载（`KnowledgeDocumentController` / `Service`） |
-| 测试 | `FeishuDocxClientTest` 覆盖 Markdown / 纯文本回退 |
-| 配置 | `FeishuProperties` 增加 Markdown 相关开关 |
-| 文档 | `feishu-wiki-integration.md`、示例与 `docs/branch-summary.md` |
+| 文档导出 | `FeishuDocxClient` Markdown 导出，失败回退纯文本 |
+| 批量下载 | 知识库文档批量 ZIP 下载 |
+| 测试 | `FeishuDocxClientTest` 等 |
 
-**变更规模**：约 68 个文件，+5710 / -174 行（相对 `main`）。
+**变更规模**：约 68 个文件，+5770 / -174 行（相对 `main`）。
 
-**同步状态**：与 `origin/feat/feishu_source/markdown_support` 一致（`143f53c`），领先 `main` 20 个提交，落后 0。
-
----
-
-## origin/feat/intent
-
-**定位**：ragent-test 知识库**意图树**设计与导入脚本。
-
-**核心能力**：
-
-| 模块 | 内容 |
-|------|------|
-| 设计文档 | `resources/docs/ragent-test/intent-tree-design.md` |
-| 导入 SQL | `docs/examples/ragent-test-intent-nodes-import.sql` |
-
-**变更规模**：3 个文件，+427 行（已通过 `c91656d` 合入 `main`）。
-
-**状态**：远程分支指针与 `origin/main` 相同，功能已交付，分支可归档。
+**状态**：已全部合入 `preview`。
 
 ---
 
 ## origin/feat/mcp/weather
 
-**定位**：独立的天气查询 MCP 工具集成，与飞书功能线无依赖。
-
-**核心能力**：
+**定位**：天气 MCP 独立功能线与备份。
 
 | 模块 | 内容 |
 |------|------|
-| 天气 API | 接入和风天气（QWeather）`QWeatherClient` |
-| MCP 执行器 | 重构 `WeatherMcpExecutor`，支持预报查询 |
-| 意图节点 | SQL 示例：天气意图节点导入与 prompt 更新 |
-| Prompt | `weather-mcp-parameter-extract.st` 参数抽取模板 |
-| 配置 | `WeatherProperties`、`application.yaml` / `application-local` 示例 |
+| 天气 API | 和风天气（QWeather）`QWeatherClient` |
+| MCP 执行器 | `WeatherMcpExecutor` 预报查询 |
 | 文档 | `docs/weather-mcp-integration.md` |
 
-**变更规模**：约 12 个文件，+955 / -153 行（相对分支基点）。
-
-**状态**：同等功能已通过 `e16e0bc` 合入 `main`；远程分支落后 `main` 7 个提交，可删除或仅作历史参考。
+**状态**：`main` 已 revert；完整代码保留在 `preview`，可归档删除。
 
 ---
 
-## origin/feat/model/add_model
+## 已归档分支
 
-**定位**：扩展 AI 模型提供方，接入 **DeepSeek** 对话能力。
-
-**核心能力**：
-
-| 模块 | 内容 |
-|------|------|
-| Chat 客户端 | `DeepSeekChatClient` 实现 DeepSeek API 调用 |
-| 模型枚举 | `ModelProvider` 新增 DeepSeek 类型 |
-| 配置 | `application.yaml` 与 `application-local.yaml.example` 增加 DeepSeek 配置项 |
-
-**变更规模**：4 个文件，+67 行（相对 `main`）。
-
-**注意**：落后 `main` 3 个提交（`infra-ai` 整理、天气 MCP、意图树文档），提 PR 前需 merge/rebase `main`。
+| 分支 | 归档时间 | 功能去向 | 说明 |
+|------|----------|----------|------|
+| `origin/feat/intent` | 2026-07-07 | `preview`（`c91656d`） | 意图树设计文档与导入 SQL；`main` 已 revert |
+| `origin/feat/model/add_model` | 2026-07-07 | `preview`（`08577db`） | DeepSeek 对话模型接入 |
+| `origin/my_preview` | 2026-07-07 | 更名为 `origin/preview` | 集成预览分支重命名 |
 
 ---
 
 ## 合并建议
 
-1. **飞书功能**：仅 `origin/feat/feishu_source/markdown_support` 需要合入 `main`；`single_wiki` 与 `batch_wiki` 为其历史中间分支，无需单独提 PR。
-2. **优先合入**：`markdown_support` 已同步 `main`，可直接创建 PR。
-3. **待同步后合入**：`origin/feat/model/add_model` merge `main` 后提 PR。
-4. **可归档分支**：`origin/feat/intent`、`origin/feat/mcp/weather`（功能已在 `main`）；`single_wiki`、`batch_wiki` 在 `markdown_support` 合入后可删除。
-5. **并行性**：`model/add_model` 与飞书分支模块重叠小（`infra-ai` / 配置），可与飞书 PR 并行 review。
+1. **日常开发**：在 `preview` 上进行；`main` 仅用于同步上游与保持干净基线。
+2. **同步上游**：在 `main` 上 merge `upstream/main`，再将 `main` merge 到 `preview`（注意 revert 冲突，保留 `preview` 侧功能代码）。
+3. **可归档分支**：`single_wiki`、`batch_wiki`、`markdown_support`、`mcp/weather` 在确认 `preview` 稳定后可删除。
+4. **已归档**：`intent`、`add_model`、`my_preview`（已更名）无需进一步操作。
