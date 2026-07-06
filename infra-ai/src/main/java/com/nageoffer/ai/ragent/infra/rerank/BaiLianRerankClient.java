@@ -138,6 +138,7 @@ public class BaiLianRerankClient implements RerankClient {
         List<RetrievedChunk> reranked = new ArrayList<>();
         Set<String> addedIds = new HashSet<>();
 
+        // 解析响应
         for (JsonElement elem : results) {
             if (!elem.isJsonObject()) {
                 continue;
@@ -169,6 +170,7 @@ public class BaiLianRerankClient implements RerankClient {
             }
         }
 
+        // 响应解析之后，如果 reranked 的数量不够 topN，回填
         if (reranked.size() < topN) {
             for (RetrievedChunk c : candidates) {
                 if (addedIds.add(c.getId())) {

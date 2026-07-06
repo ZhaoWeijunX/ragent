@@ -68,10 +68,17 @@ public final class OpenAIStyleSseParser {
         return finishReason != null && !finishReason.isJsonNull();
     }
 
+    /**
+     * 双路径提取，兼容非流式，防御性编码
+     * <p> 非流式响应：内容在 choices[0].message.content
+     * <p> 流式响应：增量内容在 choices[0].delta.content
+     *
+     */
     private static String extractText(JsonObject choice, String fieldName) {
         if (choice == null) {
             return null;
         }
+        // 路径一：从 delta 中提取（流式标准路径）
         if (choice.has("delta") && choice.get("delta").isJsonObject()) {
             JsonObject delta = choice.getAsJsonObject("delta");
             if (delta.has(fieldName)) {
@@ -81,6 +88,7 @@ public final class OpenAIStyleSseParser {
                 }
             }
         }
+        // 路径二：从 message 中提取（兼容非标准行为）
         if (choice.has("message") && choice.get("message").isJsonObject()) {
             JsonObject message = choice.getAsJsonObject("message");
             if (message.has(fieldName)) {
