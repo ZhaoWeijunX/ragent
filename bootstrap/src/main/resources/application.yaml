@@ -162,6 +162,11 @@ ai:
       endpoints:
         chat: /v1/chat/completions
         embedding: /v1/embeddings
+    deepseek:
+      url: https://api.deepseek.com
+      api-key: ${DEEPSEEK_API_KEY:}
+      endpoints:
+        chat: /v1/chat/completions
 
   selection:
     failure-threshold: 2
@@ -196,6 +201,15 @@ ai:
         provider: aihubmix
         model: gpt-5.4
         priority: 5
+      - id: deepseek-chat
+        provider: deepseek
+        model: deepseek-chat
+        priority: 6
+      - id: deepseek-reasoner
+        provider: deepseek
+        model: deepseek-reasoner
+        supports-thinking: true
+        priority: 7
 
   embedding:
     default-model: qwen-emb-8b
