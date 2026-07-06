@@ -48,3 +48,8 @@ mcp-server/src/main/resources/application-local.yaml
 ### Tmp Out ###
 .output/
 docs/temp
+
+### Local knowledge base docs (not versioned) ###
+resources/docs/ragent-test/**
+!resources/docs/ragent-test/
+!resources/docs/ragent-test/intent-tree-design.md

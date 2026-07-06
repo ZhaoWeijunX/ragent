@@ -1,0 +1,15 @@
+server:
+  port: 9099
+
+spring:
+  config:
+    import: optional:classpath:application-local.yaml
+  application:
+    name: ragent-mcp-server
+
+weather:
+  qweather:
+    api-key: ${QWEATHER_API_KEY:}
+    api-host: ${QWEATHER_API_HOST:}
+    lang: zh
+    timeout-ms: 5000
