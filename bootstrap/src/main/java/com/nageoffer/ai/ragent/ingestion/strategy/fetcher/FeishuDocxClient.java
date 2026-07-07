@@ -28,7 +28,11 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.Map;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /**
  * 飞书云文档 docx API 客户端
@@ -53,14 +57,17 @@ public class FeishuDocxClient {
     private static final int EXPORT_JOB_PROCESSING = 2;
 
     private final HttpClientHelper httpClientHelper;
+    private final FeishuExportPollingExecutor pollingExecutor;
 
     /**
      * 导出 docx 为 PDF 字节流（异步导出任务：创建 → 轮询 → 下载）
+     *
+     * @param maxBytes 下载大小上限，{@code <= 0} 表示不限制
      */
-    public byte[] fetchPdfContent(String documentToken, Map<String, String> headers) {
+    public byte[] fetchPdfContent(String documentToken, Map<String, String> headers, long maxBytes) {
         String ticket = createPdfExportTask(documentToken, headers);
         String fileToken = pollExportFileToken(documentToken, ticket, headers);
-        return downloadExportFile(fileToken, headers);
+        return downloadExportFile(fileToken, headers, maxBytes);
     }
 
     /**
@@ -103,34 +110,51 @@ public class FeishuDocxClient {
     }
 
     private String pollExportFileToken(String documentToken, String ticket, Map<String, String> headers) {
-        long deadline = System.currentTimeMillis() + EXPORT_TIMEOUT_MS;
-        while (System.currentTimeMillis() < deadline) {
-            String apiUrl = UriComponentsBuilder.fromHttpUrl(EXPORT_TASKS_URL + "/" + ticket)
-                    .queryParam("token", documentToken)
-                    .toUriString();
-            HttpClientHelper.HttpFetchResponse resp = httpClientHelper.get(apiUrl, headers);
-            JsonObject data = parseJsonRoot(resp.body(), "飞书 PDF 导出查询失败").getAsJsonObject("data");
-            if (data != null && data.has("result") && !data.get("result").isJsonNull()) {
-                JsonObject result = data.getAsJsonObject("result");
-                int jobStatus = result.has("job_status") ? result.get("job_status").getAsInt() : -1;
-                if (jobStatus == EXPORT_JOB_SUCCESS) {
-                    if (result.has("file_token") && !result.get("file_token").isJsonNull()) {
-                        String fileToken = result.get("file_token").getAsString();
-                        if (StringUtils.hasText(fileToken)) {
-                            return fileToken;
-                        }
-                    }
-                    log.warn("飞书 PDF 导出状态为成功但缺少 file_token, ticket={}, 继续轮询", ticket);
-                } else if (jobStatus == EXPORT_JOB_INIT || jobStatus == EXPORT_JOB_PROCESSING) {
-                    log.debug("飞书 PDF 导出进行中, ticket={}, job_status={}", ticket, jobStatus);
-                } else {
-                    String msg = resolveExportErrorMessage(result, jobStatus);
-                    throw new ClientException("飞书 PDF 导出失败: " + msg);
-                }
+        try {
+            return pollingExecutor.submitAndAwait(
+                    () -> queryExportFileTokenOnce(documentToken, ticket, headers),
+                    Duration.ofMillis(EXPORT_TIMEOUT_MS),
+                    EXPORT_POLL_INTERVAL_MS
+            ).get(EXPORT_TIMEOUT_MS + 5_000L, TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new ClientException("飞书 PDF 导出轮询被中断");
+        } catch (TimeoutException e) {
+            throw new ClientException("飞书 PDF 导出超时，ticket=" + ticket);
+        } catch (ExecutionException e) {
+            Throwable cause = e.getCause();
+            if (cause instanceof RuntimeException runtimeException) {
+                throw runtimeException;
             }
-            sleepPollInterval();
+            throw new ClientException("飞书 PDF 导出失败: " + cause.getMessage());
         }
-        throw new ClientException("飞书 PDF 导出超时，ticket=" + ticket);
+    }
+
+    private String queryExportFileTokenOnce(String documentToken, String ticket, Map<String, String> headers) {
+        String apiUrl = UriComponentsBuilder.fromHttpUrl(EXPORT_TASKS_URL + "/" + ticket)
+                .queryParam("token", documentToken)
+                .toUriString();
+        HttpClientHelper.HttpFetchResponse resp = httpClientHelper.get(apiUrl, headers);
+        JsonObject data = parseJsonRoot(resp.body(), "飞书 PDF 导出查询失败").getAsJsonObject("data");
+        if (data != null && data.has("result") && !data.get("result").isJsonNull()) {
+            JsonObject result = data.getAsJsonObject("result");
+            int jobStatus = result.has("job_status") ? result.get("job_status").getAsInt() : -1;
+            if (jobStatus == EXPORT_JOB_SUCCESS) {
+                if (result.has("file_token") && !result.get("file_token").isJsonNull()) {
+                    String fileToken = result.get("file_token").getAsString();
+                    if (StringUtils.hasText(fileToken)) {
+                        return fileToken;
+                    }
+                }
+                log.warn("飞书 PDF 导出状态为成功但缺少 file_token, ticket={}, 继续轮询", ticket);
+            } else if (jobStatus == EXPORT_JOB_INIT || jobStatus == EXPORT_JOB_PROCESSING) {
+                log.debug("飞书 PDF 导出进行中, ticket={}, job_status={}", ticket, jobStatus);
+            } else {
+                String msg = resolveExportErrorMessage(result, jobStatus);
+                throw new ClientException("飞书 PDF 导出失败: " + msg);
+            }
+        }
+        return null;
     }
 
     private static String resolveExportErrorMessage(JsonObject result, int jobStatus) {
@@ -154,23 +178,16 @@ public class FeishuDocxClient {
         };
     }
 
-    private byte[] downloadExportFile(String fileToken, Map<String, String> headers) {
+    private byte[] downloadExportFile(String fileToken, Map<String, String> headers, long maxBytes) {
         String apiUrl = EXPORT_TASKS_URL + "/file/" + fileToken + "/download";
-        HttpClientHelper.HttpFetchResponse resp = httpClientHelper.get(apiUrl, headers);
+        HttpClientHelper.HttpFetchResponse resp = maxBytes > 0
+                ? httpClientHelper.getWithLimit(apiUrl, headers, maxBytes)
+                : httpClientHelper.get(apiUrl, headers);
         byte[] bytes = resp.body();
         if (bytes == null || bytes.length == 0) {
             throw new ClientException("飞书 PDF 下载结果为空");
         }
         return bytes;
-    }
-
-    private static void sleepPollInterval() {
-        try {
-            Thread.sleep(EXPORT_POLL_INTERVAL_MS);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new ClientException("飞书 PDF 导出轮询被中断");
-        }
     }
 
     private String parseContentResponse(byte[] bytes, String failurePrefix) {

@@ -22,12 +22,14 @@ import com.nageoffer.ai.ragent.framework.exception.ServiceException;
 import com.nageoffer.ai.ragent.ingestion.domain.context.DocumentSource;
 import com.nageoffer.ai.ragent.ingestion.domain.enums.SourceType;
 import com.nageoffer.ai.ragent.knowledge.config.FeishuProperties;
+import com.nageoffer.ai.ragent.knowledge.config.FeishuProperties.ContentFormat;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -65,51 +67,70 @@ public class FeishuFetcher implements DocumentFetcher {
 
         Map<String, String> headers = feishuAuthService.buildAuthHeaders(source.getCredentials());
         FeishuUrlParser.ParseResult parsed = FeishuUrlParser.parse(location);
+        long maxBytes = source.getMaxBytes() != null ? source.getMaxBytes() : 0L;
 
         return switch (parsed.linkType()) {
-            case DOCX -> fetchDocx(parsed.token(), source.getFileName(), headers, null);
-            case WIKI -> fetchWiki(parsed.token(), source.getFileName(), headers);
+            case DOCX -> fetchDocx(parsed.token(), source.getFileName(), headers, null, maxBytes);
+            case WIKI -> fetchWiki(parsed.token(), source.getFileName(), headers, maxBytes);
             case UNSUPPORTED -> throw new ClientException("不支持的飞书链接格式: " + location.trim());
         };
     }
 
-    private FetchResult fetchWiki(String wikiNodeToken, String preferredFileName, Map<String, String> headers) {
+    private FetchResult fetchWiki(String wikiNodeToken, String preferredFileName, Map<String, String> headers,
+                                  long maxBytes) {
         WikiNodeInfo node = feishuWikiClient.getNode(wikiNodeToken, headers);
         if (!"docx".equalsIgnoreCase(node.objType())) {
             throw new ClientException("暂仅支持 docx 类型的 wiki 节点，当前类型: " + node.objType());
         }
-        return fetchDocx(node.objToken(), preferredFileName, headers, node.title());
+        return fetchDocx(node.objToken(), preferredFileName, headers, node.title(), maxBytes);
     }
 
     private FetchResult fetchDocx(String documentToken, String preferredFileName, Map<String, String> headers,
-                                  String title) {
-        ContentFetch contentFetch = fetchDocumentContent(documentToken, headers);
+                                  String title, long maxBytes) {
+        ContentFetch contentFetch = fetchDocumentContent(documentToken, headers, maxBytes);
         String fileName = resolveFileName(
                 preferredFileName, title, documentToken, extensionForMime(contentFetch.mimeType()));
         return new FetchResult(contentFetch.content(), contentFetch.mimeType(), fileName);
     }
 
-    private ContentFetch fetchDocumentContent(String documentToken, Map<String, String> headers) {
-        if (feishuProperties.isPlainContentFormat()) {
-            return ContentFetch.ofText(
-                    feishuDocxClient.fetchRawContent(documentToken, headers), MIME_PLAIN);
-        }
-        if (feishuProperties.isMarkdownContentFormat()) {
+    private ContentFetch fetchDocumentContent(String documentToken, Map<String, String> headers, long maxBytes) {
+        ContentFormat startFormat = feishuProperties.getResolvedContentFormat();
+        List<ContentFormat> chain = chainFrom(startFormat);
+        RuntimeException lastError = null;
+
+        for (ContentFormat format : chain) {
             try {
-                return ContentFetch.ofText(
-                        feishuDocxClient.fetchMarkdownContent(documentToken, headers), MIME_MARKDOWN);
-            } catch (RuntimeException markdownError) {
-                if (!feishuProperties.isFallbackToPlainOnError()) {
-                    throw markdownError;
+                return fetchByFormat(format, documentToken, headers, maxBytes);
+            } catch (RuntimeException error) {
+                lastError = error;
+                if (!feishuProperties.isFallbackOnError() || format == ContentFormat.PLAIN) {
+                    throw error;
                 }
-                log.warn("飞书 Markdown 导出失败，回退纯文本, token={}, reason={}",
-                        documentToken, markdownError.getMessage());
-                return ContentFetch.ofText(
-                        feishuDocxClient.fetchRawContent(documentToken, headers), MIME_PLAIN);
+                log.warn("飞书 {} 导出失败，降级下一格式, token={}, reason={}",
+                        format.name().toLowerCase(), documentToken, error.getMessage());
             }
         }
-        return ContentFetch.ofBytes(
-                feishuDocxClient.fetchPdfContent(documentToken, headers), MIME_PDF);
+        throw lastError != null ? lastError : new ClientException("飞书文档内容获取失败");
+    }
+
+    private static List<ContentFormat> chainFrom(ContentFormat start) {
+        return switch (start) {
+            case PDF -> List.of(ContentFormat.PDF, ContentFormat.MARKDOWN, ContentFormat.PLAIN);
+            case MARKDOWN -> List.of(ContentFormat.MARKDOWN, ContentFormat.PLAIN);
+            case PLAIN -> List.of(ContentFormat.PLAIN);
+        };
+    }
+
+    private ContentFetch fetchByFormat(ContentFormat format, String documentToken, Map<String, String> headers,
+                                       long maxBytes) {
+        return switch (format) {
+            case PDF -> ContentFetch.ofBytes(
+                    feishuDocxClient.fetchPdfContent(documentToken, headers, maxBytes), MIME_PDF);
+            case MARKDOWN -> ContentFetch.ofText(
+                    feishuDocxClient.fetchMarkdownContent(documentToken, headers), MIME_MARKDOWN);
+            case PLAIN -> ContentFetch.ofText(
+                    feishuDocxClient.fetchRawContent(documentToken, headers), MIME_PLAIN);
+        };
     }
 
     private String resolveFileName(String preferredFileName, String title, String fallbackToken, String extension) {

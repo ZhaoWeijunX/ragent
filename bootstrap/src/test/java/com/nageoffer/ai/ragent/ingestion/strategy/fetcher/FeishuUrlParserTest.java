@@ -79,8 +79,9 @@ class FeishuUrlParserTest {
 
     @Test
     void shouldNotTreatSpaceSegmentAsWikiToken() {
-        assertEquals(null, FeishuUrlParser.tryExtractWikiToken(
-                "https://example.feishu.cn/wiki/space/space123"));
+        FeishuUrlParser.ParseResult result = FeishuUrlParser.parse(
+                "https://example.feishu.cn/wiki/space/space123");
+        assertEquals(null, result.token());
     }
 
     @Test

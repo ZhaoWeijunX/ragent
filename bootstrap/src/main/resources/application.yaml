@@ -265,7 +265,7 @@ feishu:
   tenant-access-token: ${FEISHU_TENANT_TOKEN:}
   # pdf：异步导出 PDF（默认，走 MinerU 解析）；markdown / plain 保留兼容
   content-format: pdf
-  fallback-to-plain-on-error: true
+  fallback-on-error: true
   wiki-import:
     max-pages-per-job: 500
     rate-limit-per-minute: 90 # 小于飞书官网的 100/min

@@ -20,6 +20,7 @@ package com.nageoffer.ai.ragent.knowledge.config;
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.util.StringUtils;
 
 /**
  * 飞书 Open API 配置（知识库 Remote URL 自动识别飞书链接时使用）
@@ -50,24 +51,33 @@ public class FeishuProperties {
     private String tenantAccessToken;
 
     /**
-     * 文档导出格式：pdf（默认）、markdown 或 plain（raw_content 纯文本）
+     * 文档导出起始格式：pdf（默认）、markdown 或 plain（raw_content 纯文本）
      */
     private String contentFormat = "pdf";
 
     /**
-     * Markdown 导出 API 失败时是否回退 raw_content 纯文本（仅 content-format=markdown 时生效）
+     * 导出失败时是否按 pdf → markdown → plain 链降级；false 时失败即抛错
      */
-    private boolean fallbackToPlainOnError = true;
+    private boolean fallbackOnError = true;
 
-    public boolean isPdfContentFormat() {
-        return "pdf".equalsIgnoreCase(contentFormat);
+    public ContentFormat getResolvedContentFormat() {
+        if (!StringUtils.hasText(contentFormat)) {
+            return ContentFormat.PDF;
+        }
+        return ContentFormat.fromValue(contentFormat.trim());
     }
 
-    public boolean isMarkdownContentFormat() {
-        return "markdown".equalsIgnoreCase(contentFormat);
-    }
+    public enum ContentFormat {
+        PDF, MARKDOWN, PLAIN;
 
-    public boolean isPlainContentFormat() {
-        return "plain".equalsIgnoreCase(contentFormat);
+        public static ContentFormat fromValue(String value) {
+            return switch (value.toLowerCase()) {
+                case "pdf" -> PDF;
+                case "markdown", "md" -> MARKDOWN;
+                case "plain", "text" -> PLAIN;
+                default -> throw new IllegalArgumentException(
+                        "无效的 feishu.content-format: " + value + "，允许值: pdf, markdown, plain");
+            };
+        }
     }
 }
