@@ -1,26 +1,31 @@
-# PDF文档摄取完整示例
+# 飞书 PDF 摄取完整示例
 
-本文档演示如何使用 **nextNodeId** 创建PDF摄取流水线并上传文档。
+本文档演示如何创建**飞书 PDF 摄取流水线**（默认 `feishu.content-format: pdf`），并通过 Ingestion 或知识库 Pipeline 模式处理飞书导出的 PDF。
 
-## 📋 流程说明
+> Markdown 兼容模式见 [`feishu-pipeline-request.json`](feishu-pipeline-request.json) 与 [`feishu-wiki-ingestion-example.md`](feishu-wiki-ingestion-example.md)。
+
+## 流程说明
 
 ```
-上传PDF → fetcher-1 → parser-1 → enhancer-1 → chunker-1 → indexer-1
-          (获取)     (解析)     (AI增强)    (分块)      (向量化)
+飞书导出 PDF → fetcher-1 → parser-1(MinerU) → enhancer-1 → chunker-1 → indexer-1
+               (获取)       (PDF 解析)        (排版修复)  (结构分块)   (向量化)
 ```
 
-**架构特点**：
-- ✅ 使用 `nextNodeId` 明确连线关系
-- ✅ 链式执行，简单清晰
-- ✅ 自动检测循环依赖
+**设计要点**：
+
+- Parser 允许 `PDF`，MIME 路由自动命中 **MinerU**（表格、图片、公式保留为结构化 Block）
+- **Enhancer** 修复 MinerU/PDF 导出噪声：合并错误换行、整理表格排版，并**剥离代码块中被注入的行号**（见下文）
+- 使用 `structure_aware` 分块，配合 MinerU 的 block-aware 切分（含表格按行拆分）
+- Indexer 设置 `includeEnhancedContent: true`，向量化使用 Enhancer 整理后的文本
 
 ---
 
-## 🚀 完整操作步骤
+## 完整操作步骤
 
 ### Step 1: 创建流水线
 
 **请求**:
+
 ```bash
 curl -X POST "http://localhost:8080/api/ragent/ingestion/pipelines" \
   -H "Content-Type: application/json" \
@@ -29,42 +34,58 @@ curl -X POST "http://localhost:8080/api/ragent/ingestion/pipelines" \
 
 **请求体** (`pdf-pipeline-request.json`):
 
-**说明**:
 - `nextNodeId`: 指向下一个要执行的节点
 - 最后一个节点 (indexer-1) 不需要 `nextNodeId` 字段
 - 引擎自动找到起始节点（没有被引用的节点）
 
 **响应**:
+
 ```json
 {
   "success": true,
   "data": {
     "id": 1,
-    "name": "pdf-ingestion-pipeline",
-    "description": "PDF文档摄取流水线 - 解析、AI增强、分块、向量化",
+    "name": "feishu-pdf-ingestion-pipeline",
+    "description": "飞书云文档 / 知识库 Wiki 摄取流水线（PDF 格式，默认）- 异步导出 PDF、MinerU 解析、AI 排版修复、结构感知分块、向量化",
     "nodeCount": 5
   }
 }
 ```
 
----
+### Step 2: 创建摄取任务（飞书来源）
 
-### Step 2: 上传PDF文档
+**前置**：`application.yaml` 配置 `feishu.*` 与 `mineru.api-key`；飞书应用需开通 `docs:document:export` 权限。
 
 **请求**:
+
 ```bash
-curl -X POST "http://localhost:8080/api/ragent/ingestion/tasks/upload" \
-  -F "pipelineId=1" \
-  -F "file=@/path/to/your/document.pdf" \
-  -F "metadata={\"category\":\"manual\",\"department\":\"IT\"}"
+curl -X POST "http://localhost:8080/api/ragent/ingestion/tasks" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: <token>" \
+  -d '{
+    "pipelineId": "1",
+    "source": {
+      "type": "FEISHU",
+      "location": "https://xxx.feishu.cn/wiki/wikcnXXXXXXXX",
+      "credentials": {
+        "app_id": "cli_xxx",
+        "app_secret": "xxx"
+      }
+    },
+    "vectorSpaceId": {
+      "logicalName": "你的知识库collectionName"
+    }
+  }'
 ```
 
 **说明**:
-- `file`: 本地PDF文件路径
-- `metadata`: 自定义元数据（可选）
-- `pipelineId`: 第一步返回的流水线 ID（若已设置默认流水线可省略）
+
+- 来源须选 **Feishu**，不要用 URL 来源粘贴飞书链接
+- `pipelineId`: 第一步返回的流水线 ID
+- FeishuFetcher 按 `content-format: pdf` 导出 PDF 后进入 Parser → MinerU
 
 **响应**:
+
 ```json
 {
   "success": true,
@@ -76,29 +97,16 @@ curl -X POST "http://localhost:8080/api/ragent/ingestion/tasks/upload" \
 }
 ```
 
----
-
 ### Step 3: 查看任务状态
 
 **请求**:
+
 ```bash
 curl "http://localhost:8080/api/ragent/ingestion/tasks/123"
 ```
 
-**响应（执行中）**:
-```json
-{
-  "success": true,
-  "data": {
-    "taskId": 123,
-    "pipelineId": 1,
-    "status": "RUNNING",
-    "startTime": "2026-01-22T14:30:00"
-  }
-}
-```
-
 **响应（完成）**:
+
 ```json
 {
   "success": true,
@@ -107,181 +115,137 @@ curl "http://localhost:8080/api/ragent/ingestion/tasks/123"
     "pipelineId": 1,
     "status": "COMPLETED",
     "startTime": "2026-01-22T14:30:00",
-    "completeTime": "2026-01-22T14:30:45",
-    "chunks": 35
+    "completeTime": "2026-01-22T14:35:20",
+    "chunks": 28
   }
 }
 ```
 
----
-
-## 🎯 节点连线说明
-
-### 核心概念
-
-**nextNodeId**: 下一个节点ID
-- 每个节点通过 `nextNodeId` 指向下一个要执行的节点
-- 最后一个节点不需要设置 `nextNodeId`
-- 形成链式执行: A → B → C → D
-
-**执行流程**:
-1. 引擎自动找到起始节点（fetcher-1，没有被任何节点引用）
-2. 执行 fetcher-1，完成后查看 `nextNodeId`
-3. 执行 parser-1，完成后查看 `nextNodeId`
-4. 依次执行后续节点，直到没有 `nextNodeId`
+> MinerU 解析含上传、轮询、下载 zip，单文档耗时通常长于 Markdown 路径。
 
 ---
 
-## 📊 配置字段说明
+## 节点配置说明
 
-### NodeConfig 字段
-
-| 字段 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| `nodeId` | String | ✅ | 节点唯一ID |
-| `nodeType` | String | ✅ | 节点类型 (FETCHER/PARSER/ENHANCER等) |
-| `nextNodeId` | String | - | 下一个节点ID（最后一个节点不需要） |
-| `settings` | Object | - | 节点配置 |
-| `condition` | String | - | 条件表达式 |
-
----
-
-## ⚠️ 常见错误
-
-### 错误1: 循环依赖
+### Parser（PDF → MinerU）
 
 ```json
 {
-  "nodes": [
-    {"nodeId": "a", "nextNodeId": "b"},
-    {"nodeId": "b", "nextNodeId": "c"},
-    {"nodeId": "c", "nextNodeId": "a"}  // ❌ 循环!
-  ]
+  "rules": [{ "mimeType": "PDF" }]
 }
 ```
 
-**错误信息**:
-```
-Pipeline contains cycle: a
-```
+`application/pdf` 由 `DocumentParserSelector` 路由到 `MinerUDocumentParser`（`@Order(HIGHEST_PRECEDENCE)`）。
 
-### 错误2: 引用不存在的节点
+### Enhancer（排版修复 + 代码块行号清理）
+
+MinerU 解析飞书导出的 PDF 时，代码块内可能被注入 PDF 行号或页码，例如：
+
+````
+```1
+2 public String chat(ChatRequest request) {
+3   return executor.executeWithFallback(
+````
+
+Enhancer 的 `context_enhance` 任务会：
+
+- 将 `` ```1 `` 恢复为 `` ``` ``（保留语言标签如 `` ```java ``）
+- 剥离代码行首的 `1 `、`2 ` 等序号，**不改动代码本体**
+- 不误删正文中的有序列表（如 `1. 第一步`）
+
+配置见 [`pdf-pipeline-request.json`](pdf-pipeline-request.json) 中 `enhancer-1` 节点的 `systemPrompt` / `userPromptTemplate`。
+
+### Chunker（结构感知）
 
 ```json
 {
-  "nodes": [
-    {"nodeId": "parser-1", "nextNodeId": "enhancer-999"}  // ❌ 节点不存在
-  ]
+  "strategy": "structure_aware",
+  "chunkSize": 1400,
+  "overlapSize": 0,
+  "rowsPerChunk": 40
 }
 ```
 
-**错误信息**:
-```
-Next node not found: enhancer-999 referenced by parser-1
-```
+MinerU 输出非空 `blocks` 时走 block-aware 路径，表格按 `rowsPerChunk` 拆分。
 
-### 错误3: 没有起始节点
+### Indexer
 
 ```json
 {
-  "nodes": [
-    {"nodeId": "a", "nextNodeId": "b"},
-    {"nodeId": "b", "nextNodeId": "a"}  // ❌ 所有节点都被引用
-  ]
+  "embeddingModel": "qwen-emb-8b",
+  "includeEnhancedContent": true,
+  "metadataFields": ["source_type", "source_location"]
 }
-```
-
-**错误信息**:
-```
-No start node found in pipeline
 ```
 
 ---
 
-## 🧪 快速测试脚本
+## 知识库 Pipeline 模式
 
-**完整自动化测试**:
+知识库 **Remote URL** 或 **飞书 Wiki 批量导入** 选择 `processMode=pipeline` 时：
+
+1. 文档在上传阶段已由 `FeishuFetcher` 落盘为 `.pdf`
+2. Pipeline 推荐 `PARSER(PDF) → ENHANCER → CHUNKER → INDEXER`（Fetcher 自动跳过）
+3. 确保 `feishu.content-format` 为 `pdf`（默认）
+
+---
+
+## 常见错误
+
+| 现象 | 原因 | 处理 |
+|------|------|------|
+| `文件类型不符合要求…MARKDOWN…` | Pipeline 仍配置为 MARKDOWN，但文档已是 PDF | 改用本示例 Pipeline，允许 `PDF` |
+| `未找到 MIME [application/pdf] 对应的解析器` | 未配置 `MINERU_API_KEY` 或 MinerU 组件未加载 | 检查 `mineru.api-key` |
+| MinerU 下载 zip SSL 失败 | 本地代理 TUN 拦截 Java 流量 | 对 `aliyuncs.com` / `mineru.net` 直连，或关闭 TUN |
+| `可分块文本为空` | 用了 URL 来源而非 Feishu 来源 | 改用 Feishu 来源或知识库 Remote URL |
+
+---
+
+## 快速测试脚本
+
 ```bash
 #!/bin/bash
 
 API_BASE="http://localhost:8080/api/ragent"
 
-# 1. 创建流水线
-echo "📝 Creating pipeline..."
+echo "Creating Feishu PDF pipeline..."
 PIPELINE_RESPONSE=$(curl -s -X POST "${API_BASE}/ingestion/pipelines" \
   -H "Content-Type: application/json" \
   -d @pdf-pipeline-request.json)
 
 PIPELINE_ID=$(echo $PIPELINE_RESPONSE | jq -r '.data.id')
-echo "✅ Pipeline created: ID=${PIPELINE_ID}"
+echo "Pipeline created: ID=${PIPELINE_ID}"
 
-# 2. 上传PDF
-echo "📤 Uploading PDF..."
-TASK_RESPONSE=$(curl -s -X POST "${API_BASE}/ingestion/tasks/upload" \
-  -F "file=@test.pdf" \
-  -F "metadata={\"test\":true}")
+echo "Creating Feishu ingestion task..."
+TASK_RESPONSE=$(curl -s -X POST "${API_BASE}/ingestion/tasks" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"pipelineId\": \"${PIPELINE_ID}\",
+    \"source\": {
+      \"type\": \"FEISHU\",
+      \"location\": \"https://xxx.feishu.cn/docx/doccnXXXX\",
+      \"credentials\": {
+        \"app_id\": \"${FEISHU_APP_ID}\",
+        \"app_secret\": \"${FEISHU_APP_SECRET}\"
+      }
+    },
+    \"vectorSpaceId\": { \"logicalName\": \"test-collection\" }
+  }")
 
 TASK_ID=$(echo $TASK_RESPONSE | jq -r '.data.taskId')
-echo "✅ Task created: ID=${TASK_ID}"
-
-# 3. 等待完成
-echo "⏳ Waiting for completion..."
-while true; do
-  STATUS_RESPONSE=$(curl -s "${API_BASE}/ingestion/tasks/${TASK_ID}")
-  STATUS=$(echo $STATUS_RESPONSE | jq -r '.data.status')
-
-  if [ "$STATUS" == "COMPLETED" ]; then
-    echo "✅ Task completed!"
-    break
-  elif [ "$STATUS" == "FAILED" ]; then
-    echo "❌ Task failed!"
-    exit 1
-  fi
-
-  sleep 2
-done
-
-# 4. 查看结果
-echo "📊 Task summary:"
-echo $STATUS_RESPONSE | jq '.data'
-
-echo "📋 Node details:"
-curl -s "${API_BASE}/ingestion/tasks/${TASK_ID}/nodes" | jq '.data[] | {nodeType, status, durationMs}'
-
-echo "🎉 Test completed successfully!"
+echo "Task created: ID=${TASK_ID}"
 ```
 
 ---
 
-## 📝 一键创建命令
+## 相关文档
 
-**简化版（单行）**:
-```bash
-curl -X POST "http://localhost:8080/api/ragent/ingestion/pipelines" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "pdf-pipeline",
-    "description": "PDF摄取流水线",
-    "nodes": [
-      {"nodeId": "fetcher-1", "nodeType": "FETCHER", "nextNodeId": "parser-1"},
-      {"nodeId": "parser-1", "nodeType": "PARSER", "settings": {"rules": [{"mimeType": "PDF"}]}, "nextNodeId": "enhancer-1"},
-      {"nodeId": "enhancer-1", "nodeType": "ENHANCER", "settings": {"modelId": "qwen-max", "tasks": [{"type": "CONTEXT_ENHANCE"}]}, "nextNodeId": "chunker-1"},
-      {"nodeId": "chunker-1", "nodeType": "CHUNKER", "settings": {"strategy": "FIXED_SIZE", "chunkSize": 512, "overlapSize": 128}, "nextNodeId": "indexer-1"},
-      {"nodeId": "indexer-1", "nodeType": "INDEXER", "settings": {"collectionName": "pdf_documents", "includeEnhancedContent": true}}
-    ]
-  }'
-```
+- [飞书 Wiki 集成开发文档](../feishu-wiki-integration.md)
+- [飞书摄取示例](feishu-wiki-ingestion-example.md)
+- [Markdown 兼容 Pipeline](feishu-pipeline-request.json)
 
 ---
 
-## 📚 相关文档
-
-- [配置指南](../ingestion-pipeline-config-guide.md)
-- [执行示例](../pipeline-execution-guide.md)
-- [领域提示词库](../domain-specific-prompts-guide.md)
-
----
-
-**创建时间**: 2026-01-22
-**更新时间**: 2026-01-22
+**创建时间**: 2026-01-22  
+**更新时间**: 2026-07-07  
 **维护者**: RAGent Team

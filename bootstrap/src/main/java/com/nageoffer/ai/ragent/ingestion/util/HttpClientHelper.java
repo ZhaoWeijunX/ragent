@@ -19,8 +19,10 @@ package com.nageoffer.ai.ragent.ingestion.util;
 
 import com.nageoffer.ai.ragent.framework.exception.ServiceException;
 import lombok.RequiredArgsConstructor;
+import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
+import okhttp3.RequestBody;
 import okhttp3.Response;
 import okhttp3.ResponseBody;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -45,6 +47,24 @@ public class HttpClientHelper {
 
     public HttpFetchResponse get(String url, Map<String, String> headers) {
         return doGet(url, headers, -1);
+    }
+
+    public HttpFetchResponse postJson(String url, Map<String, String> headers, String jsonBody) {
+        RequestBody body = RequestBody.create(jsonBody, MediaType.parse("application/json; charset=utf-8"));
+        Request.Builder builder = new Request.Builder().url(url).post(body);
+        if (headers != null) {
+            headers.forEach(builder::addHeader);
+        }
+        try (Response response = client.newCall(builder.build()).execute()) {
+            if (!response.isSuccessful()) {
+                String respBody = response.body() != null ? response.body().string() : "";
+                throw new ServiceException("网络请求失败: " + response.code() + " " + respBody);
+            }
+            byte[] bytes = response.body() == null ? new byte[0] : response.body().bytes();
+            return new HttpFetchResponse(bytes, response.header("Content-Type"), null, null, null, null);
+        } catch (IOException e) {
+            throw new ServiceException("网络请求失败: " + e.getMessage());
+        }
     }
 
     public HttpFetchResponse getWithLimit(String url, Map<String, String> headers, long maxBytes) {

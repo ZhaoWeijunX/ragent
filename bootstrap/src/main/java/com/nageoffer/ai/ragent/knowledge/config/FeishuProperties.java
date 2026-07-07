@@ -50,16 +50,24 @@ public class FeishuProperties {
     private String tenantAccessToken;
 
     /**
-     * 文档导出格式：markdown（默认）或 plain（raw_content 纯文本）
+     * 文档导出格式：pdf（默认）、markdown 或 plain（raw_content 纯文本）
      */
-    private String contentFormat = "markdown";
+    private String contentFormat = "pdf";
 
     /**
-     * Markdown 导出 API 失败时是否回退 raw_content 纯文本
+     * Markdown 导出 API 失败时是否回退 raw_content 纯文本（仅 content-format=markdown 时生效）
      */
     private boolean fallbackToPlainOnError = true;
 
+    public boolean isPdfContentFormat() {
+        return "pdf".equalsIgnoreCase(contentFormat);
+    }
+
     public boolean isMarkdownContentFormat() {
-        return !"plain".equalsIgnoreCase(contentFormat);
+        return "markdown".equalsIgnoreCase(contentFormat);
+    }
+
+    public boolean isPlainContentFormat() {
+        return "plain".equalsIgnoreCase(contentFormat);
     }
 }

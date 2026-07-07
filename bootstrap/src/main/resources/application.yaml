@@ -263,7 +263,8 @@ feishu:
   app-id: ${FEISHU_APP_ID:}
   app-secret: ${FEISHU_APP_SECRET:}
   tenant-access-token: ${FEISHU_TENANT_TOKEN:}
-  content-format: markdown
+  # pdf：异步导出 PDF（默认，走 MinerU 解析）；markdown / plain 保留兼容
+  content-format: pdf
   fallback-to-plain-on-error: true
   wiki-import:
     max-pages-per-job: 500

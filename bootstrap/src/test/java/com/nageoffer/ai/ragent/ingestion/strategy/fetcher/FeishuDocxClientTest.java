@@ -28,6 +28,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -100,6 +101,88 @@ class FeishuDocxClientTest {
 
         assertEquals("plain body", content);
         verify(httpClientHelper).get(argThat((String url) -> url.contains("/raw_content")), any());
+    }
+
+    @Test
+    void shouldFetchPdfContentViaExportTaskFlow() {
+        String createJson = """
+                {
+                  "code": 0,
+                  "data": {
+                    "ticket": "ticket123"
+                  }
+                }
+                """;
+        String processingJson = """
+                {
+                  "code": 0,
+                  "data": {
+                    "result": {
+                      "job_status": 2,
+                      "job_error_msg": ""
+                    }
+                  }
+                }
+                """;
+        String pollJson = """
+                {
+                  "code": 0,
+                  "data": {
+                    "result": {
+                      "job_status": 0,
+                      "job_error_msg": "success",
+                      "file_token": "fileTokenABC"
+                    }
+                  }
+                }
+                """;
+        byte[] pdf = "%PDF-1.4 fake".getBytes(StandardCharsets.UTF_8);
+        when(httpClientHelper.postJson(anyString(), any(), any())).thenReturn(response(createJson));
+        when(httpClientHelper.get(anyString(), any()))
+                .thenReturn(response(processingJson))
+                .thenReturn(response(pollJson))
+                .thenReturn(new HttpClientHelper.HttpFetchResponse(pdf, "application/pdf", null, null, null, null));
+
+        byte[] content = feishuDocxClient.fetchPdfContent("doccnABC", Map.of());
+
+        assertArrayEquals(pdf, content);
+        verify(httpClientHelper).postJson(argThat((String url) -> url.contains("/export_tasks")
+                && !url.contains("/file/")), any(), argThat(body ->
+                body.contains("\"file_extension\":\"pdf\"")
+                        && body.contains("\"token\":\"doccnABC\"")
+                        && body.contains("\"type\":\"docx\"")));
+        verify(httpClientHelper).get(argThat((String url) -> url.contains("/export_tasks/ticket123")
+                && url.contains("token=doccnABC")), any());
+        verify(httpClientHelper).get(argThat((String url) -> url.contains("/export_tasks/file/fileTokenABC/download")), any());
+    }
+
+    @Test
+    void shouldRejectExportFailureStatus() {
+        String createJson = """
+                {
+                  "code": 0,
+                  "data": {
+                    "ticket": "ticket123"
+                  }
+                }
+                """;
+        String failedJson = """
+                {
+                  "code": 0,
+                  "data": {
+                    "result": {
+                      "job_status": 110,
+                      "job_error_msg": ""
+                    }
+                  }
+                }
+                """;
+        when(httpClientHelper.postJson(anyString(), any(), any())).thenReturn(response(createJson));
+        when(httpClientHelper.get(anyString(), any())).thenReturn(response(failedJson));
+
+        ClientException ex = assertThrows(ClientException.class,
+                () -> feishuDocxClient.fetchPdfContent("doccnABC", Map.of()));
+        assertTrue(ex.getMessage().contains("无权限"));
     }
 
     private static HttpClientHelper.HttpFetchResponse response(String json) {

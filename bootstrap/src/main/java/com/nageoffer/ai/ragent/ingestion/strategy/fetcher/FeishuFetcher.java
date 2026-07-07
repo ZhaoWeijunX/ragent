@@ -39,8 +39,10 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class FeishuFetcher implements DocumentFetcher {
 
+    private static final String MIME_PDF = "application/pdf";
     private static final String MIME_MARKDOWN = "text/markdown";
     private static final String MIME_PLAIN = "text/plain";
+    private static final String EXT_PDF = ".pdf";
     private static final String EXT_MARKDOWN = ".md";
     private static final String EXT_PLAIN = ".txt";
 
@@ -84,26 +86,30 @@ public class FeishuFetcher implements DocumentFetcher {
         ContentFetch contentFetch = fetchDocumentContent(documentToken, headers);
         String fileName = resolveFileName(
                 preferredFileName, title, documentToken, extensionForMime(contentFetch.mimeType()));
-        return new FetchResult(contentFetch.content().getBytes(StandardCharsets.UTF_8), contentFetch.mimeType(), fileName);
+        return new FetchResult(contentFetch.content(), contentFetch.mimeType(), fileName);
     }
 
     private ContentFetch fetchDocumentContent(String documentToken, Map<String, String> headers) {
-        if (!feishuProperties.isMarkdownContentFormat()) {
-            return new ContentFetch(
+        if (feishuProperties.isPlainContentFormat()) {
+            return ContentFetch.ofText(
                     feishuDocxClient.fetchRawContent(documentToken, headers), MIME_PLAIN);
         }
-        try {
-            return new ContentFetch(
-                    feishuDocxClient.fetchMarkdownContent(documentToken, headers), MIME_MARKDOWN);
-        } catch (RuntimeException markdownError) {
-            if (!feishuProperties.isFallbackToPlainOnError()) {
-                throw markdownError;
+        if (feishuProperties.isMarkdownContentFormat()) {
+            try {
+                return ContentFetch.ofText(
+                        feishuDocxClient.fetchMarkdownContent(documentToken, headers), MIME_MARKDOWN);
+            } catch (RuntimeException markdownError) {
+                if (!feishuProperties.isFallbackToPlainOnError()) {
+                    throw markdownError;
+                }
+                log.warn("飞书 Markdown 导出失败，回退纯文本, token={}, reason={}",
+                        documentToken, markdownError.getMessage());
+                return ContentFetch.ofText(
+                        feishuDocxClient.fetchRawContent(documentToken, headers), MIME_PLAIN);
             }
-            log.warn("飞书 Markdown 导出失败，回退纯文本, token={}, reason={}",
-                    documentToken, markdownError.getMessage());
-            return new ContentFetch(
-                    feishuDocxClient.fetchRawContent(documentToken, headers), MIME_PLAIN);
         }
+        return ContentFetch.ofBytes(
+                feishuDocxClient.fetchPdfContent(documentToken, headers), MIME_PDF);
     }
 
     private String resolveFileName(String preferredFileName, String title, String fallbackToken, String extension) {
@@ -117,9 +123,21 @@ public class FeishuFetcher implements DocumentFetcher {
     }
 
     private static String extensionForMime(String mimeType) {
-        return MIME_MARKDOWN.equals(mimeType) ? EXT_MARKDOWN : EXT_PLAIN;
+        return switch (mimeType) {
+            case MIME_PDF -> EXT_PDF;
+            case MIME_MARKDOWN -> EXT_MARKDOWN;
+            default -> EXT_PLAIN;
+        };
     }
 
-    private record ContentFetch(String content, String mimeType) {
+    private record ContentFetch(byte[] content, String mimeType) {
+
+        private static ContentFetch ofText(String text, String mimeType) {
+            return new ContentFetch(text.getBytes(StandardCharsets.UTF_8), mimeType);
+        }
+
+        private static ContentFetch ofBytes(byte[] bytes, String mimeType) {
+            return new ContentFetch(bytes, mimeType);
+        }
     }
 }
