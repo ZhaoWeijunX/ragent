@@ -1,14 +1,16 @@
 {
-  "name": "feishu-ingestion-pipeline",
-  "description": "飞书云文档 / 知识库 Wiki 摄取流水线 - 拉取纯文本、结构化分块、向量化",
+  "name": "feishu-markdown-ingestion-pipeline",
+  "description": "飞书云文档摄取流水线（Markdown 格式）- Markdown 解析、结构感知分块、向量化",
   "nodes": [
     {
-      "nodeId": "fetcher-1",
+      "nodeId": "feishu_fetcher-1",
       "nodeType": "fetcher",
-      "nextNodeId": "parser-1"
+      "settings": null,
+      "condition": null,
+      "nextNodeId": "feishu_parser-1"
     },
     {
-      "nodeId": "parser-1",
+      "nodeId": "feishu_parser-1",
       "nodeType": "parser",
       "settings": {
         "rules": [
@@ -20,21 +22,22 @@
           }
         ]
       },
-      "nextNodeId": "chunker-1"
+      "condition": null,
+      "nextNodeId": "feishu_chunker-1"
     },
     {
-      "nodeId": "chunker-1",
+      "nodeId": "feishu_chunker-1",
       "nodeType": "chunker",
       "settings": {
         "strategy": "structure_aware",
         "chunkSize": 1400,
-        "overlapSize": 0,
-        "rowsPerChunk": 40
+        "overlapSize": 0
       },
-      "nextNodeId": "indexer-1"
+      "condition": null,
+      "nextNodeId": "feishu_indexer-1"
     },
     {
-      "nodeId": "indexer-1",
+      "nodeId": "feishu_indexer-1",
       "nodeType": "indexer",
       "settings": {
         "embeddingModel": "qwen-emb-8b",
@@ -42,7 +45,9 @@
           "source_type",
           "source_location"
         ]
-      }
+      },
+      "condition": null,
+      "nextNodeId": null
     }
   ]
 }

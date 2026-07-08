@@ -31,10 +31,13 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -59,7 +62,49 @@ class FeishuFetcherTest {
     }
 
     @Test
-    void shouldFetchDocxUrlViaMarkdownClient() {
+    void shouldFetchDocxUrlViaPdfClientByDefault() {
+        byte[] pdf = "%PDF-1.4".getBytes(StandardCharsets.UTF_8);
+        when(feishuDocxClient.fetchPdfContent(eq("doccnABC"), any(), anyLong())).thenReturn(pdf);
+
+        DocumentSource source = DocumentSource.builder()
+                .type(SourceType.FEISHU)
+                .location("https://example.feishu.cn/docx/doccnABC")
+                .credentials(Map.of("tenantAccessToken", "token"))
+                .build();
+
+        FetchResult result = feishuFetcher.fetch(source);
+
+        assertEquals("application/pdf", result.mimeType());
+        assertArrayEquals(pdf, result.content());
+        assertEquals("doccnABC.pdf", result.fileName());
+        verify(feishuDocxClient).fetchPdfContent(eq("doccnABC"), any(), eq(0L));
+    }
+
+    @Test
+    void shouldFetchWikiDocxNodeViaPdfClientByDefault() {
+        byte[] pdf = "%PDF-1.4".getBytes(StandardCharsets.UTF_8);
+        when(feishuWikiClient.getNode(eq("wikcnXYZ"), any())).thenReturn(
+                new WikiNodeInfo("产品手册", "docx", "doccnFromWiki", "space123"));
+        when(feishuDocxClient.fetchPdfContent(eq("doccnFromWiki"), any(), anyLong())).thenReturn(pdf);
+
+        DocumentSource source = DocumentSource.builder()
+                .type(SourceType.FEISHU)
+                .location("https://example.feishu.cn/wiki/wikcnXYZ")
+                .credentials(Map.of("tenantAccessToken", "token"))
+                .build();
+
+        FetchResult result = feishuFetcher.fetch(source);
+
+        assertArrayEquals(pdf, result.content());
+        assertEquals("产品手册.pdf", result.fileName());
+        assertEquals("application/pdf", result.mimeType());
+        verify(feishuWikiClient).getNode(eq("wikcnXYZ"), any());
+        verify(feishuDocxClient).fetchPdfContent(eq("doccnFromWiki"), any(), eq(0L));
+    }
+
+    @Test
+    void shouldFetchDocxUrlViaMarkdownClientWhenConfigured() {
+        feishuProperties.setContentFormat("markdown");
         when(feishuDocxClient.fetchMarkdownContent(eq("doccnABC"), any())).thenReturn("# hello docx");
 
         DocumentSource source = DocumentSource.builder()
@@ -74,31 +119,13 @@ class FeishuFetcherTest {
         assertEquals("# hello docx", new String(result.content(), StandardCharsets.UTF_8));
         assertEquals("doccnABC.md", result.fileName());
         verify(feishuDocxClient).fetchMarkdownContent(eq("doccnABC"), any());
+        verify(feishuDocxClient, never()).fetchPdfContent(any(), any(), anyLong());
     }
 
     @Test
-    void shouldFetchWikiDocxNodeViaWikiAndMarkdownClient() {
-        when(feishuWikiClient.getNode(eq("wikcnXYZ"), any())).thenReturn(
-                new WikiNodeInfo("产品手册", "docx", "doccnFromWiki", "space123"));
-        when(feishuDocxClient.fetchMarkdownContent(eq("doccnFromWiki"), any())).thenReturn("# wiki content");
-
-        DocumentSource source = DocumentSource.builder()
-                .type(SourceType.FEISHU)
-                .location("https://example.feishu.cn/wiki/wikcnXYZ")
-                .credentials(Map.of("tenantAccessToken", "token"))
-                .build();
-
-        FetchResult result = feishuFetcher.fetch(source);
-
-        assertEquals("# wiki content", new String(result.content(), StandardCharsets.UTF_8));
-        assertEquals("产品手册.md", result.fileName());
-        assertEquals("text/markdown", result.mimeType());
-        verify(feishuWikiClient).getNode(eq("wikcnXYZ"), any());
-        verify(feishuDocxClient).fetchMarkdownContent(eq("doccnFromWiki"), any());
-    }
-
-    @Test
-    void shouldFallbackToPlainWhenMarkdownFails() {
+    void shouldFallbackPdfToMarkdownToPlainWhenEnabled() {
+        when(feishuDocxClient.fetchPdfContent(eq("doccnABC"), any(), anyLong()))
+                .thenThrow(new ClientException("飞书 PDF 导出失败: 无权限"));
         when(feishuDocxClient.fetchMarkdownContent(eq("doccnABC"), any()))
                 .thenThrow(new ClientException("飞书 Markdown 导出失败: permission denied"));
         when(feishuDocxClient.fetchRawContent(eq("doccnABC"), any())).thenReturn("plain fallback");
@@ -114,7 +141,48 @@ class FeishuFetcherTest {
         assertEquals("text/plain", result.mimeType());
         assertEquals("plain fallback", new String(result.content(), StandardCharsets.UTF_8));
         assertEquals("doccnABC.txt", result.fileName());
+        verify(feishuDocxClient).fetchPdfContent(eq("doccnABC"), any(), eq(0L));
+        verify(feishuDocxClient).fetchMarkdownContent(eq("doccnABC"), any());
         verify(feishuDocxClient).fetchRawContent(eq("doccnABC"), any());
+    }
+
+    @Test
+    void shouldFallbackMarkdownToPlainWhenConfigured() {
+        feishuProperties.setContentFormat("markdown");
+        when(feishuDocxClient.fetchMarkdownContent(eq("doccnABC"), any()))
+                .thenThrow(new ClientException("飞书 Markdown 导出失败: permission denied"));
+        when(feishuDocxClient.fetchRawContent(eq("doccnABC"), any())).thenReturn("plain fallback");
+
+        DocumentSource source = DocumentSource.builder()
+                .type(SourceType.FEISHU)
+                .location("https://example.feishu.cn/docx/doccnABC")
+                .credentials(Map.of("tenantAccessToken", "token"))
+                .build();
+
+        FetchResult result = feishuFetcher.fetch(source);
+
+        assertEquals("text/plain", result.mimeType());
+        assertEquals("plain fallback", new String(result.content(), StandardCharsets.UTF_8));
+        assertEquals("doccnABC.txt", result.fileName());
+        verify(feishuDocxClient, never()).fetchPdfContent(any(), any(), anyLong());
+        verify(feishuDocxClient).fetchRawContent(eq("doccnABC"), any());
+    }
+
+    @Test
+    void shouldThrowWhenPdfFailsAndFallbackDisabled() {
+        feishuProperties.setFallbackOnError(false);
+        when(feishuDocxClient.fetchPdfContent(eq("doccnABC"), any(), anyLong()))
+                .thenThrow(new ClientException("飞书 PDF 导出失败: 无权限"));
+
+        DocumentSource source = DocumentSource.builder()
+                .type(SourceType.FEISHU)
+                .location("https://example.feishu.cn/docx/doccnABC")
+                .credentials(Map.of("tenantAccessToken", "token"))
+                .build();
+
+        assertThrows(ClientException.class, () -> feishuFetcher.fetch(source));
+        verify(feishuDocxClient, never()).fetchMarkdownContent(any(), any());
+        verify(feishuDocxClient, never()).fetchRawContent(any(), any());
     }
 
     @Test
@@ -133,6 +201,21 @@ class FeishuFetcherTest {
         assertEquals("text/plain", result.mimeType());
         assertEquals("doccnABC.txt", result.fileName());
         verify(feishuDocxClient).fetchRawContent(eq("doccnABC"), any());
+        verify(feishuDocxClient, never()).fetchPdfContent(any(), any(), anyLong());
+    }
+
+    @Test
+    void shouldRejectInvalidContentFormat() {
+        feishuProperties.setContentFormat("invalid");
+
+        DocumentSource source = DocumentSource.builder()
+                .type(SourceType.FEISHU)
+                .location("https://example.feishu.cn/docx/doccnABC")
+                .credentials(Map.of("tenantAccessToken", "token"))
+                .build();
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> feishuFetcher.fetch(source));
+        assertEquals("无效的 feishu.content-format: invalid，允许值: pdf, markdown, plain", ex.getMessage());
     }
 
     @Test
@@ -158,5 +241,22 @@ class FeishuFetcherTest {
                 .build();
 
         assertThrows(ClientException.class, () -> feishuFetcher.fetch(source));
+    }
+
+    @Test
+    void shouldPassMaxBytesToPdfDownload() {
+        byte[] pdf = "%PDF-1.4".getBytes(StandardCharsets.UTF_8);
+        when(feishuDocxClient.fetchPdfContent(eq("doccnABC"), any(), eq(1024L))).thenReturn(pdf);
+
+        DocumentSource source = DocumentSource.builder()
+                .type(SourceType.FEISHU)
+                .location("https://example.feishu.cn/docx/doccnABC")
+                .credentials(Map.of("tenantAccessToken", "token"))
+                .maxBytes(1024L)
+                .build();
+
+        feishuFetcher.fetch(source);
+
+        verify(feishuDocxClient).fetchPdfContent(eq("doccnABC"), any(), eq(1024L));
     }
 }

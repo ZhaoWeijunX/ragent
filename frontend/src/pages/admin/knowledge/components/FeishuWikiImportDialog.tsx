@@ -214,7 +214,7 @@ export function FeishuWikiImportDialog({ open, kbId, onOpenChange, onCompleted }
         <DialogHeader>
           <DialogTitle>飞书 Wiki 批量导入</DialogTitle>
           <DialogDescription>
-            粘贴飞书知识库页面链接，系统将遍历并导入 docx 类型页面为 Markdown 格式。画板、嵌入表格等复杂块可能降级或跳过。需在服务端配置飞书 OpenAPI 凭证。
+            粘贴飞书知识库页面链接，系统将遍历并经 MinerU 解析导入为 PDF 格式。画板、嵌入表格等复杂块可能降级或跳过。需在服务端配置飞书 OpenAPI 凭证。
           </DialogDescription>
         </DialogHeader>
 

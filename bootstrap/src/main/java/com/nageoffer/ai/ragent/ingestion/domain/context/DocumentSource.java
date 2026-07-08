@@ -57,4 +57,9 @@ public class DocumentSource {
      * 如 API Token、用户名密码等键值对
      */
     private Map<String, String> credentials;
+
+    /**
+     * 可选：抓取内容大小上限（字节），{@code null} 或 {@code <= 0} 表示不限制
+     */
+    private Long maxBytes;
 }

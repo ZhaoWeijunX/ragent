@@ -183,6 +183,7 @@ public class RemoteFileFetcher {
                 .type(SourceType.FEISHU)
                 .location(url)
                 .credentials(feishuCredentialsProvider.resolve())
+                .maxBytes(maxFileSize.toBytes())
                 .build();
         return feishuFetcher.fetch(source);
     }

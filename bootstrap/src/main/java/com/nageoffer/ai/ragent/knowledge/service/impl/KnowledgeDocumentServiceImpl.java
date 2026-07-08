@@ -446,6 +446,7 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
             // MinerU 仅实现 parseStructured（未覆写 extractText），统一走结构化解析路径
             Map<String, Object> options = new HashMap<>();
             options.put("sourceFile", docName);
+            options.put("documentId", documentDO.getId());
             ParsedDocument parsed = parser.parseStructured(fileBytes, mimeType, options);
             // blocks 非空走 block-aware（表格/列表等结构化切分），否则用拍平文本走 legacy 策略
             String text = BlockTextRenderer.render(parsed.blocks());

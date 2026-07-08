@@ -19,6 +19,7 @@ package com.nageoffer.ai.ragent.ingestion.strategy.fetcher;
 
 import com.nageoffer.ai.ragent.framework.exception.ClientException;
 import com.nageoffer.ai.ragent.ingestion.util.HttpClientHelper;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -27,13 +28,17 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -43,8 +48,31 @@ class FeishuDocxClientTest {
     @Mock
     private HttpClientHelper httpClientHelper;
 
+    @Mock
+    private FeishuExportPollingExecutor pollingExecutor;
+
     @InjectMocks
     private FeishuDocxClient feishuDocxClient;
+
+    @BeforeEach
+    void stubPollingExecutor() {
+        when(pollingExecutor.submitAndAwait(any(), any(), anyLong())).thenAnswer(invocation -> {
+            FeishuExportPollingExecutor.PollAttempt attempt = invocation.getArgument(0);
+            CompletableFuture<String> future = new CompletableFuture<>();
+            try {
+                while (true) {
+                    String fileToken = attempt.attempt();
+                    if (fileToken != null) {
+                        future.complete(fileToken);
+                        break;
+                    }
+                }
+            } catch (RuntimeException e) {
+                future.completeExceptionally(e);
+            }
+            return future;
+        });
+    }
 
     @Test
     void shouldFetchMarkdownContent() {
@@ -100,6 +128,123 @@ class FeishuDocxClientTest {
 
         assertEquals("plain body", content);
         verify(httpClientHelper).get(argThat((String url) -> url.contains("/raw_content")), any());
+    }
+
+    @Test
+    void shouldFetchPdfContentViaExportTaskFlow() {
+        String createJson = """
+                {
+                  "code": 0,
+                  "data": {
+                    "ticket": "ticket123"
+                  }
+                }
+                """;
+        String processingJson = """
+                {
+                  "code": 0,
+                  "data": {
+                    "result": {
+                      "job_status": 2,
+                      "job_error_msg": ""
+                    }
+                  }
+                }
+                """;
+        String pollJson = """
+                {
+                  "code": 0,
+                  "data": {
+                    "result": {
+                      "job_status": 0,
+                      "job_error_msg": "success",
+                      "file_token": "fileTokenABC"
+                    }
+                  }
+                }
+                """;
+        byte[] pdf = "%PDF-1.4 fake".getBytes(StandardCharsets.UTF_8);
+        when(httpClientHelper.postJson(anyString(), any(), any())).thenReturn(response(createJson));
+        when(httpClientHelper.get(anyString(), any()))
+                .thenReturn(response(processingJson))
+                .thenReturn(response(pollJson))
+                .thenReturn(new HttpClientHelper.HttpFetchResponse(pdf, "application/pdf", null, null, null, null));
+
+        byte[] content = feishuDocxClient.fetchPdfContent("doccnABC", Map.of(), 0L);
+
+        assertArrayEquals(pdf, content);
+        verify(httpClientHelper).postJson(argThat((String url) -> url.contains("/export_tasks")
+                && !url.contains("/file/")), any(), argThat(body ->
+                body.contains("\"file_extension\":\"pdf\"")
+                        && body.contains("\"token\":\"doccnABC\"")
+                        && body.contains("\"type\":\"docx\"")));
+        verify(httpClientHelper).get(argThat((String url) -> url.contains("/export_tasks/ticket123")
+                && url.contains("token=doccnABC")), any());
+        verify(httpClientHelper).get(argThat((String url) -> url.contains("/export_tasks/file/fileTokenABC/download")), any());
+    }
+
+    @Test
+    void shouldRejectExportFailureStatus() {
+        String createJson = """
+                {
+                  "code": 0,
+                  "data": {
+                    "ticket": "ticket123"
+                  }
+                }
+                """;
+        String failedJson = """
+                {
+                  "code": 0,
+                  "data": {
+                    "result": {
+                      "job_status": 110,
+                      "job_error_msg": ""
+                    }
+                  }
+                }
+                """;
+        when(httpClientHelper.postJson(anyString(), any(), any())).thenReturn(response(createJson));
+        when(httpClientHelper.get(anyString(), any())).thenReturn(response(failedJson));
+
+        ClientException ex = assertThrows(ClientException.class,
+                () -> feishuDocxClient.fetchPdfContent("doccnABC", Map.of(), 0L));
+        assertTrue(ex.getMessage().contains("无权限"));
+    }
+
+    @Test
+    void shouldDownloadPdfWithSizeLimit() {
+        String createJson = """
+                {
+                  "code": 0,
+                  "data": {
+                    "ticket": "ticket123"
+                  }
+                }
+                """;
+        String pollJson = """
+                {
+                  "code": 0,
+                  "data": {
+                    "result": {
+                      "job_status": 0,
+                      "job_error_msg": "success",
+                      "file_token": "fileTokenABC"
+                    }
+                  }
+                }
+                """;
+        byte[] pdf = "%PDF-1.4 fake".getBytes(StandardCharsets.UTF_8);
+        when(httpClientHelper.postJson(anyString(), any(), any())).thenReturn(response(createJson));
+        when(httpClientHelper.get(anyString(), any())).thenReturn(response(pollJson));
+        when(httpClientHelper.getWithLimit(anyString(), any(), eq(1024L)))
+                .thenReturn(new HttpClientHelper.HttpFetchResponse(pdf, "application/pdf", null, null, null, null));
+
+        byte[] content = feishuDocxClient.fetchPdfContent("doccnABC", Map.of(), 1024L);
+
+        assertArrayEquals(pdf, content);
+        verify(httpClientHelper).getWithLimit(
+                argThat((String url) -> url.contains("/export_tasks/file/fileTokenABC/download")), any(), eq(1024L));
     }
 
     private static HttpClientHelper.HttpFetchResponse response(String json) {

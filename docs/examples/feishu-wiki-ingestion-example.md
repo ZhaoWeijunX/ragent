@@ -15,9 +15,9 @@
 
 | 类型 | 链接示例 | 说明 |
 |------|---------|------|
-| 云文档 docx | `https://xxx.feishu.cn/docx/doccnXXXX` | 直接拉取文档 Markdown |
+| 云文档 docx | `https://xxx.feishu.cn/docx/doccnXXXX` | 默认导出 PDF（MinerU 解析）；`content-format=markdown` 时拉取 Markdown |
 | 旧版 docs | `https://xxx.feishu.cn/docs/doccnXXXX` | 同上 |
-| 知识库 wiki 页面 | `https://xxx.feishu.cn/wiki/wikcnXXXX` | 先解析 wiki 节点，再拉取底层 docx Markdown |
+| 知识库 wiki 页面 | `https://xxx.feishu.cn/wiki/wikcnXXXX` | 先解析 wiki 节点，再拉取底层 docx（PDF 或 Markdown，取决于 `content-format`） |
 
 **不支持：**
 
@@ -57,8 +57,11 @@ feishu:
 - 来源类型：**Remote URL**
 - 来源地址：粘贴飞书 docx 或 wiki 单页链接
 - 处理模式：
-  - **chunk**：直接分块（Markdown 自动走 block-aware 结构分块）
-  - **pipeline**：选择 Parser 允许 `MARKDOWN` 的 Pipeline（无需含 Fetcher 节点，上传时已落盘）
+  - **chunk**：直接分块（PDF 自动走 MinerU + block-aware；Markdown 走结构分块）
+  - **pipeline**：
+    - 默认 `content-format: pdf` → 选择 Parser 允许 `PDF` 的 Pipeline（见 [`pdf-pipeline-request.json`](pdf-pipeline-request.json)）
+    - `content-format: markdown` → 选择 Parser 允许 `MARKDOWN` 的 Pipeline（见 [`feishu-pipeline-request.json`](feishu-pipeline-request.json)）
+    - 知识库 Remote URL 上传时已落盘，Pipeline 可省略 Fetcher 节点
 
 ### 3. 定时同步（可选）
 
@@ -70,19 +73,23 @@ Remote URL 来源可开启 cron 定时刷新；飞书文档按内容 hash 检测
 
 ### 创建 Pipeline
 
-wiki / docx 拉取结果均为 **Markdown**（`text/markdown`），Parser 需允许 MARKDOWN：
+默认 `feishu.content-format: pdf`，拉取结果为 **PDF**（`application/pdf`），走 MinerU 解析；若配置为 `markdown`，则为 `text/markdown`。
+
+**PDF（默认，推荐）：**
 
 ```
-FETCHER → PARSER → CHUNKER → INDEXER
+FETCHER → PARSER(PDF) → CHUNKER(structure_aware) → INDEXER
 ```
 
-Parser settings 示例：
+参考 [`pdf-pipeline-request.json`](pdf-pipeline-request.json)。
 
-```json
-{
-  "rules": [{ "mimeType": "MARKDOWN" }]
-}
+**Markdown（兼容旧模式）：**
+
 ```
+FETCHER → PARSER(MARKDOWN) → CHUNKER(structure_aware) → INDEXER
+```
+
+参考 [`feishu-pipeline-request.json`](feishu-pipeline-request.json)。
 
 Indexer 的 `collectionName` 或任务中的 `vectorSpaceId.logicalName` 应与目标知识库的 `collectionName` 一致。
 
@@ -133,7 +140,8 @@ curl -X POST "http://localhost:9090/api/ragent/ingestion/tasks" \
 ## 相关文档与代码
 
 - 开发文档：[`docs/feishu-wiki-integration.md`](../feishu-wiki-integration.md)
-- Pipeline 示例：[`feishu-pipeline-request.json`](feishu-pipeline-request.json)
+- Pipeline 示例（PDF 默认）：[`pdf-pipeline-request.json`](pdf-pipeline-request.json)
+- Pipeline 示例（Markdown 兼容）：[`feishu-pipeline-request.json`](feishu-pipeline-request.json)
 - [`FeishuFetcher.java`](../../bootstrap/src/main/java/com/nageoffer/ai/ragent/ingestion/strategy/fetcher/FeishuFetcher.java)
 - [`RemoteFileFetcher.java`](../../bootstrap/src/main/java/com/nageoffer/ai/ragent/knowledge/handler/RemoteFileFetcher.java)
 - [`FeishuProperties.java`](../../bootstrap/src/main/java/com/nageoffer/ai/ragent/knowledge/config/FeishuProperties.java)
