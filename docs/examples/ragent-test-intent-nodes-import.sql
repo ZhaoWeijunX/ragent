@@ -1,6 +1,6 @@
 -- ragent-test 知识库意图树导入脚本
 --
--- 适用文档目录：resources/docs/ragent-test/（33 篇 Markdown）
+-- 适用文档目录：resources/docs/ragent-test/（34 篇 Markdown）
 -- 设计说明：resources/docs/ragent-test/intent-tree-design.md
 --
 
@@ -28,7 +28,8 @@
 --     'infra-ai-embedding', 'infra-ai-rerank',
 --     'rag-eval', 'rag-eval-setup', 'rag-eval-runner',
 --     'rag-eval-metrics-intent-retrieval', 'rag-eval-metrics-performance', 'rag-eval-ragas',
---     'local-llm', 'local-llm-why', 'local-llm-ollama'
+--     'local-llm', 'local-llm-why', 'local-llm-ollama',
+--     'tech-docs', 'tech-docs-threadpool'
 -- );
 
 INSERT INTO t_intent_node (
@@ -40,7 +41,7 @@ INSERT INTO t_intent_node (
 -- ========== DOMAIN ==========
 (
     2059100000000000001, '2072555556962385920', 'ragent-docs', 'Ragent 技术专栏', 0, NULL,
-    'Ragent 项目配套技术文档，涵盖知识库工程化、AI 基础设施层、RAG 评测与本地模型部署',
+    'Ragent 项目配套技术文档，涵盖知识库工程化、AI 基础设施层、RAG 评测、本地模型部署与横切技术专题',
     '[]', NULL, NULL, NULL, 0, NULL, NULL, NULL,
     1, 1, 'admin', 'admin', NOW(), NOW(), 0
 ),
@@ -208,4 +209,18 @@ INSERT INTO t_intent_node (
     '["Ollama 和 Docker 的类比关系是什么？","ollama serve 和 ollama run 有什么区别？","Ragent 怎么调用本地 Ollama？","Ollama 模型文件存在哪里？"]',
     'test-1', 8, NULL, 0, NULL, NULL, NULL,
     42, 1, 'admin', 'admin', NOW(), NOW(), 0
+),
+-- ========== CATEGORY: 技术文档 ==========
+(
+    2059100000000000025, '2072555556962385920', 'tech-docs', '技术文档', 1, 'ragent-docs',
+    '横切技术专题：并发与线程池、可观测性等不隶属于单一业务系列的深度实现文档',
+    '[]', NULL, NULL, NULL, 0, NULL, NULL, NULL,
+    50, 1, 'admin', 'admin', NOW(), NOW(), 0
+),
+(
+    2059100000000000026, '2072555556962385920', 'tech-docs-threadpool', '线程池设计与实现', 2, 'tech-docs',
+    'ThreadPoolExecutorConfig 九个线程池、分层并行（子问题/通道/内层检索）、TtlExecutors 上下文传递、SynchronousQueue 与拒绝策略选型；非文件上传限流、非 RAGAS 性能评测指标',
+    '["Ragent 里有多少个线程池，分别干什么用？","chatEntryExecutor 和全局限流是怎么配合的？","ragContextExecutor 和 ragRetrievalExecutor 有什么区别？","为什么检索链路用 CallerRunsPolicy 而入口用 AbortPolicy？","线程池为什么要用 TtlExecutors 包装？"]',
+    'test-1', 8, NULL, 0, NULL, NULL, NULL,
+    51, 1, 'admin', 'admin', NOW(), NOW(), 0
 );

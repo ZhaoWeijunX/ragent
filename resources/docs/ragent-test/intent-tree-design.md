@@ -2,7 +2,7 @@
 
 > 配套导入脚本：[docs/examples/ragent-test-intent-nodes-import.sql](../../../docs/examples/ragent-test-intent-nodes-import.sql)
 
-本文档描述 `resources/docs/ragent-test/` 目录下 **33 篇技术文档** 的意图树划分方案，用于 Ragent 意图分类与定向检索。
+本文档描述 `resources/docs/ragent-test/` 目录下 **34 篇技术文档** 的意图树划分方案，用于 Ragent 意图分类与定向检索。
 
 ---
 
@@ -11,9 +11,9 @@
 | 目标 | 说明 |
 |------|------|
 | 对齐项目机制 | 遵循 `DOMAIN → CATEGORY → TOPIC` 三层结构，仅 **TOPIC（叶子）** 参与 LLM 分类 |
-| 系列边界清晰 | 四大文档系列各自独立 CATEGORY，避免跨系列误路由 |
-| 消歧同名主题 | 「调度」「限流」「意图」「Rerank」等跨系列词汇通过 `description` 区分 |
-| 单库聚合 | 33 篇文档同属一个知识库，叶子节点共享 `kbId` 与 `collectionName` |
+| 系列边界清晰 | 五大文档系列各自独立 CATEGORY，避免跨系列误路由 |
+| 消歧同名主题 | 「调度」「限流」「线程池」「意图」「Rerank」等跨系列词汇通过 `description` 区分 |
+| 单库聚合 | 34 篇文档同属一个知识库，叶子节点共享 `kbId` 与 `collectionName` |
 
 ---
 
@@ -41,12 +41,14 @@ ragent-docs（DOMAIN）
 │   ├── rag-eval-metrics-intent-retrieval
 │   ├── rag-eval-metrics-performance
 │   └── rag-eval-ragas
-└── local-llm（Ollama与本地部署）
-    ├── local-llm-why
-    └── local-llm-ollama
+├── local-llm（Ollama与本地部署）
+│   ├── local-llm-why
+│   └── local-llm-ollama
+└── tech-docs（技术文档）
+    └── tech-docs-threadpool
 ```
 
-**节点统计**：1 DOMAIN + 4 CATEGORY + 16 TOPIC = **21 个节点**
+**节点统计**：1 DOMAIN + 5 CATEGORY + 17 TOPIC = **23 个节点**
 
 系统交互节点（`sys` / `sys-welcome` / `sys-about-bot`）为全局共用，见 `docs/examples/mcp-intent-nodes-import.sql`，不在本知识库脚本中重复导入。
 
@@ -58,7 +60,7 @@ ragent-docs（DOMAIN）
 
 | intent_code | name | description |
 |-------------|------|-------------|
-| `ragent-docs` | Ragent 技术专栏 | Ragent 项目配套技术文档，涵盖知识库工程化、AI 基础设施层、RAG 评测与本地模型部署 |
+| `ragent-docs` | Ragent 技术专栏 | Ragent 项目配套技术文档，涵盖知识库工程化、AI 基础设施层、RAG 评测、本地模型部署与横切技术专题 |
 
 ### 3.2 CATEGORY：AI知识库建设（`kb-build`）
 
@@ -124,6 +126,18 @@ ragent-docs（DOMAIN）
 - `local-llm-why`：什么场景必须本地部署大模型？
 - `local-llm-ollama`：ollama serve 和 ollama run 有什么区别？
 
+### 3.6 CATEGORY：技术文档（`tech-docs`）
+
+| intent_code | name | 覆盖文档 | top_k |
+|-------------|------|----------|-------|
+| `tech-docs-threadpool` | 线程池设计与实现 | `01` | 8 |
+
+**典型问法示例**
+
+- `tech-docs-threadpool`：Ragent 里有多少个线程池，分别干什么用？
+- `tech-docs-threadpool`：`chatEntryExecutor` 和全局限流是怎么配合的？
+- `tech-docs-threadpool`：为什么检索链路用 `CallerRunsPolicy` 而入口用 `AbortPolicy`？
+
 ---
 
 ## 4. 文档映射表
@@ -149,6 +163,7 @@ ragent-docs（DOMAIN）
 | RAG 评测/07～11 | `rag-eval-ragas` |
 | Ollama、vLLM扫盲/01 | `local-llm-why` |
 | Ollama、vLLM扫盲/02, 03 | `local-llm-ollama` |
+| 技术文档/01 | `tech-docs-threadpool` |
 
 ---
 
@@ -157,7 +172,8 @@ ragent-docs（DOMAIN）
 | 用户表述 | 应命中 | 不应命中 | 判断依据 |
 |----------|--------|----------|----------|
 | 调度引擎 | `kb-build-sync`（文档 cron 同步）或 `infra-ai-route-circuit`（模型路由） | 跨系列盲选 | 是否提到 URL/文档同步 vs 模型/熔断 |
-| 分布式限流 | `kb-build-upload-ratelimit` | `infra-ai-*` | 限流针对文件上传 |
+| 分布式限流 | `kb-build-upload-ratelimit`（上传）或 `tech-docs-threadpool`（对话 `chatEntryExecutor` + Redis 信号量） | 跨系列盲选 | 是否提到文件上传 vs 对话并发 / SSE 入口 |
+| 线程池 | `tech-docs-threadpool` | `kb-build-chunk`（仅提及分块池） | 是否讨论 ThreadPoolExecutorConfig 或多池分层 |
 | 意图准确率 / intent_top1 | `rag-eval-metrics-intent-retrieval` | `kb-build-*` | 评测指标语境 |
 | 意图树怎么建 | `rag-eval-setup` | `infra-ai-*` | 初始化脚本建意图树 |
 | Embedding | `infra-ai-embedding`（客户端）或 `kb-build-arch`（入库流程） | — | 是否提到 infra-ai / 供应商 |
@@ -169,12 +185,14 @@ ragent-docs（DOMAIN）
 
 - 仅问「调度引擎」→ `kb-build-sync` + `infra-ai-route-circuit`
 - 仅问「Rerank」→ `infra-ai-rerank` + `rag-eval-ragas`
+- 仅问「限流」→ `kb-build-upload-ratelimit` + `tech-docs-threadpool`
+- 仅问「并发」→ `tech-docs-threadpool` + `rag-eval-metrics-performance`
 
 ---
 
 ## 6. 导入步骤
 
-1. 创建 `ragent-test` 知识库并完成 33 篇文档灌入与分块。
+1. 创建 `ragent-test` 知识库并完成 34 篇文档灌入与分块。
 2. 查询知识库 ID 与 collection 名称：
 
    ```sql

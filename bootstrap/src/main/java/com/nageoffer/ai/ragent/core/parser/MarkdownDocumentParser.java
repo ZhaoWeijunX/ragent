@@ -112,7 +112,8 @@ public class MarkdownDocumentParser implements DocumentParser {
         return mimeType != null && (
                 mimeType.equals("text/markdown") ||
                         mimeType.equals("text/x-markdown") ||
-                        mimeType.equals("text/plain")
+                        mimeType.equals("text/plain") ||
+                        mimeType.equals("text/x-web-markdown")
         );
     }
 
