@@ -50,9 +50,11 @@ public class IntentResolver {
 
     @RagTraceNode(name = "intent-resolve", type = "INTENT")
     public List<SubQuestionIntent> resolve(RewriteResult rewriteResult) {
+        // 取子问题列表；如果为空，回退到改写后的完整问题
         List<String> subQuestions = CollUtil.isNotEmpty(rewriteResult.subQuestions())
                 ? rewriteResult.subQuestions()
                 : List.of(rewriteResult.rewrittenQuestion());
+        // 每个子问题并行做意图分类
         List<CompletableFuture<SubQuestionIntent>> tasks = subQuestions.stream()
                 .map(q -> CompletableFuture.supplyAsync(
                         () -> {
@@ -97,7 +99,7 @@ public class IntentResolver {
     }
 
     /**
-     * 限制总意图数量不超过 MAX_INTENT_COUNT
+     * 封顶算法：限制总意图数量不超过 MAX_INTENT_COUNT
      * <p>
      * 策略：
      * 1. 如果总数未超限，直接返回

@@ -124,16 +124,19 @@ public class JdbcConversationMemorySummaryService implements ConversationMemoryS
             if (latestUserTurns.isEmpty()) {
                 return;
             }
+            // cutoffId = 最近 N 条 USER 消息中最早的那条 ID（这些消息保留原文，不参与压缩）
             String cutoffId = resolveCutoffId(latestUserTurns);
             if (StrUtil.isBlank(cutoffId)) {
                 return;
             }
 
+            // afterId = 上一次摘要的 lastMessageId（水位线）
             String afterId = resolveSummaryStartId(conversationId, userId, latestSummary);
             if (afterId != null && Long.parseLong(afterId) >= Long.parseLong(cutoffId)) {
                 return;
             }
 
+            // 压缩窗口 = (afterId, cutoffId) 之间的所有消息
             List<ConversationMessageDO> toSummarize = conversationGroupService.listMessagesBetweenIds(
                     conversationId,
                     userId,
@@ -176,19 +179,23 @@ public class JdbcConversationMemorySummaryService implements ConversationMemoryS
 
         int summaryMaxChars = memoryProperties.getSummaryMaxChars();
         List<ChatMessage> summaryMessages = new ArrayList<>();
+        // 1. System Prompt：角色和规则
         String summaryPrompt = promptTemplateLoader.render(
                 CONVERSATION_SUMMARY_PROMPT_PATH,
                 Map.of("summary_max_chars", String.valueOf(summaryMaxChars))
         );
         summaryMessages.add(ChatMessage.system(summaryPrompt));
 
+        // 2. 历史摘要（如果有）：作为 ASSISTANT 消息传入
         if (StrUtil.isNotBlank(existingSummary)) {
             summaryMessages.add(ChatMessage.assistant(
                     "历史摘要（仅用于合并去重，不得作为事实新增来源；若与本轮对话冲突，以本轮对话为准）：\n"
                             + existingSummary.trim()
             ));
         }
+        // 3. 待压缩的对话消息（按原始顺序）
         summaryMessages.addAll(histories);
+        // 4. 最后的用户指令
         summaryMessages.add(ChatMessage.user(
                 "合并以上对话与历史摘要，去重后输出更新摘要。要求：严格≤" + summaryMaxChars + "字符；仅一行。"
         ));

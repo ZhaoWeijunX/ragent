@@ -86,6 +86,7 @@ public class QueryTermMappingService {
                 Wrappers.lambdaQuery(QueryTermMappingDO.class)
                         .eq(QueryTermMappingDO::getEnabled, 1)
         );
+        // 按优先级降序 + 源词长度降序排序
         dbList.sort(Comparator
                 .comparing(QueryTermMappingDO::getPriority, Comparator.nullsLast(Integer::compareTo)).reversed()
                 .thenComparing(m -> m.getSourceTerm() == null ? 0 : m.getSourceTerm().length(), Comparator.reverseOrder())

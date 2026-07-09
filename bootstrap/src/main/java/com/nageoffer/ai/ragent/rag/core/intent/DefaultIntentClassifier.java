@@ -83,11 +83,11 @@ public class DefaultIntentClassifier implements IntentClassifier, IntentNodeRegi
             return new IntentTreeData(List.of(), List.of(), Map.of());
         }
 
-        List<IntentNode> allNodes = flatten(roots);
-        List<IntentNode> leafNodes = allNodes.stream()
+        List<IntentNode> allNodes = flatten(roots);         // 扁平化所有节点
+        List<IntentNode> leafNodes = allNodes.stream()      // 过滤出叶子节点
                 .filter(IntentNode::isLeaf)
                 .collect(Collectors.toList());
-        Map<String, IntentNode> id2Node = allNodes.stream()
+        Map<String, IntentNode> id2Node = allNodes.stream() // 构建 ID → 节点的快速查找表
                 .collect(Collectors.toMap(IntentNode::getId, n -> n));
 
         log.debug("意图树数据加载完成, 总节点数: {}, 叶子节点数: {}", allNodes.size(), leafNodes.size());

@@ -52,7 +52,7 @@ public class JdbcConversationMemoryStore implements ConversationMemoryStore {
 
     @Override
     public List<ChatMessage> loadHistory(String conversationId, String userId) {
-        int maxMessages = resolveMaxHistoryMessages();
+        int maxMessages = resolveMaxHistoryMessages(); // historyKeepTurns * 2
         List<ConversationMessageVO> dbMessages = conversationMessageService.listMessages(
                 conversationId,
                 userId,
@@ -110,6 +110,10 @@ public class JdbcConversationMemoryStore implements ConversationMemoryStore {
         );
     }
 
+    /**
+     * 确保以 USER 开头
+     *
+     */
     private List<ChatMessage> normalizeHistory(List<ChatMessage> messages) {
         if (messages == null || messages.isEmpty()) {
             return List.of();
