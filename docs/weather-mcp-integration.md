@@ -171,8 +171,8 @@ psql -f docs/examples/mcp-intent-nodes-weather-prompt-update.sql
 
 相关文件：
 
-- [`docs/examples/mcp-intent-nodes-import.sql`](examples/mcp-intent-nodes-import.sql)
-- [`docs/examples/mcp-intent-nodes-weather-prompt-update.sql`](examples/mcp-intent-nodes-weather-prompt-update.sql)
+- [`docs/examples/mcp-intent-nodes-import.sql`](examples/intent-node-import/mcp-intent-nodes-import.sql)
+- [`docs/examples/mcp-intent-nodes-weather-prompt-update.sql`](examples/intent-node-import/mcp-intent-nodes-weather-prompt-update.sql)
 
 也可在管理后台「意图树」中为 `weather-data` 节点粘贴提示词文件内容。
 

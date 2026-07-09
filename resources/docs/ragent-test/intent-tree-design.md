@@ -1,6 +1,6 @@
 # ragent-test 知识库意图树设计
 
-> 配套导入脚本：[docs/examples/ragent-test-intent-nodes-import.sql](../../../docs/examples/ragent-test-intent-nodes-import.sql)
+> 配套导入脚本：[docs/examples/ragent-test-intent-nodes-import.sql](../../../docs/examples/intent-node-import/ragent-test-intent-nodes-import.sql)
 
 本文档描述 `resources/docs/ragent-test/` 目录下 **34 篇技术文档** 的意图树划分方案，用于 Ragent 意图分类与定向检索。
 

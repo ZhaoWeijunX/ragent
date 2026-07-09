@@ -7,15 +7,16 @@
 --   - KB 知识库检索 + 意图分类（人事 / IT / 发票 / OA / 保险）
 --   - MCP 实时工具调用（销售 / 天气 / 工单）
 --   - ragent-test 技术专栏（需已灌入对应知识库与意图树）
+--   - biz-security 企业信息安全与合规（多格式文档：md/docx/pdf/png/txt/csv/xlsx）
 --
--- 执行前请确认已导入意图树（docs/examples/mcp-intent-nodes-import.sql 等）
--- 且 Demo 知识库文档已就绪；ragent-test 类问题需本地知识库已配置
+-- 执行前请确认已导入意图树（docs/examples/intent-node-import/mcp-intent-nodes-import.sql 等）
+-- 且 Demo 知识库文档已就绪；ragent-test / biz-security 类问题需本地知识库已配置
 
 -- ---------------------------------------------------------------------------
 -- 可选：清理本脚本示例后重新导入
 -- ---------------------------------------------------------------------------
 -- DELETE FROM t_sample_question
--- WHERE id BETWEEN 2059200000000000001 AND 2059200000000000018;
+-- WHERE id BETWEEN 2059200000000000001 AND 2059200000000000026;
 
 INSERT INTO t_sample_question (
     id, title, description, question, create_time, update_time, deleted
@@ -149,5 +150,63 @@ INSERT INTO t_sample_question (
     '意图指标',
     'ragent-test · intent_top1 与检索准确率',
     'intent_top1 怎么算？',
+    NOW(), NOW(), 0
+),
+
+-- ========== biz-security 企业信息安全与合规（需本地知识库） ==========
+(
+    2059200000000000019,
+    '安全制度',
+    'biz-security · 信息安全管理总则',
+    '集团信息安全管理的基本原则是什么？',
+    NOW(), NOW(), 0
+),
+(
+    2059200000000000020,
+    '数据分级',
+    'biz-security · L1～L4 分类分级规范',
+    '个人身份证号应该定什么数据等级？',
+    NOW(), NOW(), 0
+),
+(
+    2059200000000000021,
+    '等保自查',
+    'biz-security · 年度等保合规自查报告',
+    '2025年等保自查整体符合率是多少？',
+    NOW(), NOW(), 0
+),
+(
+    2059200000000000022,
+    '事件应急',
+    'biz-security · 通报模板与应急响应流程',
+    '发现安全事件后多长时间内要初报？',
+    NOW(), NOW(), 0
+),
+(
+    2059200000000000023,
+    '系统资产',
+    'biz-security · CSV 系统资产清单检索',
+    'SYS-ERP-002是什么系统？负责人是谁？',
+    NOW(), NOW(), 0
+),
+(
+    2059200000000000024,
+    '权限审批',
+    'biz-security · Excel 角色权限对照表',
+    '申请ERP财务总监角色需要谁审批？',
+    NOW(), NOW(), 0
+),
+(
+    2059200000000000025,
+    '外包合规',
+    'biz-security · 第三方与外包人员管理',
+    '外包人员能否接触L4数据？',
+    NOW(), NOW(), 0
+),
+(
+    2059200000000000026,
+    '等保备案',
+    'biz-security · 三级系统备案与差距整改',
+    'OA系统的等保备案号是什么？',
     NOW(), NOW(), 0
 );
