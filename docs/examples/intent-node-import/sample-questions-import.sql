@@ -8,6 +8,7 @@
 --   - MCP 实时工具调用（销售 / 天气 / 工单）
 --   - ragent-test 技术专栏（需已灌入对应知识库与意图树）
 --   - biz-security 企业信息安全与合规（多格式文档：md/docx/pdf/png/txt/csv/xlsx）
+--   - onboarding 新员工入职与培训（多格式文档，与 group/hr 互补）
 --
 -- 执行前请确认已导入意图树（docs/examples/intent-node-import/mcp-intent-nodes-import.sql 等）
 -- 且 Demo 知识库文档已就绪；ragent-test / biz-security 类问题需本地知识库已配置
@@ -16,7 +17,7 @@
 -- 可选：清理本脚本示例后重新导入
 -- ---------------------------------------------------------------------------
 -- DELETE FROM t_sample_question
--- WHERE id BETWEEN 2059200000000000001 AND 2059200000000000026;
+-- WHERE id BETWEEN 2059200000000000001 AND 2059200000000000034;
 
 INSERT INTO t_sample_question (
     id, title, description, question, create_time, update_time, deleted
@@ -208,5 +209,63 @@ INSERT INTO t_sample_question (
     '等保备案',
     'biz-security · 三级系统备案与差距整改',
     'OA系统的等保备案号是什么？',
+    NOW(), NOW(), 0
+),
+
+-- ========== onboarding 新员工入职与培训（需本地知识库） ==========
+(
+    2059200000000000027,
+    '入职材料',
+    'onboarding · 入职指南与材料清单',
+    '入职当天需要带什么材料？',
+    NOW(), NOW(), 0
+),
+(
+    2059200000000000028,
+    '首日待办',
+    'onboarding · 入职第一天 checklist',
+    '入职第一天上午要做哪些事？',
+    NOW(), NOW(), 0
+),
+(
+    2059200000000000029,
+    '员工手册',
+    'onboarding · 考勤假期与离职制度',
+    '工作5年年假有几天？',
+    NOW(), NOW(), 0
+),
+(
+    2059200000000000030,
+    '岗位职责',
+    'onboarding · 典型岗位 JD 说明',
+    '后端研发工程师的核心职责是什么？',
+    NOW(), NOW(), 0
+),
+(
+    2059200000000000031,
+    '入职培训',
+    'onboarding · 新员工必修课程表',
+    '新员工必修课程有哪些？',
+    NOW(), NOW(), 0
+),
+(
+    2059200000000000032,
+    '办公地点',
+    'onboarding · CSV 楼层与门禁信息',
+    '入职手续在哪个楼层办理？',
+    NOW(), NOW(), 0
+),
+(
+    2059200000000000033,
+    '组织架构',
+    'onboarding · 集团事业部架构图',
+    '公司有哪些事业部？',
+    NOW(), NOW(), 0
+),
+(
+    2059200000000000034,
+    'Buddy制度',
+    'onboarding · 入职伙伴与首周安排',
+    'Buddy制度是什么？',
     NOW(), NOW(), 0
 );
