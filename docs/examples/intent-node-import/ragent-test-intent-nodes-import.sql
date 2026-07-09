@@ -1,8 +1,11 @@
 -- ragent-test 知识库意图树导入脚本
 --
--- 适用文档目录：resources/docs/ragent-test/（34 篇 Markdown）
+-- 适用文档目录：resources/docs/ragent-test/（52 篇 Markdown）
 -- 设计说明：resources/docs/ragent-test/intent-tree-design.md
 --
+-- 文档系列：
+--   AI知识库建设（11）| 大模型调度引擎实战（8）| AI知识问答篇（18）
+--   RAG 评测（11）| Ollama与vLLM扫盲（3）| 技术文档（1）
 
 -- 使用前请替换占位符（全文搜索替换即可）：
 -- SELECT id, name, collection_name FROM t_knowledge_base WHERE name LIKE '%ragent-test%';
@@ -29,6 +32,8 @@
 --     'rag-eval', 'rag-eval-setup', 'rag-eval-runner',
 --     'rag-eval-metrics-intent-retrieval', 'rag-eval-metrics-performance', 'rag-eval-ragas',
 --     'local-llm', 'local-llm-why', 'local-llm-ollama',
+--     'rag-qa', 'rag-qa-pipeline', 'rag-qa-memory', 'rag-qa-rewrite', 'rag-qa-intent',
+--     'rag-qa-retrieval', 'rag-qa-mcp', 'rag-qa-prompt', 'rag-qa-stream', 'rag-qa-ratelimit',
 --     'tech-docs', 'tech-docs-threadpool'
 -- );
 
@@ -41,7 +46,7 @@ INSERT INTO t_intent_node (
 -- ========== DOMAIN ==========
 (
     2059100000000000001, '2072555556962385920', 'ragent-docs', 'Ragent 技术专栏', 0, NULL,
-    'Ragent 项目配套技术文档，涵盖知识库工程化、AI 基础设施层、RAG 评测、本地模型部署与横切技术专题',
+    'Ragent 项目配套技术文档，涵盖知识库工程化、AI 知识问答全链路、AI 基础设施层、RAG 评测、本地模型部署与横切技术专题',
     '[]', NULL, NULL, NULL, 0, NULL, NULL, NULL,
     1, 1, 'admin', 'admin', NOW(), NOW(), 0
 ),
@@ -144,6 +149,77 @@ INSERT INTO t_intent_node (
     '["Rerank 重排序在 Ragent 里怎么实现？","百炼 Rerank 客户端怎么用？","检索后为什么要做 Rerank？"]',
     'test-1', 8, NULL, 0, NULL, NULL, NULL,
     25, 1, 'admin', 'admin', NOW(), NOW(), 0
+),
+
+-- ========== CATEGORY: AI知识问答 ==========
+(
+    2059100000000000027, '2072555556962385920', 'rag-qa', 'AI知识问答', 1, 'ragent-docs',
+    'StreamChatPipeline 八阶段问答全链路：记忆、改写、意图、检索、MCP、Prompt、流式、排队限流',
+    '[]', NULL, NULL, NULL, 0, NULL, NULL, NULL,
+    45, 1, 'admin', 'admin', NOW(), NOW(), 0
+),
+(
+    2059100000000000028, '2072555556962385920', 'rag-qa-pipeline', '问答全链路全景', 2, 'rag-qa',
+    'StreamChatPipeline 八个阶段、三个短路点、loadMemory→rewrite→resolveIntents→guidance→retrieve→streamRagResponse 全景地图；非单环节深挖',
+    '["StreamChatPipeline的八个阶段分别是什么？","一次知识问答在后端经历哪些步骤？","问答Pipeline有哪些短路点？","handleGuidance什么时候触发？","空检索时系统怎么处理？"]',
+    'test-1', 6, NULL, 0, NULL, NULL, NULL,
+    46, 1, 'admin', 'admin', NOW(), NOW(), 0
+),
+(
+    2059100000000000029, '2072555556962385920', 'rag-qa-memory', '会话记忆与摘要', 2, 'rag-qa',
+    'JdbcConversationMemoryStore、对话历史加载、滑动窗口、ConversationSummaryService 摘要压缩策略与触发时机',
+    '["会话记忆是怎么加载和存储的？","对话历史为什么要做摘要压缩？","history-keep-turns和summary-start-turns怎么配？","记忆加载为什么要在改写之前？","摘要压缩的Prompt约束有哪些？"]',
+    'test-1', 8, NULL, 0, NULL, NULL, NULL,
+    47, 1, 'admin', 'admin', NOW(), NOW(), 0
+),
+(
+    2059100000000000030, '2072555556962385920', 'rag-qa-rewrite', '查询改写与拆分', 2, 'rag-qa',
+    'QueryRewriteService、同义词标准化、LLM 改写与子问题拆分、RewriteResult、标点规则 fallback',
+    '["查询改写和子问题拆分是怎么做的？","RewriteResult包含哪些字段？","代词消解在改写里怎么处理？","复合问题怎么拆成多个子问题？","改写失败时的fallback策略是什么？"]',
+    'test-1', 8, NULL, 0, NULL, NULL, NULL,
+    48, 1, 'admin', 'admin', NOW(), NOW(), 0
+),
+(
+    2059100000000000031, '2072555556962385920', 'rag-qa-intent', '意图识别与引导', 2, 'rag-qa',
+    '意图树 DOMAIN/CATEGORY/TOPIC、分类 Prompt 模板、候选封顶算法、歧义引导 IntentGuidanceService、top_k 与 collection 映射；非评测 intent_top1 指标',
+    '["意图树为什么要设计成三级结构？","意图分类Prompt模板包含哪些部分？","多个子问题的意图候选怎么封顶？","歧义引导什么时候触发？","意图分数出来后怎么决定查哪个库、查多少条？","只有TOPIC叶子参与分类是什么意思？"]',
+    'test-1', 8, NULL, 0, NULL, NULL, NULL,
+    49, 1, 'admin', 'admin', NOW(), NOW(), 0
+),
+(
+    2059100000000000032, '2072555556962385920', 'rag-qa-retrieval', '多通道检索与后处理', 2, 'rag-qa',
+    'MultiChannelRetrievalEngine、IntentDirectedSearchChannel、VectorGlobalSearchChannel、RRF 融合、DeduplicationPostProcessor、RerankPostProcessor',
+    '["多通道并行检索有哪些通道？","向量全局检索什么时候触发？","检索后处理流水线有哪些步骤？","RRF融合策略怎么配置？","意图定向检索和全局检索怎么配合？"]',
+    'test-1', 8, NULL, 0, NULL, NULL, NULL,
+    50, 1, 'admin', 'admin', NOW(), NOW(), 0
+),
+(
+    2059100000000000033, '2072555556962385920', 'rag-qa-mcp', 'MCP工具调用', 2, 'rag-qa',
+    '问答流水线中 MCP 触发时机、McpParameterExtractService 参数提取、KB+MCP 混合 Prompt、与 kind=2 意图节点关系；非 MCP Server 工具实现代码',
+    '["MCP工具在问答流水线里什么时候被调用？","MCP参数提取器怎么工作？","知识库和MCP工具混合回答怎么组装Prompt？","MCP意图和知识库意图怎么区分？"]',
+    'test-1', 8, NULL, 0, NULL, NULL, NULL,
+    51, 1, 'admin', 'admin', NOW(), NOW(), 0
+),
+(
+    2059100000000000034, '2072555556962385920', 'rag-qa-prompt', 'Prompt组装', 2, 'rag-qa',
+    '检索上下文格式化、answer-chat-kb / answer-chat-mcp 等模板选择、系统 Prompt 与子问题证据拼接',
+    '["RAG回答的Prompt是怎么组装的？","检索到的chunk怎么格式化进上下文？","KB和MCP混答用哪个Prompt模板？","context-format模板做什么？"]',
+    'test-1', 8, NULL, 0, NULL, NULL, NULL,
+    52, 1, 'admin', 'admin', NOW(), NOW(), 0
+),
+(
+    2059100000000000035, '2072555556962385920', 'rag-qa-stream', '流式生成链路', 2, 'rag-qa',
+    'streamRagResponse、SSE 推送、正常流式链路、异常路径与客户端断开处理；非 infra-ai 首包探测与模型路由',
+    '["流式回答是怎么推送给前端的？","streamRagResponse主要做什么？","流式生成异常时怎么处理？","用户断开SSE连接后端怎么感知？"]',
+    'test-1', 8, NULL, 0, NULL, NULL, NULL,
+    53, 1, 'admin', 'admin', NOW(), NOW(), 0
+),
+(
+    2059100000000000036, '2072555556962385920', 'rag-qa-ratelimit', '排队限流', 2, 'rag-qa',
+    'FairDistributedRateLimiter、对话入口 chatEntryExecutor、ZSET 排队、Lua 原子出队、SSE 排队状态推送；非文件上传限流',
+    '["对话入口的分布式排队限流是怎么工作的？","FairDistributedRateLimiter怎么实现公平排队？","排队状态怎么通过SSE推给用户？","对话限流和文件上传限流有什么区别？"]',
+    'test-1', 8, NULL, 0, NULL, NULL, NULL,
+    54, 1, 'admin', 'admin', NOW(), NOW(), 0
 ),
 
 -- ========== CATEGORY: RAG 评测 ==========
