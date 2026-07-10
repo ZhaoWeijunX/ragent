@@ -1,8 +1,11 @@
 import type { ReactNode } from "react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
+import { ModelCandidateProbeTable, ModelGroupProbeButton } from "@/pages/admin/settings/ModelCandidateProbeTable";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -12,6 +15,15 @@ import {
   TableHeader,
   TableRow
 } from "@/components/ui/table";
+import {
+  mergeProbeResults,
+  probeAllModels,
+  probeModel,
+  probeModelsByCapability,
+  probeKey,
+  type ModelCapabilityPath,
+  type ModelProbeItem
+} from "@/services/modelHealthService";
 import type { SystemSettings } from "@/services/settingsService";
 import { getSystemSettings } from "@/services/settingsService";
 import { getErrorMessage } from "@/utils/error";
@@ -32,6 +44,11 @@ function InfoItem({ label, value }: { label: string; value: ReactNode }) {
 export function SystemSettingsPage() {
   const [settings, setSettings] = useState<SystemSettings | null>(null);
   const [loading, setLoading] = useState(true);
+  const [probeResults, setProbeResults] = useState<Record<string, ModelProbeItem>>({});
+  const [probingKeys, setProbingKeys] = useState<Set<string>>(new Set());
+  const [probingAll, setProbingAll] = useState(false);
+  const [probingCapability, setProbingCapability] = useState<ModelCapabilityPath | null>(null);
+  const [lastProbedAt, setLastProbedAt] = useState<number | null>(null);
 
   const loadSettings = async () => {
     try {
@@ -49,6 +66,74 @@ export function SystemSettingsPage() {
   useEffect(() => {
     loadSettings();
   }, []);
+
+  const applyReport = useCallback((report: { probedAt: number; results: ModelProbeItem[] }) => {
+    setProbeResults((current) => mergeProbeResults(current, report));
+    setLastProbedAt(report.probedAt);
+  }, []);
+
+  const withProbeKey = useCallback(async (key: string, task: () => Promise<void>) => {
+    setProbingKeys((current) => new Set(current).add(key));
+    try {
+      await task();
+    } finally {
+      setProbingKeys((current) => {
+        const next = new Set(current);
+        next.delete(key);
+        return next;
+      });
+    }
+  }, []);
+
+  const handleProbeAll = async () => {
+    try {
+      setProbingAll(true);
+      const report = await probeAllModels();
+      applyReport(report);
+      const healthyCount = report.results.filter((item) => item.healthy).length;
+      toast.success(`探测完成：${healthyCount}/${report.results.length} 可用`);
+    } catch (error) {
+      toast.error(getErrorMessage(error, "模型探测失败"));
+      console.error(error);
+    } finally {
+      setProbingAll(false);
+    }
+  };
+
+  const handleProbeCapability = async (capability: ModelCapabilityPath) => {
+    try {
+      setProbingCapability(capability);
+      const report = await probeModelsByCapability(capability);
+      applyReport(report);
+      const healthyCount = report.results.filter((item) => item.healthy).length;
+      toast.success(`${capability} 探测完成：${healthyCount}/${report.results.length} 可用`);
+    } catch (error) {
+      toast.error(getErrorMessage(error, "模型探测失败"));
+      console.error(error);
+    } finally {
+      setProbingCapability(null);
+    }
+  };
+
+  const handleProbeOne = async (capability: ModelCapabilityPath, modelId: string) => {
+    const key = probeKey(capability, modelId);
+    await withProbeKey(key, async () => {
+      try {
+        const report = await probeModel(capability, modelId);
+        applyReport(report);
+        const result = report.results[0];
+        if (result?.healthy) {
+          toast.success(`${modelId} 可用（${result.latencyMs ?? "-"} ms）`);
+        } else {
+          toast.error(result?.errorMessage || `${modelId} 不可用`);
+        }
+      } catch (error) {
+        toast.error(getErrorMessage(error, "模型探测失败"));
+        console.error(error);
+        throw error;
+      }
+    });
+  };
 
   if (loading) {
     return (
@@ -74,7 +159,26 @@ export function SystemSettingsPage() {
       <div className="admin-page-header">
         <div>
           <h1 className="admin-page-title">系统配置</h1>
-          <p className="admin-page-subtitle">只读展示当前 application 配置</p>
+          <p className="admin-page-subtitle">
+            只读展示当前 application 配置，支持主动探测模型连通性
+          </p>
+          {lastProbedAt ? (
+            <p className="mt-1 text-xs text-muted-foreground">
+              最近探测时间：{new Date(lastProbedAt).toLocaleString()}
+            </p>
+          ) : null}
+        </div>
+        <div className="admin-page-actions">
+          <Button type="button" disabled={probingAll} onClick={handleProbeAll}>
+            {probingAll ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                探测中...
+              </>
+            ) : (
+              "探测全部模型"
+            )}
+          </Button>
         </div>
       </div>
 
@@ -191,102 +295,94 @@ export function SystemSettingsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Chat 模型配置</CardTitle>
-          <CardDescription>默认模型与候选列表</CardDescription>
+          <div className="flex w-full items-center justify-between gap-3">
+            <CardTitle>Chat 模型配置</CardTitle>
+            <ModelGroupProbeButton
+              probing={probingCapability === "chat"}
+              disabled={ai.chat.candidates.length === 0}
+              onClick={() => handleProbeCapability("chat")}
+            />
+          </div>
+          <CardDescription>默认模型与候选列表，可探测上游 Chat API 是否可用</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-4 md:grid-cols-2">
             <InfoItem label="Default Model" value={ai.chat.defaultModel} />
             <InfoItem label="Deep Thinking Model" value={ai.chat.deepThinkingModel} />
           </div>
-          <Table className="min-w-[720px]">
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-[220px]">ID</TableHead>
-                <TableHead className="w-[120px]">Provider</TableHead>
-                <TableHead className="w-[200px]">Model</TableHead>
-                <TableHead className="w-[100px]">Thinking</TableHead>
-                <TableHead className="w-[90px]">Priority</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {ai.chat.candidates.map((item) => (
-                <TableRow key={item.id}>
-                  <TableCell className="font-medium">{item.id}</TableCell>
-                  <TableCell>{item.provider}</TableCell>
-                  <TableCell>{item.model}</TableCell>
-                  <TableCell>{item.supportsThinking ? "支持" : "-"}</TableCell>
-                  <TableCell>{item.priority}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+          <ModelCandidateProbeTable
+            capability="chat"
+            candidates={ai.chat.candidates}
+            extraColumns={[
+              {
+                header: "Thinking",
+                className: "w-[90px]",
+                render: (item) => (item.supportsThinking ? "支持" : "-")
+              }
+            ]}
+            probeResults={probeResults}
+            probingKeys={probingKeys}
+            onProbeOne={handleProbeOne}
+          />
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle>Embedding 模型配置</CardTitle>
-          <CardDescription>向量化模型列表</CardDescription>
+          <div className="flex w-full items-center justify-between gap-3">
+            <CardTitle>Embedding 模型配置</CardTitle>
+            <ModelGroupProbeButton
+              probing={probingCapability === "embedding"}
+              disabled={ai.embedding.candidates.length === 0}
+              onClick={() => handleProbeCapability("embedding")}
+            />
+          </div>
+          <CardDescription>向量化模型列表，可探测上游 Embedding API 是否可用</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-4 md:grid-cols-2">
             <InfoItem label="Default Model" value={ai.embedding.defaultModel} />
           </div>
-          <Table className="min-w-[720px]">
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-[220px]">ID</TableHead>
-                <TableHead className="w-[120px]">Provider</TableHead>
-                <TableHead className="w-[200px]">Model</TableHead>
-                <TableHead className="w-[110px]">Dimension</TableHead>
-                <TableHead className="w-[90px]">Priority</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {ai.embedding.candidates.map((item) => (
-                <TableRow key={item.id}>
-                  <TableCell className="font-medium">{item.id}</TableCell>
-                  <TableCell>{item.provider}</TableCell>
-                  <TableCell>{item.model}</TableCell>
-                  <TableCell>{item.dimension}</TableCell>
-                  <TableCell>{item.priority}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+          <ModelCandidateProbeTable
+            capability="embedding"
+            candidates={ai.embedding.candidates}
+            extraColumns={[
+              {
+                header: "Dimension",
+                className: "w-[100px]",
+                render: (item) => item.dimension ?? "-"
+              }
+            ]}
+            probeResults={probeResults}
+            probingKeys={probingKeys}
+            onProbeOne={handleProbeOne}
+          />
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle>Rerank 模型配置</CardTitle>
-          <CardDescription>重排模型列表</CardDescription>
+          <div className="flex w-full items-center justify-between gap-3">
+            <CardTitle>Rerank 模型配置</CardTitle>
+            <ModelGroupProbeButton
+              probing={probingCapability === "rerank"}
+              disabled={ai.rerank.candidates.length === 0}
+              onClick={() => handleProbeCapability("rerank")}
+            />
+          </div>
+          <CardDescription>重排模型列表，可探测上游 Rerank API 是否可用</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-4 md:grid-cols-2">
             <InfoItem label="Default Model" value={ai.rerank.defaultModel} />
           </div>
-          <Table className="min-w-[640px]">
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-[220px]">ID</TableHead>
-                <TableHead className="w-[120px]">Provider</TableHead>
-                <TableHead className="w-[200px]">Model</TableHead>
-                <TableHead className="w-[90px]">Priority</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {ai.rerank.candidates.map((item) => (
-                <TableRow key={item.id}>
-                  <TableCell className="font-medium">{item.id}</TableCell>
-                  <TableCell>{item.provider}</TableCell>
-                  <TableCell>{item.model}</TableCell>
-                  <TableCell>{item.priority}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+          <ModelCandidateProbeTable
+            capability="rerank"
+            candidates={ai.rerank.candidates}
+            probeResults={probeResults}
+            probingKeys={probingKeys}
+            onProbeOne={handleProbeOne}
+          />
         </CardContent>
       </Card>
     </div>

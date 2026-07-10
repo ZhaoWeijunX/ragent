@@ -72,6 +72,11 @@ public class AIModelProperties {
     private Stream stream = new Stream();
 
     /**
+     * 模型主动探测配置
+     */
+    private Probe probe = new Probe();
+
+    /**
      * 模型组配置类
      * 包含默认模型、深度思考模型以及候选模型列表
      */
@@ -194,5 +199,22 @@ public class AIModelProperties {
          * 消息分块大小
          */
         private Integer messageChunkSize = 5;
+    }
+
+    /**
+     * 模型主动探测配置
+     */
+    @Data
+    public static class Probe {
+
+        /**
+         * 单模型探测超时（秒）
+         */
+        private Integer timeoutSeconds = 15;
+
+        /**
+         * 批量探测并发度
+         */
+        private Integer parallelism = 4;
     }
 }
