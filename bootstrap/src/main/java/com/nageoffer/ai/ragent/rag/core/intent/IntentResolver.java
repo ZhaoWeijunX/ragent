@@ -105,6 +105,10 @@ public class IntentResolver {
      * 1. 如果总数未超限，直接返回
      * 2. 如果超限，每个子问题至少保留 1 个最高分意图
      * 3. 剩余配额按分数从高到低分配给其他意图
+     *
+     * @param subIntents：{subQuestion_1,{node_1,score_1},...,{node_n,score_n}},
+     *                    ...,
+     *                    {subQuestion_n,{node_1,score_1},...,{node_n,score_n}}
      */
     private List<SubQuestionIntent> capTotalIntents(List<SubQuestionIntent> subIntents) {
         int totalIntents = subIntents.stream()
@@ -134,6 +138,10 @@ public class IntentResolver {
 
     /**
      * 收集所有意图候选，标记所属子问题索引
+     *
+     * @param subIntents :{subQuestion_1,{node_1,score_1},...,{node_n,score_n}},
+     *                    ...,
+     *                    {subQuestion_n,{node_1,score_1},...,{node_n,score_n}}
      */
     private List<IntentCandidate> collectAllCandidates(List<SubQuestionIntent> subIntents) {
         List<IntentCandidate> candidates = new ArrayList<>();

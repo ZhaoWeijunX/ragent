@@ -173,6 +173,7 @@ public class DefaultIntentClassifier implements IntentClassifier, IntentNodeRegi
                 if (!el.isJsonObject()) continue;
                 JsonObject obj = el.getAsJsonObject();
 
+                // 缺失字段，跳过
                 if (!obj.has("id") || !obj.has("score")) continue;
 
                 String id = obj.get("id").getAsString();

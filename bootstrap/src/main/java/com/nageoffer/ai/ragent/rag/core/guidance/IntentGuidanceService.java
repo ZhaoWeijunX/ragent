@@ -67,6 +67,7 @@ public class IntentGuidanceService {
     }
 
     private AmbiguityGroup findAmbiguityGroup(String question, List<SubQuestionIntent> subIntents) {
+        // 前置过滤：只处理单子问题
         if (CollUtil.isEmpty(subIntents) || subIntents.size() != 1) {
             return null;
         }
@@ -76,6 +77,7 @@ public class IntentGuidanceService {
             return null;
         }
 
+        // 按 CATEGORY层 分组
         Map<String, NodeScore> systemBest = candidates.stream()
                 .filter(ns -> StrUtil.isNotBlank(resolveSystemNodeId(ns.getNode())))
                 .collect(Collectors.toMap(
@@ -84,6 +86,7 @@ public class IntentGuidanceService {
                         (a, b) -> a.getScore() >= b.getScore() ? a : b
                 ));
 
+        //分数降序排
         List<NodeScore> ranked = systemBest.values().stream()
                 .sorted(Comparator.comparingDouble(NodeScore::getScore).reversed())
                 .toList();
@@ -166,6 +169,9 @@ public class IntentGuidanceService {
         return false;
     }
 
+    /**
+     * 只保留 KB 类意图，且分数 >= 0.35
+     */
     private List<NodeScore> filterCandidates(List<NodeScore> scores) {
         if (CollUtil.isEmpty(scores)) {
             return List.of();
@@ -173,6 +179,9 @@ public class IntentGuidanceService {
         return NodeScoreFilters.kb(scores, RAGConstant.INTENT_MIN_SCORE);
     }
 
+    /**
+     * 从节点向上追溯到 DOMAIN 级祖先，获取系统名称
+     */
     private String resolveDomainName(IntentNode node) {
         if (node == null) {
             return "";
@@ -269,7 +278,7 @@ public class IntentGuidanceService {
             return "";
         }
         String cleaned = name.trim().toLowerCase(Locale.ROOT);
-        return cleaned.replaceAll("[\\p{Punct}\\s]+", "");
+        return cleaned.replaceAll("[\\p{Punct}\\s]+", ""); //去除所有 Unicode 标点和空白字符
     }
 
     private record AmbiguityGroup(String topicName, List<NodeScore> ranked) {
