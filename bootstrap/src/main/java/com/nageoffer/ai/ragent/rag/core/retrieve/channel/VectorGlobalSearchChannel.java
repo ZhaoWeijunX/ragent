@@ -76,11 +76,13 @@ public class VectorGlobalSearchChannel implements SearchChannel {
         List<NodeScore> allScores = context.getIntents().stream()
                 .flatMap(si -> si.nodeScores().stream())
                 .toList();
+        // 条件1：没有识别出任何意图
         if (CollUtil.isEmpty(allScores)) {
             log.info("未识别出任何意图，启用全局检索");
             return true;
         }
 
+        // 条件2：最高分低于置信度阈值（默认 0.6）
         double maxScore = allScores.stream()
                 .mapToDouble(NodeScore::getScore)
                 .max()
@@ -92,6 +94,7 @@ public class VectorGlobalSearchChannel implements SearchChannel {
             return true;
         }
 
+        // 条件3：只有一个意图且分数低于补充阈值（默认 0.8）
         double supplementThreshold = properties.getChannels().getVectorGlobal().getSingleIntentSupplementThreshold();
         if (allScores.size() == 1 && maxScore < supplementThreshold) {
             log.info("单一中等置信度意图（{}），启用补充全局检索", maxScore);

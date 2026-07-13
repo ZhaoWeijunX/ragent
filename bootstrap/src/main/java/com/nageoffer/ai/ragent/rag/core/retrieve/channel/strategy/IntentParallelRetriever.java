@@ -94,7 +94,7 @@ public class IntentParallelRetriever extends AbstractParallelRetriever<IntentPar
     }
 
     /**
-     * 计算单个意图节点检索 TopK
+     * 意图级别：计算单个意图节点检索 TopK
      */
     private int resolveIntentTopK(NodeScore nodeScore, int fallbackTopK, int topKMultiplier) {
         int baseTopK = fallbackTopK;

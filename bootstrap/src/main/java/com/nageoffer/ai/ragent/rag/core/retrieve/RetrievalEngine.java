@@ -159,7 +159,8 @@ public class RetrievalEngine {
     }
 
     /**
-     * 子问题实际 TopK 计算规则
+     * 子问题级别：实际 TopK 计算规则
+     * 从所有 KB 意图节点中 取最大的 topK 值，没有配置则取全局默认值 (10)
      */
     private int resolveSubQuestionTopK(SubQuestionIntent intent, int fallbackTopK) {
         return NodeScoreFilters.kb(intent.nodeScores()).stream()
