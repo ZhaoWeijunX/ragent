@@ -234,6 +234,12 @@ html.dark *::-webkit-scrollbar-thumb:hover {
   @apply font-mono;
 }
 
+/* typography 默认会给 code 前后插入装饰性反引号，与 Markdown 行内代码叠加重影 */
+.prose :where(code)::before,
+.prose :where(code)::after {
+  content: none;
+}
+
 .prose pre {
   @apply bg-gray-50 text-gray-800;
 }
