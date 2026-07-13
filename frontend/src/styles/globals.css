@@ -243,6 +243,17 @@ html.dark *::-webkit-scrollbar-thumb:hover {
   margin-top: 0.75rem;
 }
 
+/* KaTeX 公式：块级居中，暗色模式下保证可读 */
+.prose .katex-display {
+  margin: 1rem 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.dark .prose .katex {
+  color: #e6edf3;
+}
+
 .prose h1 {
   margin-top: 1rem;
   margin-bottom: 0.75rem;

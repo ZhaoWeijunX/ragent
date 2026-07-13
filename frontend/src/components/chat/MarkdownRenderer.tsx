@@ -4,16 +4,79 @@
 import * as React from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
 import remarkCjkFriendly from "remark-cjk-friendly";
+import rehypeKatex from "rehype-katex";
 import rehypeRaw from "rehype-raw";
-import rehypeSanitize from "rehype-sanitize";
+import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import { Check, Copy, ImageIcon } from "lucide-react";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark, oneLight } from "react-syntax-highlighter/dist/esm/styles/prism";
+import "katex/dist/katex.min.css";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useThemeStore } from "@/stores/themeStore";
+
+/** 放行 KaTeX 输出的标签与 class/style，避免 sanitize 洗掉公式 HTML */
+const markdownSanitizeSchema = {
+  ...defaultSchema,
+  attributes: {
+    ...defaultSchema.attributes,
+    div: [...(defaultSchema.attributes?.div || []), "className", "style"],
+    span: [
+      ...(defaultSchema.attributes?.span || []),
+      "className",
+      "style",
+      "aria-hidden"
+    ],
+    math: ["xmlns", "display"],
+    annotation: ["encoding"],
+    semantics: [],
+    mrow: [],
+    mi: [],
+    mo: [],
+    mn: [],
+    msup: [],
+    msub: [],
+    msubsup: [],
+    mfrac: [],
+    msqrt: [],
+    mroot: [],
+    mtable: [],
+    mtr: [],
+    mtd: [],
+    munder: [],
+    mover: [],
+    munderover: [],
+    mtext: [],
+    mspace: ["width"]
+  },
+  tagNames: [
+    ...(defaultSchema.tagNames || []),
+    "math",
+    "annotation",
+    "semantics",
+    "mrow",
+    "mi",
+    "mo",
+    "mn",
+    "msup",
+    "msub",
+    "msubsup",
+    "mfrac",
+    "msqrt",
+    "mroot",
+    "mtable",
+    "mtr",
+    "mtd",
+    "munder",
+    "mover",
+    "munderover",
+    "mtext",
+    "mspace"
+  ]
+};
 
 interface MarkdownRendererProps {
   content: string;
@@ -24,8 +87,16 @@ export function MarkdownRenderer({ content }: MarkdownRendererProps) {
 
   return (
     <ReactMarkdown
-      remarkPlugins={[[remarkGfm, { singleTilde: false }], remarkCjkFriendly]}
-      rehypePlugins={[rehypeRaw, rehypeSanitize]}
+      remarkPlugins={[
+        [remarkGfm, { singleTilde: false }],
+        remarkMath,
+        remarkCjkFriendly
+      ]}
+      rehypePlugins={[
+        [rehypeKatex, { throwOnError: false, strict: "ignore" }],
+        rehypeRaw,
+        [rehypeSanitize, markdownSanitizeSchema]
+      ]}
       components={{
         code({ inline, className, children, node, ...props }) {
           const match = /language-(\w+)/.exec(className || "");
