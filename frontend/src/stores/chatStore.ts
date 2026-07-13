@@ -36,6 +36,7 @@ interface ChatState {
   updateSessionTitle: (sessionId: string, title: string) => void;
   setDeepThinkingEnabled: (enabled: boolean) => void;
   sendMessage: (content: string) => Promise<void>;
+  regenerateMessage: (assistantMessageId: string) => Promise<void>;
   cancelGeneration: () => void;
   appendStreamContent: (delta: string) => void;
   appendThinkingContent: (delta: string) => void;
@@ -453,6 +454,29 @@ export const useChatStore = create<ChatState>((set, get) => ({
         });
       }
     }
+  },
+  regenerateMessage: async (assistantMessageId) => {
+    if (get().isStreaming) return;
+
+    const messages = get().messages;
+    const assistantIdx = messages.findIndex((message) => message.id === assistantMessageId);
+    if (assistantIdx < 0) {
+      toast.error("未找到要重新生成的回答");
+      return;
+    }
+
+    let userIdx = assistantIdx - 1;
+    while (userIdx >= 0 && messages[userIdx].role !== "user") {
+      userIdx -= 1;
+    }
+    if (userIdx < 0) {
+      toast.error("未找到对应的用户问题，无法重新发送");
+      return;
+    }
+
+    const userContent = messages[userIdx].content;
+    set({ messages: messages.slice(0, userIdx) });
+    await get().sendMessage(userContent);
   },
   cancelGeneration: () => {
     const { isStreaming, streamTaskId } = get();
