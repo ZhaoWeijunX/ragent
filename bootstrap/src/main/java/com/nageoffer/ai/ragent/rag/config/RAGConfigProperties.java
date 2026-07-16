@@ -68,4 +68,11 @@ public class RAGConfigProperties {
      */
     @Value("${rag.context.enrich.enabled:true}")
     private Boolean contextEnrichEnabled;
+
+    /**
+     * 是否在日志中输出送入 LLM 的完整消息（用于排查）
+     * 默认值：{@code false}
+     */
+    @Value("${rag.debug.log-llm-input:false}")
+    private Boolean logLlmInput;
 }

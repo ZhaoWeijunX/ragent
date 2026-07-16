@@ -24,6 +24,7 @@ import com.nageoffer.ai.ragent.framework.convention.ChatRequest;
 import com.nageoffer.ai.ragent.infra.chat.LLMService;
 import com.nageoffer.ai.ragent.infra.chat.StreamCallback;
 import com.nageoffer.ai.ragent.infra.chat.StreamCancellationHandle;
+import com.nageoffer.ai.ragent.rag.config.RAGConfigProperties;
 import com.nageoffer.ai.ragent.rag.core.guidance.GuidanceDecision;
 import com.nageoffer.ai.ragent.rag.core.guidance.IntentGuidanceService;
 import com.nageoffer.ai.ragent.rag.core.intent.IntentResolver;
@@ -62,6 +63,7 @@ import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.CHAT_SYSTEM_PROMP
 public class StreamChatPipeline {
 
     private final SearchChannelProperties searchProperties;
+    private final RAGConfigProperties ragConfigProperties;
     private final ConversationMemoryService memoryService;
     private final QueryRewriteService queryRewriteService;
     private final IntentResolver intentResolver;
@@ -242,6 +244,32 @@ public class StreamChatPipeline {
                 .topP(ctx.hasMcp() ? 0.8D : 1D)
                 .build();
 
+        logLlmInputIfEnabled(ctx, messages);
+
         return llmService.streamChat(chatRequest, callback);
+    }
+
+    /**
+     * 调试：输出检索证据与 LLM 入参，便于排查内容
+     */
+    private void logLlmInputIfEnabled(RetrievalContext ctx, List<ChatMessage> messages) {
+        if (!Boolean.TRUE.equals(ragConfigProperties.getLogLlmInput())) {
+            return;
+        }
+        log.info("RAG LLM 输入排查 - mcpContext chars={}, kbContext chars={}",
+                StrUtil.length(ctx.getMcpContext()), StrUtil.length(ctx.getKbContext()));
+        if (StrUtil.isNotBlank(ctx.getMcpContext())) {
+            log.info("RAG LLM 输入排查 - mcpContext:\n{}", ctx.getMcpContext());
+        }
+        if (StrUtil.isNotBlank(ctx.getKbContext())) {
+            log.info("RAG LLM 输入排查 - kbContext:\n{}", ctx.getKbContext());
+        }
+        for (int i = 0; i < messages.size(); i++) {
+            ChatMessage message = messages.get(i);
+            String role = message.getRole() != null ? message.getRole().name() : "UNKNOWN";
+            String content = StrUtil.nullToEmpty(message.getContent());
+            log.info("RAG LLM 输入排查 - message {} role={} chars={}:\n{}",
+                    i + 1, role, content.length(), content);
+        }
     }
 }
