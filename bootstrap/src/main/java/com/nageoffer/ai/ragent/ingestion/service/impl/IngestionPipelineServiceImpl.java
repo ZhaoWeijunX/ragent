@@ -193,7 +193,6 @@ public class IngestionPipelineServiceImpl implements IngestionPipelineService {
         if (nodes == null) {
             return;
         }
-        // 全量替换节点：须物理删除（含历史软删记录），否则再次 PUT 时逻辑删除会与 uk(pipeline_id, node_id, deleted) 冲突
         nodeMapper.physicalDeleteByPipelineId(pipelineId);
         for (IngestionPipelineNodeRequest node : nodes) {
             if (node == null) {
