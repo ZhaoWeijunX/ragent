@@ -22,3 +22,9 @@ feishu:
 
 mineru:
   api-key: your-mineru-api-key
+
+rag:
+  search:
+    channels:
+      web-search:
+        api-key: your-api-key
