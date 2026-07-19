@@ -74,22 +74,26 @@ public class RetrievalEngine {
      * 检索方法：根据子问题意图列表执行检索，整合知识库和MCP工具的结果
      */
     @RagTraceNode(name = "retrieval-engine", type = "RETRIEVE")
-    public RetrievalContext retrieve(List<SubQuestionIntent> subIntents, int topK) {
+    public RetrievalContext retrieve(List<SubQuestionIntent> subIntents) {
         if (CollUtil.isEmpty(subIntents)) {
             return RetrievalContext.builder()
                     .intentChunks(Map.of())
                     .build();
         }
 
-        int finalTopK = topK > 0 ? topK : searchProperties.getDefaultTopK();
+        // 一次算好检索预算：全 subquestion 共用。最终条数即配置的 default-top-k（启动已校验 >0），是 contextTopK 段唯一真源，
+        // 不再被 max(意图节点 topK) 抬高（node.topK 仍生效，但只管该意图向量召回深度，见 IntentParallelRetriever）
+        int contextTopK = searchProperties.getDefaultTopK();
+        RetrievalBudget budget = new RetrievalBudget(
+                searchProperties.resolveRecallBudget(contextTopK),
+                searchProperties.getFusion().getRerankCandidateLimit(),
+                contextTopK
+        );
         List<CompletableFuture<SubQuestionContext>> tasks = subIntents.stream()
                 .map(si -> CompletableFuture.supplyAsync(
                         () -> {
                             try {
-                                return buildSubQuestionContext(
-                                        si,
-                                        resolveSubQuestionTopK(si, finalTopK)
-                                );
+                                return buildSubQuestionContext(si, budget);
                             } catch (Exception e) {
                                 log.error("子问题上下文构建失败，降级为空上下文，question：{}", si.subQuestion(), e);
                                 return new SubQuestionContext(si.subQuestion(), "", "", Map.of());
@@ -145,31 +149,17 @@ public class RetrievalEngine {
                 .build();
     }
 
-    private SubQuestionContext buildSubQuestionContext(SubQuestionIntent intent, int topK) {
+    private SubQuestionContext buildSubQuestionContext(SubQuestionIntent intent, RetrievalBudget budget) {
         List<NodeScore> kbIntents = NodeScoreFilters.kb(intent.nodeScores());
         List<NodeScore> mcpIntents = NodeScoreFilters.mcp(intent.nodeScores());
 
-        KbResult kbResult = retrieveAndRerank(intent, kbIntents, topK);
+        KbResult kbResult = retrieveAndRerank(intent, kbIntents, budget);
 
         String mcpContext = CollUtil.isNotEmpty(mcpIntents)
                 ? executeMcpAndMerge(intent.subQuestion(), mcpIntents)
                 : "";
 
         return new SubQuestionContext(intent.subQuestion(), kbResult.groupedContext(), mcpContext, kbResult.intentChunks());
-    }
-
-    /**
-     * 子问题实际 TopK 计算规则
-     */
-    private int resolveSubQuestionTopK(SubQuestionIntent intent, int fallbackTopK) {
-        return NodeScoreFilters.kb(intent.nodeScores()).stream()
-                .map(NodeScore::getNode)
-                .filter(Objects::nonNull)
-                .map(IntentNode::getTopK)
-                .filter(Objects::nonNull)
-                .filter(topK -> topK > 0)
-                .max(Integer::compareTo)
-                .orElse(fallbackTopK);
     }
 
     private void appendSection(StringBuilder builder, String section, int index, String question, String context) {
@@ -196,10 +186,10 @@ public class RetrievalEngine {
         return contextFormatter.formatMcpContext(toolResults, mcpIntents);
     }
 
-    private KbResult retrieveAndRerank(SubQuestionIntent intent, List<NodeScore> kbIntents, int topK) {
+    private KbResult retrieveAndRerank(SubQuestionIntent intent, List<NodeScore> kbIntents, RetrievalBudget budget) {
         // 使用多通道检索引擎（是否启用全局检索由置信度阈值决定）
         List<SubQuestionIntent> subIntents = List.of(intent);
-        List<RetrievedChunk> chunks = multiChannelRetrievalEngine.retrieveKnowledgeChannels(subIntents, topK);
+        List<RetrievedChunk> chunks = multiChannelRetrievalEngine.retrieveKnowledgeChannels(subIntents, budget);
 
         if (CollUtil.isEmpty(chunks)) {
             return KbResult.empty();
@@ -221,7 +211,7 @@ public class RetrievalEngine {
             intentChunks.put(MULTI_CHANNEL_KEY, chunks);
         }
 
-        String groupedContext = contextFormatter.formatKbContext(kbIntents, intentChunks, topK);
+        String groupedContext = contextFormatter.formatKbContext(kbIntents, intentChunks, budget.contextTopK());
         return new KbResult(groupedContext, intentChunks);
     }
 

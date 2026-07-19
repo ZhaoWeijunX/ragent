@@ -17,6 +17,7 @@
 
 package com.nageoffer.ai.ragent.rag.core.retrieval.channel;
 
+import com.nageoffer.ai.ragent.rag.core.retrieval.RetrievalBudget;
 import com.nageoffer.ai.ragent.rag.dto.SubQuestionIntent;
 import lombok.Builder;
 import lombok.Data;
@@ -55,9 +56,10 @@ public class SearchContext {
     private List<SubQuestionIntent> intents;
 
     /**
-     * 期望返回的结果数量
+     * 检索预算：召回扇出 / Rerank 候选池上限 / 最终条数，三段各自独立
+     * 各阶段只读属于自己的那一段，避免用一个 topK 承载多重语义
      */
-    private int topK;
+    private RetrievalBudget budget;
 
     /**
      * 扩展元数据

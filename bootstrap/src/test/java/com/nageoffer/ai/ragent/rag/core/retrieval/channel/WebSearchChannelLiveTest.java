@@ -19,6 +19,7 @@ package com.nageoffer.ai.ragent.rag.core.retrieval.channel;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nageoffer.ai.ragent.rag.config.SearchChannelProperties;
+import com.nageoffer.ai.ragent.rag.core.retrieval.RetrievalBudget;
 import okhttp3.OkHttpClient;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -48,11 +49,11 @@ class WebSearchChannelLiveTest {
         WebSearchChannel channel = new WebSearchChannel(
                 new OkHttpClient(), new ObjectMapper(), properties);
 
-        assertTrue(channel.isEnabled(SearchContext.builder().topK(3).build()));
+        assertTrue(channel.isEnabled(SearchContext.builder().budget(RetrievalBudget.uniform(3)).build()));
 
         SearchChannelResult result = channel.search(SearchContext.builder()
                 .originalQuestion("What is Retrieval-Augmented Generation?")
-                .topK(3)
+                .budget(RetrievalBudget.uniform(3))
                 .build());
 
         assertFalse(result.getChunks().isEmpty(), "真实 API 应返回至少一条结果");

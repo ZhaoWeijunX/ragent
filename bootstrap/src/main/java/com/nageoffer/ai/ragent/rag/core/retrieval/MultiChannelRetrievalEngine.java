@@ -27,7 +27,6 @@ import com.nageoffer.ai.ragent.rag.core.retrieval.postprocessor.SearchResultPost
 import com.nageoffer.ai.ragent.rag.dto.SubQuestionIntent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
 import java.util.Comparator;
@@ -58,13 +57,13 @@ public class MultiChannelRetrievalEngine {
      * 执行多通道检索（仅 KB 场景）
      *
      * @param subIntents 子问题意图列表
-     * @param topK       期望返回的结果数量
+     * @param budget     检索预算（召回扇出 / Rerank 候选池上限 / 最终条数）
      * @return 检索到的 Chunk 列表
      */
     @RagTraceNode(name = "multi-channel-retrieval", type = "RETRIEVE_CHANNEL")
-    public List<RetrievedChunk> retrieveKnowledgeChannels(List<SubQuestionIntent> subIntents, int topK) {
+    public List<RetrievedChunk> retrieveKnowledgeChannels(List<SubQuestionIntent> subIntents, RetrievalBudget budget) {
         // 构建检索上下文
-        SearchContext context = buildSearchContext(subIntents, topK);
+        SearchContext context = buildSearchContext(subIntents, budget);
 
         // 【阶段1：多通道并行检索】
         List<SearchChannelResult> channelResults = executeSearchChannels(context);
@@ -208,14 +207,14 @@ public class MultiChannelRetrievalEngine {
     /**
      * 构建检索上下文
      */
-    private SearchContext buildSearchContext(List<SubQuestionIntent> subIntents, int topK) {
+    private SearchContext buildSearchContext(List<SubQuestionIntent> subIntents, RetrievalBudget budget) {
         String question = CollUtil.isEmpty(subIntents) ? "" : subIntents.get(0).subQuestion();
 
         return SearchContext.builder()
                 .originalQuestion(question)
                 .rewrittenQuestion(question)
                 .intents(subIntents)
-                .topK(topK)
+                .budget(budget)
                 .build();
     }
 }

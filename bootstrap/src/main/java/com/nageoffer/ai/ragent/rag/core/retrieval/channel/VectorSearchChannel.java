@@ -161,13 +161,12 @@ public class VectorSearchChannel implements SearchChannel {
     }
 
     /**
-     * 意图作用域：并行检索命中库（每库 fan-out topK * 倍率）
+     * 意图作用域：并行检索命中库（每库按 recallBudget 召回，node.topK 可覆盖为该意图绝对深度）
      */
     private List<RetrievedChunk> retrieveByIntent(SearchContext context, List<NodeScore> kbIntents) {
         log.info("执行向量检索（意图作用域），命中 {} 个 KB 意图，问题：{}", kbIntents.size(), context.getMainQuestion());
-        int topKMultiplier = properties.getChannels().getVector().getIntentDirected().getTopKMultiplier();
-        return intentRetriever.executeParallelRetrieval(
-                context.getMainQuestion(), kbIntents, context.getTopK(), topKMultiplier);
+        return intentRetriever.retrieveByIntents(
+                context.getMainQuestion(), kbIntents, context.getBudget().recallBudget());
     }
 
     /**
@@ -184,12 +183,12 @@ public class VectorSearchChannel implements SearchChannel {
 
         SearchChannelProperties.Global config = properties.getChannels().getVector().getGlobal();
         if (retrieverService.supportsGlobalRetrieval()) {
-            // 后端支持单次全局检索（如 PG）：一条带总预算的 SQL 跨库召回
-            int budget = config.resolveCandidateBudget(context.getTopK());
+            // 后端支持单次全局检索（如 PG）：一条带总预算的 SQL 跨库召回。candidate-budget 未配置时跟随 Rerank 候选池上限
+            int budget = config.resolveCandidateBudget(context.getBudget().candidateLimit());
             return retrieverService.retrieveGlobal(context.getMainQuestion(), collections, budget);
         }
         // 后端不支持单次全局检索时：退化为逐库并行 fan-out 兜底，每库取候选预算，合并后交下游截断
-        int perCollectionBudget = config.resolveCandidateBudget(context.getTopK());
+        int perCollectionBudget = config.resolveCandidateBudget(context.getBudget().candidateLimit());
         return globalRetriever.executeParallelRetrieval(context.getMainQuestion(), collections, perCollectionBudget);
     }
 }

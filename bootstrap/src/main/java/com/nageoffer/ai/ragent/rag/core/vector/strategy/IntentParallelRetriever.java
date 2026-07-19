@@ -47,19 +47,19 @@ public class IntentParallelRetriever extends AbstractParallelRetriever<IntentPar
     }
 
     /**
-     * 执行并行检索（重载方法，支持动态 TopK 计算）
+     * 按意图节点并行检索：将 NodeScore 解析为各自召回深度后委托模板方法执行
+     * （独立命名以避免与父类 {@code executeParallelRetrieval(String, List, int)} 泛型擦除后签名冲突）
      */
-    public List<RetrievedChunk> executeParallelRetrieval(String question,
-                                                         List<NodeScore> targets,
-                                                         int fallbackTopK,
-                                                         int topKMultiplier) {
+    public List<RetrievedChunk> retrieveByIntents(String question,
+                                                  List<NodeScore> targets,
+                                                  int recallBudget) {
         List<IntentTask> intentTasks = targets.stream()
                 .map(nodeScore -> new IntentTask(
                         nodeScore,
-                        resolveIntentTopK(nodeScore, fallbackTopK, topKMultiplier)
+                        resolveIntentTopK(nodeScore, recallBudget)
                 ))
                 .toList();
-        return super.executeParallelRetrieval(question, intentTasks, fallbackTopK);
+        return super.executeParallelRetrieval(question, intentTasks, recallBudget);
     }
 
     @Override
@@ -95,21 +95,15 @@ public class IntentParallelRetriever extends AbstractParallelRetriever<IntentPar
 
     /**
      * 计算单个意图节点检索 TopK
+     * 节点级 node.topK 为该意图的绝对召回深度、优先；否则用统一的每通道召回条数 recallBudget
      */
-    private int resolveIntentTopK(NodeScore nodeScore, int fallbackTopK, int topKMultiplier) {
-        int baseTopK = fallbackTopK;
+    private int resolveIntentTopK(NodeScore nodeScore, int recallBudget) {
         if (nodeScore != null && nodeScore.getNode() != null) {
             Integer nodeTopK = nodeScore.getNode().getTopK();
             if (nodeTopK != null && nodeTopK > 0) {
-                baseTopK = nodeTopK;
+                return nodeTopK;
             }
         }
-
-        if (topKMultiplier <= 0) {
-            log.warn("意图定向通道倍率配置异常: {}, 使用基础 TopK: {}", topKMultiplier, baseTopK);
-            return baseTopK;
-        }
-
-        return baseTopK * topKMultiplier;
+        return recallBudget;
     }
 }

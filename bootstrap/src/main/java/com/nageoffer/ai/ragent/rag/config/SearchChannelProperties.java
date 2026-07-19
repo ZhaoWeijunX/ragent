@@ -18,21 +18,34 @@
 package com.nageoffer.ai.ragent.rag.config;
 
 import lombok.Data;
+import org.springframework.beans.factory.InitializingBean;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
 /**
  * RAG 检索配置
+ * <p>
+ * 检索漏斗有三段各自独立的预算（见 {@code RetrievalBudget}）：
+ * 召回扇出 {@link #recallBudget} → Rerank 候选池上限 {@link Fusion#rerankCandidateLimit} → 最终条数 {@link #defaultTopK}，
+ * 三者须单调收窄，启动时由 {@link #afterPropertiesSet()} 校验
  */
 @Data
 @Component
 @ConfigurationProperties(prefix = "rag.search")
-public class SearchChannelProperties {
+public class SearchChannelProperties implements InitializingBean {
 
     /**
-     * 默认返回的 TopK
+     * 默认最终进 LLM 的条数（检索预算的 contextTopK 段）
+     * 即产品语义的 topK；请求可覆盖，未覆盖时用此值
      */
     private int defaultTopK = 10;
+
+    /**
+     * 每通道召回条数（检索预算的 recallBudget 段）
+     * 各通道（向量意图路 / 关键词 / 图谱）统一按此绝对值召回候选，交由下游 RRF+Rerank 收窄
+     * 须 ≥ defaultTopK（漏斗单调，启动校验）；<=0 时回退 defaultTopK 作兜底守卫
+     */
+    private int recallBudget = 20;
 
     /**
      * 检索通道配置
@@ -43,6 +56,40 @@ public class SearchChannelProperties {
      * 多通道结果融合配置
      */
     private Fusion fusion = new Fusion();
+
+    /**
+     * 解析召回扇出基数：优先使用显式 recallBudget，未配置（<=0）时回退到最终条数
+     */
+    public int resolveRecallBudget(int contextTopK) {
+        return recallBudget > 0 ? recallBudget : contextTopK;
+    }
+
+    /**
+     * 校验检索预算的漏斗单调不变式：recallBudget ≥ contextTopK 且 candidateLimit ≥ contextTopK
+     * 违反意味着「召回还没最终条数多」或「送进 Rerank 的候选还没最终条数多」，Rerank 无从产出足量结果，
+     * 属配置矛盾，启动即失败胜过线上悄悄少召回
+     */
+    @Override
+    public void afterPropertiesSet() {
+        int contextTopK = defaultTopK;
+        if (contextTopK <= 0) {
+            throw new IllegalStateException("rag.search.default-top-k 必须为正数，当前：" + contextTopK);
+        }
+        int resolvedRecall = resolveRecallBudget(contextTopK);
+        if (resolvedRecall < contextTopK) {
+            throw new IllegalStateException(String.format(
+                    "检索预算漏斗不变式被破坏：recallBudget(%d) < contextTopK(%d)，召回扇出不得小于最终条数，"
+                            + "请调大 rag.search.recall-budget 或调小 rag.search.default-top-k",
+                    resolvedRecall, contextTopK));
+        }
+        int candidateLimit = fusion.getRerankCandidateLimit();
+        if (candidateLimit > 0 && candidateLimit < contextTopK) {
+            throw new IllegalStateException(String.format(
+                    "检索预算漏斗不变式被破坏：candidateLimit(%d) < contextTopK(%d)，送入 Rerank 的候选池不得小于最终条数，"
+                            + "请调大 rag.search.fusion.rerank-candidate-limit 或调小 rag.search.default-top-k",
+                    candidateLimit, contextTopK));
+        }
+    }
 
     @Data
     public static class Channels {
@@ -99,11 +146,6 @@ public class SearchChannelProperties {
          * 低于此分数的意图节点会被过滤，不参与「是否收窄作用域」的判定
          */
         private double minIntentScore = 0.4;
-
-        /**
-         * TopK 倍数
-         */
-        private int topKMultiplier = 2;
     }
 
     @Data
@@ -123,17 +165,18 @@ public class SearchChannelProperties {
 
         /**
          * 全局检索候选预算
-         * 全局作用域取数的唯一旋钮：单次跨库查询的 LIMIT 上限（fan-out 兜底路径下为每库上限），
-         * 与 fusion.rerankCandidateLimit 配合控制候选规模；<=0 时回退到 topK
+         * 全局作用域取数的旋钮：单次跨库查询的 LIMIT 上限（fan-out 兜底路径下为每库上限）
+         * <=0 时回退到 Rerank 候选池上限 rerankCandidateLimit：全局路召回超过候选池上限的部分下游必被截断、属空转，
+         * 故默认让它跟随候选池上限（单一真源）；确需更宽的跨库广度时填正值独立覆盖
          */
-        private int candidateBudget = 100;
+        private int candidateBudget = 0;
 
         /**
          * 解析全局检索候选预算
-         * 优先使用绝对预算 candidateBudget；未配置（<=0）时回退到 topK
+         * 优先使用绝对预算 candidateBudget；未配置（<=0）时回退到传入的 Rerank 候选池上限
          */
-        public int resolveCandidateBudget(int topK) {
-            return candidateBudget > 0 ? candidateBudget : topK;
+        public int resolveCandidateBudget(int candidateLimitFallback) {
+            return candidateBudget > 0 ? candidateBudget : candidateLimitFallback;
         }
     }
 
@@ -145,18 +188,6 @@ public class SearchChannelProperties {
          * 仅当 rag.keyword.type != none（存在关键词检索实现）时才会真正生效
          */
         private boolean enabled = false;
-
-        /**
-         * 检索范围
-         * intent 仅意图域 / global 全库 / both 意图优先，无意图时全库兜底
-         */
-        private String mode = "both";
-
-        /**
-         * TopK 倍数
-         * 关键词召回更多候选，后续通过融合与 Rerank 筛选
-         */
-        private int topKMultiplier = 2;
     }
 
     @Data
@@ -167,18 +198,6 @@ public class SearchChannelProperties {
          * 仅当开启图谱后端（rag.graph.type != none）时才会真正生效
          */
         private boolean enabled = false;
-
-        /**
-         * 检索范围
-         * intent 仅意图域 / global 全局图 / both 意图优先，无意图时全局兜底
-         */
-        private String mode = "both";
-
-        /**
-         * TopK 倍数
-         * 图谱召回实体/关系与来源分块，候选交由融合与 Rerank 精排
-         */
-        private int topKMultiplier = 2;
     }
 
     @Data

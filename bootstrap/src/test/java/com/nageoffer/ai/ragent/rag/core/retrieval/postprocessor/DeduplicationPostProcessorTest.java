@@ -18,6 +18,7 @@
 package com.nageoffer.ai.ragent.rag.core.retrieval.postprocessor;
 
 import com.nageoffer.ai.ragent.framework.convention.RetrievedChunk;
+import com.nageoffer.ai.ragent.rag.core.retrieval.RetrievalBudget;
 import com.nageoffer.ai.ragent.rag.core.retrieval.channel.SearchChannelResult;
 import com.nageoffer.ai.ragent.rag.core.retrieval.channel.SearchChannelType;
 import com.nageoffer.ai.ragent.rag.core.retrieval.channel.SearchContext;
@@ -65,22 +66,23 @@ class DeduplicationPostProcessorTest {
         chunks.add(chunk(null, "BB", 0.8f));
 
         List<RetrievedChunk> out = new DeduplicationPostProcessor()
-                .process(chunks, singleChannel(chunks), SearchContext.builder().originalQuestion("q").topK(10).build());
+                .process(chunks, singleChannel(chunks), SearchContext.builder().originalQuestion("q").budget(RetrievalBudget.uniform(10)).build());
 
         assertEquals(2, out.size(), "哈希碰撞的不同内容 Chunk 不允许被去重合并");
     }
 
     @Test
-    void nullScoreDoesNotThrowOnTieBreak() {
+    void nullScoreDedupKeepsFirstOccurrence() {
         List<RetrievedChunk> chunks = new ArrayList<>();
         chunks.add(chunk("same-id", "文本A", null));
         chunks.add(chunk("same-id", "文本B", 0.5f));
 
         assertDoesNotThrow(() -> {
             List<RetrievedChunk> out = new DeduplicationPostProcessor()
-                    .process(chunks, singleChannel(chunks), SearchContext.builder().originalQuestion("q").topK(10).build());
+                    .process(chunks, singleChannel(chunks), SearchContext.builder().originalQuestion("q").budget(RetrievalBudget.uniform(10)).build());
             assertEquals(1, out.size(), "同 id 应去重为 1 条");
-            assertEquals(Float.valueOf(0.5f), out.get(0).getScore(), "应保留有分数的那条");
+            // 按 key 去重保留首次出现的实例，不比较分数（跨通道量纲不可比，最终名次交由下游 RRF）；null 分数不应抛异常
+            assertEquals("文本A", out.get(0).getText(), "应保留首次出现的实例");
         });
     }
 }

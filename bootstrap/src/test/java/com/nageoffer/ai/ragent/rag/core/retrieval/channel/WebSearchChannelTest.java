@@ -20,6 +20,7 @@ package com.nageoffer.ai.ragent.rag.core.retrieval.channel;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nageoffer.ai.ragent.framework.convention.RetrievedChunk;
 import com.nageoffer.ai.ragent.rag.config.SearchChannelProperties;
+import com.nageoffer.ai.ragent.rag.core.retrieval.RetrievalBudget;
 import com.sun.net.httpserver.HttpServer;
 import okhttp3.OkHttpClient;
 import org.junit.jupiter.api.AfterEach;
@@ -267,12 +268,11 @@ class WebSearchChannelTest {
     }
 
     @Test
-    @DisplayName("通道元信息：类型 WEB_SEARCH，优先级在本地通道之后")
+    @DisplayName("通道元信息：类型 WEB_SEARCH、名称正确")
     void channelWiring() {
         WebSearchChannel channel = newChannel(defaultProperties("test-key"));
         assertEquals(SearchChannelType.WEB_SEARCH, channel.getType());
         assertEquals("YouComWebSearch", channel.getName());
-        assertTrue(channel.getPriority() > 10, "联网检索优先级应排在向量全局(10)之后");
     }
 
     // ============== helpers ==============
@@ -306,7 +306,7 @@ class WebSearchChannelTest {
     private SearchContext context(String question) {
         return SearchContext.builder()
                 .originalQuestion(question)
-                .topK(10)
+                .budget(RetrievalBudget.uniform(10))
                 .build();
     }
 

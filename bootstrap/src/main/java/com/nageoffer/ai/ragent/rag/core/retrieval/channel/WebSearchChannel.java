@@ -44,7 +44,7 @@ import java.util.List;
  * - rag.search.channels.web-search.enabled = true
  * - 可解析到 API Key（优先取配置 api-key，为空回退环境变量 YDC_API_KEY）
  * <p>
- * 优先级排在所有本地通道（意图定向 1 / 关键词 5 / 向量全局 10）之后；
+ * 作为可选的外部通道与本地通道并行执行，结果统一进 RRF 融合，通道间无先后与优先级之分；
  * 任何失败（网络异常、非 2xx、响应格式异常、超时）只记录 warn 日志并返回空结果，
  * 绝不让联网检索故障影响本地检索链路
  * <p>

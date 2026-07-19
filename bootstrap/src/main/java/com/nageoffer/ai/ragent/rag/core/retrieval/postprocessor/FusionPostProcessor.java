@@ -90,7 +90,7 @@ public class FusionPostProcessor implements SearchResultPostProcessor {
                 : chunks;
 
         // 截断候选池：仅保留高分前 N 个送入 Rerank，控制其成本与延迟
-        return truncateForRerank(ranked, results);
+        return truncateForRerank(ranked, results, context.getBudget().candidateLimit());
     }
 
     /**
@@ -120,11 +120,10 @@ public class FusionPostProcessor implements SearchResultPostProcessor {
     }
 
     /**
-     * 按 rerankCandidateLimit 截断候选池，仅保留前 N 个送入下游 Rerank
+     * 按候选池上限截断，仅保留前 N 个送入下游 Rerank
      * limit <= 0 表示不截断（全量透传）
      */
-    private List<RetrievedChunk> truncateForRerank(List<RetrievedChunk> ranked, List<SearchChannelResult> results) {
-        int limit = properties.getFusion().getRerankCandidateLimit();
+    private List<RetrievedChunk> truncateForRerank(List<RetrievedChunk> ranked, List<SearchChannelResult> results, int limit) {
         boolean truncate = limit > 0 && ranked.size() > limit;
         List<RetrievedChunk> candidates = truncate
                 ? new ArrayList<>(ranked.subList(0, limit))

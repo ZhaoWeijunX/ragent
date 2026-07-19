@@ -37,7 +37,7 @@ import java.util.List;
  * 基于 LightRAG 的图谱召回：擅长多跳关系推理与实体为中心的聚合，与向量 / 关键词互补
  * 仅当开启图谱后端（rag.graph.type=lightrag）时才注册，否则整个通道不存在，引擎自动退化为无图谱检索
  * <p>
- * 优先级介于意图定向(1) 与关键词(5) 之间
+ * 与其他通道并行执行，结果统一进 RRF 融合，通道间无先后与优先级之分
  * <p>
  * 说明：LightRAG /query 无 per-request workspace，单实例即单图，本通道 Phase1 面向全局图召回；
  * 按 KB 隔离子图（借 file_path 归属过滤或多实例）留待后续阶段。mode=intent 时无 KB 意图则跳过，语义对齐关键词通道
@@ -47,9 +47,6 @@ import java.util.List;
 @RequiredArgsConstructor
 @ConditionalOnProperty(prefix = "rag.graph", name = "type", havingValue = "lightrag")
 public class GraphSearchChannel implements SearchChannel {
-
-    private static final String MODE_INTENT = "intent";
-    private static final String MODE_GLOBAL = "global";
 
     /**
      * 过滤时向 LightRAG 的请求量上浮倍数
@@ -80,20 +77,10 @@ public class GraphSearchChannel implements SearchChannel {
     public SearchChannelResult search(SearchContext context) {
         long startTime = System.currentTimeMillis();
         try {
-            String mode = properties.getChannels().getGraph().getMode();
-            List<String> intentCollections = extractIntentCollections(context);
+            // 有 KB 意图则收敛到命中库过滤，否则空集=查全局图不过滤（与向量通道自动作用域一致：意图优先、无意图全局）
+            List<String> collections = extractIntentCollections(context);
 
-            // intent 模式且无可定向的 KB 意图库则跳过，语义与关键词通道一致
-            if (MODE_INTENT.equalsIgnoreCase(mode) && CollUtil.isEmpty(intentCollections)) {
-                log.info("图谱检索为 intent 模式但无 KB 意图，跳过");
-                return emptyResult(startTime);
-            }
-
-            // 按 mode 决定过滤范围：global 不过滤（空）/ intent、both 有意图库则收敛到意图域，否则全局兜底（空）
-            List<String> collections = resolveCollections(mode, intentCollections);
-
-            int topKMultiplier = properties.getChannels().getGraph().getTopKMultiplier();
-            int baseTopK = context.getTopK() * Math.max(1, topKMultiplier);
+            int baseTopK = context.getBudget().recallBudget();
             // 过滤生效时上浮请求量补召回；全局不过滤则用基础量
             int topK = CollUtil.isEmpty(collections) ? baseTopK : baseTopK * FILTER_TOPK_BOOST;
             String queryMode = graphProperties.getLightrag().getQueryMode();
@@ -114,17 +101,6 @@ public class GraphSearchChannel implements SearchChannel {
             log.error("图谱检索失败", e);
             return emptyResult(startTime);
         }
-    }
-
-    /**
-     * 按 mode 解析过滤范围
-     * global 不过滤（空）/ intent、both 直接用意图域（空则自然回退全局不过滤）
-     */
-    private List<String> resolveCollections(String mode, List<String> intentCollections) {
-        if (MODE_GLOBAL.equalsIgnoreCase(mode)) {
-            return List.of();
-        }
-        return intentCollections;
     }
 
     /**

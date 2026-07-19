@@ -72,7 +72,7 @@ public class RerankPostProcessor implements SearchResultPostProcessor {
         List<RetrievedChunk> reranked = rerankService.rerank(
                 context.getMainQuestion(),
                 chunks,
-                context.getTopK()
+                context.getBudget().contextTopK()
         );
 
         logAttribution(chunks, reranked, results);
