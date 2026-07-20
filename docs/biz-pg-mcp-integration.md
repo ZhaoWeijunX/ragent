@@ -33,7 +33,7 @@ spring:
     password: postgres
 ```
 
-本地覆盖见 `mcp-server/src/main/resources/application-local.yaml.example`。
+数据源默认连本机 `ragent`（可用 `RAGENT_INFRA_HOST` 覆盖主机）。密钥（天气 / You.com）使用仓库根目录 `.env`。
 
 ## 验证
 

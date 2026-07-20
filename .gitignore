@@ -42,19 +42,12 @@ node_modules/
 dist/
 .vite/
 .env.local
+
+### Secrets / local overrides ###
+.env
+!.env.example
 resources/docker/graphrag/.env
-bootstrap/src/main/resources/application-local.yaml
-mcp-server/src/main/resources/application-local.yaml
 
 ### Tmp Out ###
 .output/
 docs/temp
-
-### Local knowledge base docs (not versioned) ###
-#resources/docs/ragent-test/**
-#!resources/docs/ragent-test/
-#!resources/docs/ragent-test/intent-tree-design.md
-#
-#resources/docs/knowledge/biz/biz-security/**
-#!resources/docs/knowledge/biz/biz-security/
-#!resources/docs/knowledge/biz/biz-security/intent-tree-design.md

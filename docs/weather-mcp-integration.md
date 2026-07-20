@@ -61,7 +61,7 @@ sequenceDiagram
 | `mcp/executor/WeatherMcpExecutor.java` | 删除 Mock 逻辑，调用 `QWeatherClient` |
 | `mcp/McpServerApplication.java` | `@EnableConfigurationProperties(WeatherProperties.class)` |
 | `resources/application.yaml` | 增加 `weather.qweather` 配置 |
-| `resources/application-local.yaml.example` | 本地 Key / Host 示例 |
+| 仓库根目录 `.env.example` | `QWEATHER_API_KEY` / `QWEATHER_API_HOST` 示例 |
 
 ### 3.3 删除 / 合并
 
@@ -109,21 +109,16 @@ weather:
     timeout-ms: 5000
 ```
 
-本地开发复制示例并填写真实值：
+本地开发在仓库根目录配置环境变量：
 
 ```bash
-cp mcp-server/src/main/resources/application-local.yaml.example \
-   mcp-server/src/main/resources/application-local.yaml
+cp .env.example .env
+# 编辑 .env：
+# QWEATHER_API_KEY=你的API_KEY
+# QWEATHER_API_HOST=xxxxx.re.qweatherapi.com   # 可省略 https://
 ```
 
-```yaml
-weather:
-  qweather:
-    api-key: 你的API_KEY
-    api-host: xxxxx.re.qweatherapi.com   # 可省略 https://
-```
-
-`application-local.yaml` 已加入 `.gitignore`，勿提交密钥。
+启动前注入（IDEA 加载 `.env`，或 PowerShell：`. .\scripts\export-dotenv.ps1`）。根目录 `.env` 已加入 `.gitignore`，勿提交密钥。
 
 ### 5.2 bootstrap
 
@@ -247,7 +242,7 @@ mcp-server/
 ├── src/main/java/.../mcp/executor/WeatherMcpExecutor.java
 └── src/main/resources/
     ├── application.yaml
-    └── application-local.yaml.example  # 复制为 application-local.yaml 使用
+    └── application.yaml                # ${QWEATHER_API_KEY:} / ${QWEATHER_API_HOST:}
 ```
 
 ---

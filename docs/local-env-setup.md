@@ -18,7 +18,7 @@
 
 ## 2. 中间件一览
 
-默认配置见 `bootstrap/src/main/resources/application.yaml`，本机主机名统一为 `localhost`（可通过 `ragent.infra.host` 覆盖）。
+默认配置见 `bootstrap/src/main/resources/application.yaml`，本机主机名统一为 `localhost`（可通过环境变量 `RAGENT_INFRA_HOST` 覆盖，见根目录 `.env`）。
 
 | 组件 | 端口 | 账号 / 密码 | 是否必开 |
 |------|------|-------------|----------|
@@ -308,23 +308,37 @@ docker exec -it redis redis-cli -a 123456 DEL ragent:intent:tree
 
 ---
 
-## 5. 本地密钥配置
+## 5. 本地密钥配置（环境变量 / `.env`）
+
+密钥统一放在**仓库根目录** `.env`，由进程环境变量注入；`application.yaml` 已通过 `${BAILIAN_API_KEY:}` 等占位符读取。Spring Boot **不会**自动加载 `.env`。
 
 ```bash
-cp bootstrap/src/main/resources/application-local.yaml.example \
-   bootstrap/src/main/resources/application-local.yaml
+cp .env.example .env
+# 编辑 .env，填写真实值
 ```
+
+启动前注入（任选其一）：
+
+| 方式 | 做法 |
+|------|------|
+| IDEA | Run Configuration → Environment variables → 加载仓库根目录 `.env`（可用 EnvFile 插件） |
+| PowerShell | `. .\scripts\export-dotenv.ps1` 后再 `mvn spring-boot:run` |
+| bash | `set -a && source .env && set +a` |
 
 按需填写（至少保证 **Chat** 与 **Embedding** 各有一个可用候选）：
 
-| 配置项 | 用途 | 缺失影响 |
-|--------|------|----------|
-| `ai.providers.*.api-key` | 百炼 / SiliconFlow / AiHubMix / DeepSeek 等 | 对应模型不可用；可改用 Ollama |
-| `mineru.api-key` | PDF / Word / PPT 解析 | 复杂文档入库失败 |
-| `feishu.app-id` / `app-secret` | 飞书 Wiki / 文档 | 飞书导入不可用，其它功能不受影响 |
-| `ragent.infra.host` | 中间件不在本机时改主机名 | 默认 `localhost` |
+| 环境变量 | 用途 | 缺失影响 |
+|----------|------|----------|
+| `BAILIAN_API_KEY` / `SILICONFLOW_API_KEY` / `AIHUBMIX_API_KEY` / `DEEPSEEK_API_KEY` | 各云厂商模型 | 对应模型不可用；可改用 Ollama |
+| `MINERU_API_KEY` | PDF / Word / PPT 解析 | 复杂文档入库失败 |
+| `FEISHU_APP_ID` / `FEISHU_APP_SECRET` | 飞书 Wiki / 文档 | 飞书导入不可用，其它功能不受影响 |
+| `YDC_API_KEY` | You.com 联网搜索（bootstrap 通道 / mcp-server 工具） | 联网搜索不可用 |
+| `QWEATHER_API_KEY` / `QWEATHER_API_HOST` | mcp-server 天气工具 | 天气查询不可用 |
+| `RAGENT_INFRA_HOST` | PG / Redis / RocketMQ / RustFS 主机名 | 默认写在 `.env` 为 `localhost`；远端中间件改此变量即可 |
 
 无 Rerank 密钥时可保持配置中的 `rerank-noop` 候选，或暂时关闭 `rag.rerank.enabled`。
+
+GraphRAG Compose 仍使用独立的 `resources/docker/graphrag/.env`（见该目录 README）。
 
 ---
 
@@ -355,7 +369,7 @@ npm run dev
 
 入口：`com.nageoffer.ai.ragent.mcp.McpServerApplication`，端口 `9099`，与 `rag.mcp.servers[0].url` 一致。
 
-天气工具另需和风天气相关环境变量（见 `mcp-server` 的 `application.yaml`）。
+天气 / You.com 等密钥与 bootstrap 共用仓库根目录 `.env`（`QWEATHER_*`、`YDC_API_KEY`），启动 mcp-server 前同样需注入环境变量。
 
 ---
 
@@ -398,7 +412,7 @@ npm run dev
 
 ## 参考
 
-- [application-local 模板](../bootstrap/src/main/resources/application-local.yaml.example)
+- [根目录 `.env.example`](../.env.example)
 - [数据库脚本目录](../resources/database/)
 - [意图节点示例 SQL](./examples/intent-node-import/)
 - [Milvus 轻量 Compose](../resources/docker/lightweight/README.md)
