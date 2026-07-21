@@ -263,7 +263,8 @@ public class ModelProbeService {
         if (provider == null && !ModelProvider.NOOP.matches(candidate.getProvider())) {
             return null;
         }
-        return new ModelTarget(resolveId(candidate), candidate, provider);
+        // 探测走 Probe.timeoutSeconds，不叠加档位 timeoutMs
+        return new ModelTarget(resolveId(candidate), candidate, provider, null);
     }
 
     private AIModelProperties.ModelCandidate findCandidate(ModelCapability capability, String modelId) {

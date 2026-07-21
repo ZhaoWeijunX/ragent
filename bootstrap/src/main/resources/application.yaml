@@ -256,7 +256,7 @@ ai:
         candidates: [ qwen-plus, qwen3-local, gpt-5.4 ]
         timeout-ms: 30000
       deep:
-        candidates: [ qwen3-max, glm-4.7 ]
+        candidates: [ qwen3-max, glm-4.7, deepseek-v4-pro ]
         timeout-ms: 120000
 
   embedding:
