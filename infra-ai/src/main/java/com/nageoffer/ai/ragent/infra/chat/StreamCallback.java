@@ -17,6 +17,7 @@
 
 package com.nageoffer.ai.ragent.infra.chat;
 
+import com.nageoffer.ai.ragent.framework.convention.GroundingChunk;
 import com.nageoffer.ai.ragent.framework.convention.SourceRef;
 
 import java.util.List;
@@ -74,6 +75,16 @@ public interface StreamCallback {
      * @param sources 文档级来源列表
      */
     default void onSources(List<SourceRef> sources) {
+    }
+
+    /**
+     * 接收推荐问题 grounding 片段
+     * <p>
+     * 检索完成后回调一次 由实现方暂存 随 assistant 消息一并落库 供后续推荐追问生成 grounding 默认空实现
+     *
+     * @param chunks grounding 片段列表
+     */
+    default void onGroundingChunks(List<GroundingChunk> chunks) {
     }
 
     /**

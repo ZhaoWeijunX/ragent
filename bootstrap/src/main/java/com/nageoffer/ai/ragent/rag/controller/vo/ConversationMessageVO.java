@@ -76,6 +76,11 @@ public class ConversationMessageVO {
     private List<SourceRef> sources;
 
     /**
+     * 推荐追问问题，答案后懒加载生成（仅 assistant 消息可能有）
+     */
+    private List<String> recommendedQuestions;
+
+    /**
      * 创建时间
      */
     private Date createTime;

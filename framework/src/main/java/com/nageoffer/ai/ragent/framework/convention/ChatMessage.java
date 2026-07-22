@@ -102,6 +102,11 @@ public class ChatMessage {
      */
     private List<SourceRef> sources;
 
+    /**
+     * 推荐问题 grounding 片段（仅 ASSISTANT 角色可能携带，随消息落库供推荐追问生成 grounding，不参与模型上下文）
+     */
+    private List<GroundingChunk> retrievedChunks;
+
     public ChatMessage(Role role, String content) {
         this.role = role;
         this.content = content;

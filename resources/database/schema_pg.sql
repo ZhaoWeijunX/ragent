@@ -72,7 +72,9 @@ CREATE TABLE t_message (
     content           TEXT        NOT NULL,
     thinking_content  TEXT,
     thinking_duration INTEGER,
-    sources           JSONB,
+    sources              JSONB,
+    recommended_questions JSONB,
+    retrieved_chunks  JSONB,
     create_time       TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     update_time       TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     deleted           SMALLINT    DEFAULT 0
@@ -507,6 +509,8 @@ COMMENT ON COLUMN t_message.content IS '消息内容';
 COMMENT ON COLUMN t_message.thinking_content IS '深度思考内容';
 COMMENT ON COLUMN t_message.thinking_duration IS '深度思考耗时（秒）';
 COMMENT ON COLUMN t_message.sources IS '回答来源';
+COMMENT ON COLUMN t_message.recommended_questions IS '推荐追问问题';
+COMMENT ON COLUMN t_message.retrieved_chunks IS '推荐问题 grounding 片段';
 COMMENT ON COLUMN t_message.create_time IS '创建时间';
 COMMENT ON COLUMN t_message.update_time IS '更新时间';
 COMMENT ON COLUMN t_message.deleted IS '是否删除 0：正常 1：删除';

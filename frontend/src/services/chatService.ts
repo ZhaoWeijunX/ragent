@@ -13,3 +13,7 @@ export async function submitFeedback(messageId: string, vote: number) {
 export async function cancelFeedback(messageId: string) {
   return api.delete<void>(`/conversations/messages/${messageId}/feedback`);
 }
+
+export async function fetchRecommendedQuestions(messageId: string) {
+  return api.get<string[]>(`/conversations/messages/${messageId}/recommended-questions`);
+}

@@ -42,6 +42,9 @@ export interface Message {
   feedback?: FeedbackValue;
   status?: MessageStatus;
   sources?: SourceRef[];
+  recommended?: string[];
+  recommendedState?: "loading" | "ready" | "error";
+  recommendedOpen?: boolean;
 }
 
 export interface StreamMetaPayload {

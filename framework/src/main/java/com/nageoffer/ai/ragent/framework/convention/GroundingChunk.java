@@ -15,63 +15,37 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.rag.service.bo;
+package com.nageoffer.ai.ragent.framework.convention;
 
-import com.nageoffer.ai.ragent.framework.convention.GroundingChunk;
-import com.nageoffer.ai.ragent.framework.convention.SourceRef;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.util.List;
-
 /**
- * 对话消息业务对象
+ * 推荐问题 grounding 片段
+ * <p>
+ * 由检索片段按文档取最高分、截断文本后得到，随 assistant 消息落库，
+ * 供推荐追问问题生成时 grounding：保证追问落在系统已掌握的证据面内（可答）、与已答内容发散（不集中）
+ * <p>
+ * 与 {@link SourceRef} 职责分离：SourceRef 面向来源面板/预览（摘录 100 字），
+ * 本类面向推荐生成 grounding（片段文本更长）。两者均不参与模型回答上下文
  */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class ConversationMessageBO {
+@JsonInclude(JsonInclude.Include.NON_NULL)
+public class GroundingChunk {
 
     /**
-     * 对话ID
+     * 文档名称 供生成追问时识别证据所属文档
      */
-    private String conversationId;
+    private String docName;
 
     /**
-     * 用户ID
+     * 片段全文 作为追问 grounding 的证据内容
      */
-    private String userId;
-
-    /**
-     * 角色：system/user/assistant
-     */
-    private String role;
-
-    /**
-     * 消息内容
-     */
-    private String content;
-
-    /**
-     * 深度思考内容
-     */
-    private String thinkingContent;
-
-    /**
-     * 深度思考耗时（秒）
-     */
-    private Integer thinkingDuration;
-
-    /**
-     * 回答来源，文档级来源列表（仅 assistant 消息可能有）
-     */
-    private List<SourceRef> sources;
-
-    /**
-     * 推荐问题 grounding 片段（仅 assistant 消息可能有，供推荐追问生成 grounding）
-     */
-    private List<GroundingChunk> retrievedChunks;
+    private String text;
 }
