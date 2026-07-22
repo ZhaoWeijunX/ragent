@@ -1,5 +1,5 @@
 import * as React from "react";
-import { ChevronDown, Copy, ThumbsDown, ThumbsUp } from "lucide-react";
+import { ChevronDown, Copy, RotateCcw, ThumbsDown, ThumbsUp } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -35,6 +35,8 @@ export function FeedbackButtons({
   alwaysVisible
 }: FeedbackButtonsProps) {
   const submitFeedback = useChatStore((state) => state.submitFeedback);
+  const regenerateMessage = useChatStore((state) => state.regenerateMessage);
+  const isStreaming = useChatStore((state) => state.isStreaming);
   const [held, setHeld] = React.useState(false);
   const [copyOpen, setCopyOpen] = React.useState(false);
   const hideTimerRef = React.useRef<number | null>(null);
@@ -111,6 +113,12 @@ export function FeedbackButtons({
     } catch {
       toast.error("复制失败");
     }
+  };
+
+  const handleRegenerate = () => {
+    if (isStreaming) return;
+    markInteracted();
+    regenerateMessage(messageId).catch(() => null);
   };
 
   return (
@@ -202,6 +210,16 @@ export function FeedbackButtons({
         ) : (
           <ThumbsDown className="h-4 w-4" />
         )}
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={handleRegenerate}
+        disabled={isStreaming}
+        aria-label="重试"
+        className="h-7 w-7 rounded-md text-[#999999] hover:bg-[#F5F5F5] hover:text-[#666666] disabled:opacity-40"
+      >
+        <RotateCcw className="h-4 w-4" />
       </Button>
     </div>
   );
