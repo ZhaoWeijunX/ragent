@@ -1,7 +1,13 @@
 import { create } from "zustand";
 import { toast } from "sonner";
 
-import type { CompletionPayload, FeedbackValue, Message, MessageDeltaPayload, Session } from "@/types";
+import type {
+  CompletionPayload,
+  FeedbackValue,
+  Message,
+  MessageDeltaPayload,
+  Session
+} from "@/types";
 import {
   listMessages,
   listSessions,
@@ -28,6 +34,7 @@ interface ChatState {
   streamAbort: (() => void) | null;
   streamingMessageId: string | null;
   cancelRequested: boolean;
+  openedSourceMessageId: string | null;
   fetchSessions: () => Promise<void>;
   createSession: () => Promise<string>;
   deleteSession: (sessionId: string) => Promise<void>;
@@ -41,6 +48,8 @@ interface ChatState {
   appendStreamContent: (delta: string) => void;
   appendThinkingContent: (delta: string) => void;
   submitFeedback: (messageId: string, feedback: FeedbackValue) => Promise<void>;
+  toggleSourcesPanel: (messageId: string) => void;
+  closeSourcesPanel: () => void;
 }
 
 function mapVoteToFeedback(vote?: number | null): FeedbackValue {
@@ -87,6 +96,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   streamAbort: null,
   streamingMessageId: null,
   cancelRequested: false,
+  openedSourceMessageId: null,
   fetchSessions: async () => {
     set({ isLoading: true });
     try {
@@ -116,7 +126,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
         isCreatingNew: true,
         isLoading: false,
         thinkingStartAt: null,
-        deepThinkingEnabled: false
+        deepThinkingEnabled: false,
+        openedSourceMessageId: null
       });
       return "";
     }
@@ -134,7 +145,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
       streamTaskId: null,
       streamAbort: null,
       streamingMessageId: null,
-      cancelRequested: false
+      cancelRequested: false,
+      openedSourceMessageId: null
     });
     return "";
   },
@@ -144,7 +156,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
       set((state) => ({
         sessions: state.sessions.filter((session) => session.id !== sessionId),
         messages: state.currentSessionId === sessionId ? [] : state.messages,
-        currentSessionId: state.currentSessionId === sessionId ? null : state.currentSessionId
+        currentSessionId: state.currentSessionId === sessionId ? null : state.currentSessionId,
+        openedSourceMessageId:
+          state.currentSessionId === sessionId ? null : state.openedSourceMessageId
       }));
       toast.success("删除成功");
     } catch (error) {
@@ -176,7 +190,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
       isLoading: true,
       currentSessionId: sessionId,
       isCreatingNew: false,
-      thinkingStartAt: null
+      thinkingStartAt: null,
+      openedSourceMessageId: null
     });
     try {
       const data = await listMessages(sessionId);
@@ -192,7 +207,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
         isDeepThinking: Boolean(item.thinkingContent),
         createdAt: item.createTime,
         feedback: mapVoteToFeedback(item.vote),
-        status: "done"
+        status: "done",
+        sources: item.sources || undefined
       }));
       set({ messages: mapped });
     } catch (error) {
@@ -332,6 +348,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
                     id: String(payload.messageId),
                     status: "done",
                     isThinking: false,
+                    sources: payload.sources ?? message.sources,
                     thinkingDuration:
                       message.thinkingDuration ?? computeThinkingDuration(state.thinkingStartAt)
                   }
@@ -346,6 +363,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
                     ...message,
                     status: "done",
                     isThinking: false,
+                    sources: payload.sources ?? message.sources,
                     thinkingDuration:
                       message.thinkingDuration ?? computeThinkingDuration(state.thinkingStartAt)
                   }
@@ -372,6 +390,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
               content: message.content + suffix,
               status: "cancelled",
               isThinking: false,
+              sources: payload?.sources ?? message.sources,
               thinkingDuration:
                 message.thinkingDuration ?? computeThinkingDuration(state.thinkingStartAt)
             };
@@ -548,5 +567,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
       }));
       toast.error((error as Error).message || (vote === null ? "取消反馈失败" : "反馈保存失败"));
     }
-  }
+  },
+  toggleSourcesPanel: (messageId) => {
+    set((state) => ({
+      openedSourceMessageId: state.openedSourceMessageId === messageId ? null : messageId
+    }));
+  },
+  closeSourcesPanel: () => set({ openedSourceMessageId: null })
 }));
