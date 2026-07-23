@@ -14,7 +14,12 @@ import {
   deleteSession as deleteSessionRequest,
   renameSession as renameSessionRequest
 } from "@/services/sessionService";
-import { stopTask, submitFeedback, cancelFeedback } from "@/services/chatService";
+import {
+  stopTask,
+  submitFeedback,
+  cancelFeedback,
+  generateRecommendedQuestions
+} from "@/services/chatService";
 import { buildQuery } from "@/utils/helpers";
 import { createStreamResponse } from "@/hooks/useStreamResponse";
 import { storage } from "@/utils/storage";
@@ -49,6 +54,8 @@ interface ChatState {
   submitFeedback: (messageId: string, feedback: FeedbackValue) => Promise<void>;
   toggleSourcesPanel: (messageId: string) => void;
   closeSourcesPanel: () => void;
+  loadRecommended: (messageId: string, options?: { auto?: boolean }) => Promise<void>;
+  toggleRecommended: (messageId: string) => void;
 }
 
 function mapVoteToFeedback(vote?: number | null): FeedbackValue {
@@ -207,7 +214,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
         createdAt: item.createTime,
         feedback: mapVoteToFeedback(item.vote),
         status: "done",
-        sources: item.sources || undefined
+        sources: item.sources || undefined,
+        recommended: item.recommendedQuestions ?? undefined,
+        recommendedState: Array.isArray(item.recommendedQuestions) ? "ready" : undefined,
+        messageStatus: item.messageStatus ?? "NORMAL"
       }));
       set({ messages: mapped });
     } catch (error) {
@@ -265,7 +275,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
     };
 
     set((state) => ({
-      messages: [...state.messages, userMessage, assistantMessage],
+      // 新问题发出即收起所有历史消息的推荐面板 保持焦点在最新一轮问答
+      messages: [
+        ...state.messages.map((message) =>
+          message.recommendedOpen ? { ...message, recommendedOpen: false } : message
+        ),
+        userMessage,
+        assistantMessage
+      ],
       isStreaming: true,
       streamingMessageId: assistantId,
       thinkingStartAt: null,
@@ -348,6 +365,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
                     status: "done",
                     isThinking: false,
                     sources: payload.sources ?? message.sources,
+                    messageStatus: payload.messageStatus ?? "NORMAL",
                     thinkingDuration:
                       message.thinkingDuration ?? computeThinkingDuration(state.thinkingStartAt)
                   }
@@ -363,12 +381,17 @@ export const useChatStore = create<ChatState>((set, get) => ({
                     status: "done",
                     isThinking: false,
                     sources: payload.sources ?? message.sources,
+                    messageStatus: payload.messageStatus ?? "NORMAL",
                     thinkingDuration:
                       message.thinkingDuration ?? computeThinkingDuration(state.thinkingStartAt)
                   }
                 : message
             )
           }));
+        }
+        // 正常回答完成后后台预取；限流拒绝和中断消息不触发
+        if (payload.messageId && (payload.messageStatus ?? "NORMAL") === "NORMAL") {
+          void get().loadRecommended(String(payload.messageId), { auto: true });
         }
       },
       onCancel: (payload: CompletionPayload) => {
@@ -390,6 +413,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
               status: "cancelled",
               isThinking: false,
               sources: payload?.sources ?? message.sources,
+              messageStatus: payload?.messageStatus ?? "INTERRUPTED",
               thinkingDuration:
                 message.thinkingDuration ?? computeThinkingDuration(state.thinkingStartAt)
             };
@@ -549,5 +573,80 @@ export const useChatStore = create<ChatState>((set, get) => ({
       openedSourceMessageId: state.openedSourceMessageId === messageId ? null : messageId
     }));
   },
-  closeSourcesPanel: () => set({ openedSourceMessageId: null })
+  closeSourcesPanel: () => set({ openedSourceMessageId: null }),
+  loadRecommended: async (messageId, options) => {
+    const target = get().messages.find((message) => message.id === messageId);
+    // loading/ready 直接返回：自动触发与手动点击去重 同一消息最多请求一次
+    if (!target || target.recommendedState === "loading" || target.recommendedState === "ready") {
+      return;
+    }
+    const auto = options?.auto ?? false;
+    set((state) => ({
+      messages: state.messages.map((message) =>
+        message.id === messageId
+          ? {
+              ...message,
+              recommendedState: "loading",
+              // 手动触发即刻展开（露出骨架反馈）自动触发维持原展开态
+              recommendedOpen: auto ? message.recommendedOpen : true
+            }
+          : message
+      )
+    }));
+    try {
+      const result = await generateRecommendedQuestions(messageId);
+      if (result.status === "FAILED") {
+        throw new Error("推荐问题生成失败");
+      }
+      const list = result.status === "SUCCESS" ? result.questions : [];
+      set((state) => ({
+        messages: state.messages.map((message) =>
+          message.id === messageId
+            ? {
+                ...message,
+                recommended: list,
+                recommendedState: "ready",
+                // 自动预取只热数据不展开（默认收起）手动一律展开 用户中途点击的展开意图亦保留
+                recommendedOpen: auto ? message.recommendedOpen : true
+              }
+            : message
+        )
+      }));
+    } catch {
+      // 静默失败：自动触发不打扰用户 手动点击的错误态由按钮区轻提示
+      set((state) => ({
+        messages: state.messages.map((message) =>
+          message.id === messageId
+            ? { ...message, recommendedState: "error", recommendedOpen: auto ? message.recommendedOpen : true }
+            : message
+        )
+      }));
+    }
+  },
+  toggleRecommended: (messageId) => {
+    const target = get().messages.find((message) => message.id === messageId);
+    if (!target) return;
+    // 后台预取尚未完成：标记展开 就绪后即可见（loadRecommended 完成时保留该展开意图）
+    if (target.recommendedState === "loading") {
+      set((state) => ({
+        messages: state.messages.map((message) =>
+          message.id === messageId ? { ...message, recommendedOpen: true } : message
+        )
+      }));
+      return;
+    }
+    // 已尝试过（成功或失败）：纯展开/收起切换 失败态的重试走面板内按钮
+    if (target.recommendedState === "ready" || target.recommendedState === "error") {
+      set((state) => ({
+        messages: state.messages.map((message) =>
+          message.id === messageId
+            ? { ...message, recommendedOpen: !message.recommendedOpen }
+            : message
+        )
+      }));
+      return;
+    }
+    // idle：手动发起加载 必展开
+    void get().loadRecommended(messageId);
+  }
 }));
