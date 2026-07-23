@@ -36,6 +36,7 @@ import com.nageoffer.ai.ragent.rag.core.prompt.RAGPromptService;
 import com.nageoffer.ai.ragent.rag.core.retrieval.RetrievalEngine;
 import com.nageoffer.ai.ragent.rag.core.rewrite.QueryRewriteService;
 import com.nageoffer.ai.ragent.rag.core.rewrite.RewriteResult;
+import com.nageoffer.ai.ragent.rag.core.source.GroundingChunksAssembler;
 import com.nageoffer.ai.ragent.rag.core.source.SourcesAssembler;
 import com.nageoffer.ai.ragent.rag.dto.IntentGroup;
 import com.nageoffer.ai.ragent.rag.dto.RetrievalContext;
@@ -74,6 +75,7 @@ public class StreamChatPipeline {
     private final PromptTemplateLoader promptTemplateLoader;
     private final StreamTaskManager taskManager;
     private final SourcesAssembler sourcesAssembler;
+    private final GroundingChunksAssembler groundingChunksAssembler;
 
     /**
      * 执行流式对话管道
@@ -113,11 +115,10 @@ public class StreamChatPipeline {
     // ==================== 流水线阶段 ====================
 
     private void loadMemory(StreamChatContext ctx) {
-        List<ChatMessage> history = memoryService.loadAndAppend(
-                ctx.getConversationId(),
-                ctx.getUserId(),
-                ChatMessage.user(ctx.getQuestion())
-        );
+        List<ChatMessage> history = memoryService.load(ctx.getConversationId(), ctx.getUserId());
+        String questionMessageId = memoryService.append(
+                ctx.getConversationId(), ctx.getUserId(), ChatMessage.user(ctx.getQuestion()));
+        ctx.getCallback().onReplyToMessageId(questionMessageId);
         ctx.setHistory(history);
     }
 
@@ -189,6 +190,9 @@ public class StreamChatPipeline {
         // 检索完成后先下发文档级来源（面板/预览用，不参与 prompt）
         List<SourceRef> sources = sourcesAssembler.assemble(retrievalCtx.getIntentChunks());
         ctx.getCallback().onSources(sources);
+
+        // 装配 grounding 片段随消息落库 供答案后推荐追问生成 grounding（不参与 prompt）
+        ctx.getCallback().onGroundingChunks(groundingChunksAssembler.assemble(retrievalCtx.getIntentChunks()));
 
         StreamCancellationHandle handle = streamLLMResponse(
                 ctx.getRewriteResult(),
