@@ -72,14 +72,14 @@ rag:
       search-analyzer: ik_smart
 
   graph:
-    type: lightrag  # 图谱后端总开关，可选 none / lightrag。lightrag 即接入后端供「后台可视化 / 检索读取」；是否参与检索、是否写入分别由 rag.search.channels.graph.enabled 与下方 ingestion.enabled 独立控制
+    type: none  # 图谱后端总开关，可选 none / lightrag。lightrag 即接入后端供「后台可视化 / 检索读取」；是否参与检索、是否写入分别由 rag.search.channels.graph.enabled 与下方 ingestion.enabled 独立控制
     lightrag:
       base-url: http://127.0.0.1:9621
       query-mode: mix  # naive / local / global / hybrid / mix
       timeout-ms: 30000
     embedding-model: qwen-emb-8b  # 与 LightRAG 的 SiliconFlow Qwen3-Embedding-8B 配置一致
     ingestion:
-      enabled: true           # 写入同步开关：false 冻结图谱写入（向量写不再重建图谱），仅保留可视化 / 检索读取，避免为不检索的图谱持续付出实体抽取成本；true 恢复随向量写自动同步
+      enabled: false           # 写入同步开关：false 冻结图谱写入（向量写不再重建图谱），仅保留可视化 / 检索读取，避免为不检索的图谱持续付出实体抽取成本；true 恢复随向量写自动同步
       async: true              # 标脏入队 + 后台防抖重建，不阻塞主写链路
       global-workspace: false  # 跨库方案B（独立全局图）；默认关，Phase1 用 fan-out 兜底
 
@@ -145,7 +145,7 @@ rag:
       keyword:
         enabled: false      # mode 已移除，固定为「有 KB 意图收窄命中库、无意图全局兜底」
       graph:
-        enabled: true    # 图谱检索通道开关：false 不参与问答召回（后端仍在，后台可视化照常）；置 true 前需先开 rag.graph.type=lightrag
+        enabled: false    # 图谱检索通道开关：false 不参与问答召回（后端仍在，后台可视化照常）；置 true 前需先开 rag.graph.type=lightrag
       web-search:
         enabled: false
         count: 5
