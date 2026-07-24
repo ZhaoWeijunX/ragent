@@ -334,6 +334,12 @@ sa-token:
   is-log: false
   is-print: false
 
+logging:
+  pattern:
+    # 对齐沿用 Boot 默认：级别 %5p、线程 [%15.15t]、logger %-40.40；保留 %clr 颜色，去掉 PID / 应用名
+    console: "%clr(%d{yyyy-MM-dd HH:mm:ss.SSS}){faint} %clr(%5p) %clr([%15.15t]){faint} %clr(%-40.40logger{39}){cyan} %clr(:){faint} %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss.SSS} %5p [%15.15t] %-40.40logger{39} : %msg%n"
+
 app:
   demo-mode: false
   eval:
