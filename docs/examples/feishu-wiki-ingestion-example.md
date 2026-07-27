@@ -81,7 +81,8 @@ Remote URL 来源可开启 cron 定时刷新；飞书文档按内容 hash 检测
 FETCHER → PARSER(PDF) → CHUNKER(structure_aware) → INDEXER
 ```
 
-参考 [`pdf-pipeline-request.json`](pdf-pipeline-request.json)。
+参考 [`pdf-pipeline-request.json`](pdf-pipeline-request.json)，或直接执行 SQL：
+`resources/database/imports/pipelines/feishu-pdf-ingestion-pipeline.sql`。
 
 **Markdown（兼容旧模式）：**
 
@@ -89,7 +90,8 @@ FETCHER → PARSER(PDF) → CHUNKER(structure_aware) → INDEXER
 FETCHER → PARSER(MARKDOWN) → CHUNKER(structure_aware) → INDEXER
 ```
 
-参考 [`feishu-pipeline-request.json`](feishu-pipeline-request.json)。
+参考 [`feishu-pipeline-request.json`](feishu-pipeline-request.json)，或：
+`resources/database/imports/pipelines/feishu-markdown-ingestion-pipeline.sql`。
 
 Indexer 的 `collectionName` 或任务中的 `vectorSpaceId.logicalName` 应与目标知识库的 `collectionName` 一致。
 

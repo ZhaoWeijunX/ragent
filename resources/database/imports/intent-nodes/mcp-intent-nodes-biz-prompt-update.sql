@@ -1,7 +1,7 @@
 -- 为 sales-data / ticket-data 意图节点配置 PG 业务查询专属提示词
 --
 -- 前置条件：
--- 1. 已执行 docs/examples/intent-node-import/mcp-intent-nodes-import.sql（或库中已有对应 intent_code）
+-- 1. 已执行 resources/database/imports/intent-nodes/mcp-intent-nodes-import.sql（或库中已有对应 intent_code）
 -- 2. 提示词正文与 docs/examples/prompt/ 下同名 .st 文件保持一致
 --
 -- 字段说明：

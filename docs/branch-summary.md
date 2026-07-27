@@ -232,6 +232,6 @@ origin/preview（个人集成预览；领先 main 48 / 落后 main 10）
 2. **同步上游**：优先在 `preview` 上 `merge upstream/main`（当前做法）；若先更新 `main` 再合入 `preview`，注意 revert 冲突，保留 preview 功能。
 3. **密钥与中间件**：使用仓库根目录 `.env`（见 `.env.example`），启动前用 IDEA EnvFile 或 `scripts/export-dotenv.ps1` 注入；`RAGENT_INFRA_HOST` 覆盖中间件主机。
 4. **飞书 PDF**：`content-format: pdf` 需 `docs:document:export` 与 `MINERU_API_KEY`；详见 [`feishu-wiki-integration.md`](feishu-wiki-integration.md) §7.6。
-5. **示例知识库**：按各 `intent-tree-design.md` 上传 → 分块 → 执行 `docs/examples/intent-node-import/*-intent-nodes-import.sql` → `redis-cli DEL ragent:intent:tree`。
+5. **示例知识库**：按各 `intent-tree-design.md` 上传 → 分块 → 执行 `resources/database/imports/intent-nodes/*-intent-nodes-import.sql` → `redis-cli DEL ragent:intent:tree`（详见 [`DATA_IMPORT.md`](../resources/database/DATA_IMPORT.md)）。
 6. **可归档**：`single_wiki`、`batch_wiki`、`markdown_support`、`pdf_support`、`mcp/weather`、`mcp/pg_query` 在确认 `preview` 稳定后可删远程分支。
 7. **已归档**：`intent`、`add_model`、`my_preview`（已更名）无需再操作。

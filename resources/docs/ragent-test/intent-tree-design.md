@@ -1,8 +1,8 @@
 # ragent-test 知识库意图树设计
 
-> 配套导入脚本：[docs/examples/ragent-test-intent-nodes-import.sql](../../../docs/examples/intent-node-import/ragent-test-intent-nodes-import.sql)
+> 配套导入脚本：[resources/database/imports/intent-nodes/ragent-test-intent-nodes-import.sql](../../database/imports/intent-nodes/ragent-test-intent-nodes-import.sql)
 
-本文档描述 `resources/docs/ragent-test/` 目录下 **52 篇技术文档** 的意图树划分方案，用于 Ragent 意图分类与定向检索。
+本文档描述 `resources/docs/ragent-test/` 目录下 **53 篇技术文档** 的意图树划分方案，用于 Ragent 意图分类与定向检索。
 
 ---
 
@@ -13,7 +13,7 @@
 | 对齐项目机制 | 遵循 `DOMAIN → CATEGORY → TOPIC` 三层结构，仅 **TOPIC（叶子）** 参与 LLM 分类 |
 | 系列边界清晰 | 六大文档系列各自独立 CATEGORY，避免跨系列误路由 |
 | 消歧同名主题 | 「调度」「限流」「线程池」「意图」「Rerank」「流式」「MCP」等跨系列词汇通过 `description` 区分 |
-| 单库聚合 | 52 篇文档同属一个知识库，叶子节点共享 `kbId` 与 `collectionName` |
+| 单库聚合 | 53 篇文档同属一个知识库，叶子节点共享 `kbId` 与 `collectionName` |
 
 ---
 
@@ -55,12 +55,13 @@ ragent-docs（DOMAIN）
 │   ├── local-llm-why
 │   └── local-llm-ollama
 └── tech-docs（技术文档）
-    └── tech-docs-threadpool
+    ├── tech-docs-threadpool
+    └── tech-docs-patterns
 ```
 
-**节点统计**：1 DOMAIN + 6 CATEGORY + 26 TOPIC = **33 个节点**
+**节点统计**：1 DOMAIN + 6 CATEGORY + 27 TOPIC = **34 个节点**
 
-系统交互节点（`sys` / `sys-welcome` / `sys-about-bot`）为全局共用，见 `docs/examples/mcp-intent-nodes-import.sql`，不在本知识库脚本中重复导入。
+系统交互节点（`sys` / `sys-welcome` / `sys-about-bot`）为全局共用，见 `resources/database/imports/intent-nodes/mcp-intent-nodes-import.sql`，不在本知识库脚本中重复导入。
 
 ---
 
@@ -167,12 +168,16 @@ ragent-docs（DOMAIN）
 | intent_code | name | 覆盖文档 | top_k |
 |-------------|------|----------|-------|
 | `tech-docs-threadpool` | 线程池设计与实现 | `01` | 8 |
+| `tech-docs-patterns` | 设计模式全景 | `02` | 8 |
 
 **典型问法示例**
 
 - `tech-docs-threadpool`：Ragent 里有多少个线程池，分别干什么用？
 - `tech-docs-threadpool`：`chatEntryExecutor` 和全局限流是怎么配合的？
 - `tech-docs-threadpool`：为什么检索链路用 `CallerRunsPolicy` 而入口用 `AbortPolicy`？
+- `tech-docs-patterns`：Ragent 里用了哪些设计模式？
+- `tech-docs-patterns`：策略模式在检索通道和文档解析里怎么落地？
+- `tech-docs-patterns`：IngestionEngine 和 StreamChatPipeline 分别对应什么模式？
 
 ---
 
@@ -209,6 +214,7 @@ ragent-docs（DOMAIN）
 | Ollama、vLLM扫盲/01 | `local-llm-why` |
 | Ollama、vLLM扫盲/02, 03 | `local-llm-ollama` |
 | 技术文档/01 | `tech-docs-threadpool` |
+| 技术文档/02 | `tech-docs-patterns` |
 
 ---
 
@@ -245,14 +251,14 @@ ragent-docs（DOMAIN）
 
 ## 6. 导入步骤
 
-1. 创建 `ragent-test` 知识库并完成 **52 篇**文档灌入与分块。
+1. 创建 `ragent-test` 知识库并完成 **53 篇**文档灌入与分块。
 2. 查询知识库 ID 与 collection 名称：
 
    ```sql
    SELECT id, name, collection_name FROM t_knowledge_base WHERE name LIKE '%ragent-test%';
    ```
 
-3. 编辑 `docs/examples/intent-node-import/ragent-test-intent-nodes-import.sql`，全文替换：
+3. 编辑 `resources/database/imports/intent-nodes/ragent-test-intent-nodes-import.sql`，全文替换：
    - `__KB_ID_RAGENT_TEST__`
    - `__COLLECTION_RAGENT_TEST__`
 4. 在 PostgreSQL 中执行 SQL 脚本。

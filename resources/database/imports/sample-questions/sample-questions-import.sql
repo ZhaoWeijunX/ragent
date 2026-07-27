@@ -10,7 +10,7 @@
 --   - biz-security 企业信息安全与合规（多格式文档：md/docx/pdf/png/txt/csv/xlsx）
 --   - onboarding 新员工入职与培训（多格式文档，与 group/hr 互补）
 --
--- 执行前请确认已导入意图树（docs/examples/intent-node-import/mcp-intent-nodes-import.sql 等）
+-- 执行前请确认已导入意图树（resources/database/imports/intent-nodes/mcp-intent-nodes-import.sql 等）
 -- 且 Demo 知识库文档已就绪；ragent-test / biz-security 类问题需本地知识库已配置
 
 -- ---------------------------------------------------------------------------
@@ -46,16 +46,16 @@ INSERT INTO t_sample_question (
 ),
 (
     2059200000000000004,
-    'OA 系统',
-    '业务系统介绍类检索问答',
-    'OA系统主要提供哪些功能？',
+    'OA 数据安全',
+    '业务系统数据安全规范检索',
+    'OA系统数据安全的核心目标是什么？',
     NOW(), NOW(), 0
 ),
 (
     2059200000000000005,
-    '保险架构',
-    '跨分类意图 · 架构设计文档检索',
-    '保险系统整体架构是怎样的？',
+    '保险数据分级',
+    '保险系统数据分类分级与安全架构',
+    '互联网保险系统的数据分类分级怎么做？',
     NOW(), NOW(), 0
 ),
 

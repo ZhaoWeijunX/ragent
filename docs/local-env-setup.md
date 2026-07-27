@@ -255,17 +255,17 @@ docker exec -i postgres psql -U postgres -d ragent < resources/database/biz_mcp_
 
 ### 4.3 可选：意图树与示例问题
 
-脚本在 `docs/examples/intent-node-import/`。按能力按需导入；**有依赖时请按下表顺序**。
+脚本在 `resources/database/imports/`。按能力按需导入；**有依赖时请按下表顺序**。完整说明见 [`resources/database/DATA_IMPORT.md`](../resources/database/DATA_IMPORT.md)。
 
 | 顺序 | 脚本 | 说明 |
 |------|------|------|
-| 5 | `mcp-intent-nodes-import.sql` | MCP 意图节点（销售 / 工单 / 天气） |
-| 6 | `mcp-intent-nodes-weather-prompt-update.sql` | 天气提参 Prompt（依赖上一步 weather 节点） |
-| 7 | `mcp-intent-nodes-biz-prompt-update.sql` | 销售 / 工单提参 Prompt（依赖上一步对应节点） |
-| 8 | `onboarding-intent-nodes-import.sql` | 入职知识库意图树（需先按脚本注释替换 kb 占位符） |
-| 9 | `biz-security-intent-nodes-import.sql` | 信息安全知识库意图树（同上，先建库再替换占位符） |
-| 10 | `ragent-test-intent-nodes-import.sql` | 技术专栏意图树（同上） |
-| 11 | `sample-questions-import.sql` | 欢迎页示例问题（建议在相关意图 / 知识库就绪后执行） |
+| 5 | `imports/intent-nodes/mcp-intent-nodes-import.sql` | MCP 意图节点（销售 / 工单 / 天气） |
+| 6 | `imports/intent-nodes/mcp-intent-nodes-weather-prompt-update.sql` | 天气提参 Prompt（依赖上一步 weather 节点） |
+| 7 | `imports/intent-nodes/mcp-intent-nodes-biz-prompt-update.sql` | 销售 / 工单提参 Prompt（依赖上一步对应节点） |
+| 8 | `imports/intent-nodes/onboarding-intent-nodes-import.sql` | 入职知识库意图树（需先按脚本注释替换 kb 占位符） |
+| 9 | `imports/intent-nodes/biz-security-intent-nodes-import.sql` | 信息安全知识库意图树（同上，先建库再替换占位符） |
+| 10 | `imports/intent-nodes/ragent-test-intent-nodes-import.sql` | 技术专栏意图树（同上） |
+| 11 | `imports/sample-questions/sample-questions-import.sql` | 欢迎页示例问题（建议在相关意图 / 知识库就绪后执行） |
 
 意图节点导入后如管理台仍显示旧树，可清 Redis 缓存，例如：
 
@@ -297,13 +297,13 @@ docker exec -it redis redis-cli -a 123456 DEL ragent:intent:tree
 【加上 MCP 演示】
   → biz_mcp_schema.sql
   → biz_mcp_seed.sql
-  → mcp-intent-nodes-import.sql
-  → mcp-intent-nodes-weather-prompt-update.sql
-  → mcp-intent-nodes-biz-prompt-update.sql
+  → imports/intent-nodes/mcp-intent-nodes-import.sql
+  → imports/intent-nodes/mcp-intent-nodes-weather-prompt-update.sql
+  → imports/intent-nodes/mcp-intent-nodes-biz-prompt-update.sql
 
 【加上示例知识库意图 / 欢迎页问题】
   → 管理台创建知识库并替换占位符后导入对应 *-intent-nodes-import.sql
-  → sample-questions-import.sql
+  → imports/sample-questions/sample-questions-import.sql
 ```
 
 ---
@@ -414,6 +414,8 @@ npm run dev
 
 - [根目录 `.env.example`](../.env.example)
 - [数据库脚本目录](../resources/database/)
-- [意图节点示例 SQL](./examples/intent-node-import/)
+- [数据导入指南（意图 / 示例问题 / 流水线）](../resources/database/DATA_IMPORT.md)
+- [意图节点导入 SQL](../resources/database/imports/intent-nodes/)
+- [摄取流水线导入 SQL](../resources/database/imports/pipelines/)
 - [Milvus 轻量 Compose](../resources/docker/lightweight/README.md)
 - [官网本地开发](https://nageoffer.com/ragent/local-dev/)

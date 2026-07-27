@@ -15,11 +15,11 @@
 ```bash
 psql -h localhost -U postgres -d ragent -f resources/database/biz_mcp_schema.sql
 psql -h localhost -U postgres -d ragent -f resources/database/biz_mcp_seed.sql
-psql -h localhost -U postgres -d ragent -f docs/examples/intent-node-import/mcp-intent-nodes-import.sql
-psql -h localhost -U postgres -d ragent -f docs/examples/intent-node-import/mcp-intent-nodes-biz-prompt-update.sql
+psql -h localhost -U postgres -d ragent -f resources/database/imports/intent-nodes/mcp-intent-nodes-import.sql
+psql -h localhost -U postgres -d ragent -f resources/database/imports/intent-nodes/mcp-intent-nodes-biz-prompt-update.sql
 ```
 
-意图节点提示词源文件见 `docs/examples/prompt/sales-mcp-*.st`、`ticket-mcp-*.st`。
+意图节点提示词源文件见 `docs/examples/prompt/sales-mcp-*.st`、`ticket-mcp-*.st`。完整导入说明见 [`resources/database/DATA_IMPORT.md`](../resources/database/DATA_IMPORT.md)。
 
 ## 配置
 

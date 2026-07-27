@@ -24,7 +24,13 @@
 
 ### Step 1: 创建流水线
 
-**请求**:
+可用 SQL 种子（可重复执行）或 API：
+
+```bash
+psql -f resources/database/imports/pipelines/feishu-pdf-ingestion-pipeline.sql
+```
+
+**请求**（API 等价）：
 
 ```bash
 curl -X POST "http://localhost:8080/api/ragent/ingestion/pipelines" \

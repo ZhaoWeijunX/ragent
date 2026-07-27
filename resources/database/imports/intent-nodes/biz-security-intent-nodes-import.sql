@@ -1,6 +1,6 @@
 -- biz-security 知识库意图树导入脚本
 --
--- 适用文档目录：resources/docs/knowledge/biz/biz-security/（8 篇多格式文档）
+-- 适用文档目录：resources/docs/knowledge/biz/biz-security/（7 篇多格式文档）
 -- 设计说明：resources/docs/knowledge/biz/biz-security/intent-tree-design.md
 --
 -- 文档清单：
@@ -13,16 +13,16 @@
 --   权限申请对照表.xlsx            (ExcelPoi)
 --
 -- 使用前请替换占位符（全文搜索替换即可）：
-SELECT id, name, collection_name FROM t_knowledge_base WHERE name LIKE '%企业信息安全与合规%';
+-- SELECT id, name, collection_name FROM t_knowledge_base WHERE name LIKE '%企业信息安全与合规%' OR name LIKE '%biz-security%';
 --   __KB_ID_BIZ_SECURITY__       -> t_knowledge_base 中 biz-security 知识库的 id
---   __COLLECTION_BIZ_SECURITY__  -> 该知识库对应的 Milvus collection_name
+--   __COLLECTION_BIZ_SECURITY__  -> 该知识库对应的 collection_name
 --
 -- 导入后请清理意图树 Redis 缓存（任选其一）：
 --   redis-cli DEL ragent:intent:tree
 --   或重启 bootstrap 服务
 --
 -- 系统交互节点（sys / sys-welcome / sys-about-bot）如已通过
--- docs/examples/mcp-intent-nodes-import.sql 导入，请勿重复插入。
+-- resources/database/imports/intent-nodes/mcp-intent-nodes-import.sql 导入，请勿重复插入。
 
 -- ---------------------------------------------------------------------------
 -- 可选：清理本脚本涉及的意图节点后重新导入（慎用，会物理删除记录）

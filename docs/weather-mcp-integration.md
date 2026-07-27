@@ -158,16 +158,16 @@ cp .env.example .env
 
 ```bash
 # 1. 导入意图节点
-psql -f docs/examples/mcp-intent-nodes-import.sql
+psql -f resources/database/imports/intent-nodes/mcp-intent-nodes-import.sql
 
 # 2. 为天气节点配置专属参数提取提示词
-psql -f docs/examples/mcp-intent-nodes-weather-prompt-update.sql
+psql -f resources/database/imports/intent-nodes/mcp-intent-nodes-weather-prompt-update.sql
 ```
 
 相关文件：
 
-- [`docs/examples/mcp-intent-nodes-import.sql`](examples/intent-node-import/mcp-intent-nodes-import.sql)
-- [`docs/examples/mcp-intent-nodes-weather-prompt-update.sql`](examples/intent-node-import/mcp-intent-nodes-weather-prompt-update.sql)
+- [`mcp-intent-nodes-import.sql`](../resources/database/imports/intent-nodes/mcp-intent-nodes-import.sql)
+- [`mcp-intent-nodes-weather-prompt-update.sql`](../resources/database/imports/intent-nodes/mcp-intent-nodes-weather-prompt-update.sql)
 
 也可在管理后台「意图树」中为 `weather-data` 节点粘贴提示词文件内容。
 
@@ -231,17 +231,18 @@ mvn -pl bootstrap spring-boot:run
 docs/
 ├── weather-mcp-integration.md          # 本文档
 └── examples/
-    ├── mcp-intent-nodes-import.sql     # 意图节点导入（含 weather 节点）
-    ├── mcp-intent-nodes-weather-prompt-update.sql  # 天气专属 param_prompt
     └── prompt/
         └── weather-mcp-parameter-extract.st        # 天气参数提取提示词正文
+
+resources/database/imports/intent-nodes/
+├── mcp-intent-nodes-import.sql                     # 意图节点导入（含 weather 节点）
+└── mcp-intent-nodes-weather-prompt-update.sql      # 天气专属 param_prompt
 
 mcp-server/
 ├── src/main/java/.../mcp/client/QWeatherClient.java
 ├── src/main/java/.../mcp/config/WeatherProperties.java
 ├── src/main/java/.../mcp/executor/WeatherMcpExecutor.java
 └── src/main/resources/
-    ├── application.yaml
     └── application.yaml                # ${QWEATHER_API_KEY:} / ${QWEATHER_API_HOST:}
 ```
 

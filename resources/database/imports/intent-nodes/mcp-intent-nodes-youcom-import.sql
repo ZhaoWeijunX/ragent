@@ -5,7 +5,7 @@
 -- 2. bootstrap 已连接 MCP Server（默认 http://localhost:9099），启动日志含 toolId: youcom_search
 --
 -- 导入后请执行：
---   psql -f docs/examples/intent-node-import/mcp-intent-nodes-youcom-prompt-update.sql
+--   psql -f resources/database/imports/intent-nodes/mcp-intent-nodes-youcom-prompt-update.sql
 -- 或从 docs/examples/prompt/youcom-mcp-parameter-extract.st 复制到管理后台 youcom-search 节点
 --
 -- 节点结构：

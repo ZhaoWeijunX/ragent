@@ -1,8 +1,8 @@
 # biz-security 知识库意图树设计
 
-> 配套导入脚本：[docs/examples/biz-security-intent-nodes-import.sql](../../../docs/examples/biz-security-intent-nodes-import.sql)
+> 配套导入脚本：[resources/database/imports/intent-nodes/biz-security-intent-nodes-import.sql](../../../../database/imports/intent-nodes/biz-security-intent-nodes-import.sql)
 
-本文档描述 `resources/docs/knowledge/biz/biz-security/` 目录下 **8 篇多格式文档** 的意图树划分方案，用于 Ragent 意图分类与定向检索。
+本文档描述 `resources/docs/knowledge/biz/biz-security/` 目录下 **7 篇多格式文档** 的意图树划分方案，用于 Ragent 意图分类与定向检索。
 
 ---
 
@@ -13,7 +13,7 @@
 | 对齐项目机制 | 遵循 `DOMAIN → CATEGORY → TOPIC` 三层结构，仅 **TOPIC（叶子）** 参与 LLM 分类 |
 | 系列边界清晰 | 制度、合规、运营、访问控制四大 CATEGORY 独立，避免跨域误路由 |
 | 消歧同名主题 | 「权限」「分级」「等保」「应急」等词汇通过 `description` 区分语境 |
-| 单库聚合 | 8 篇文档（含 md/txt/csv/docx/xlsx/pdf/png）同属一个知识库，叶子节点共享 `kbId` 与 `collectionName` |
+| 单库聚合 | 7 篇文档（含 md/txt/csv/docx/xlsx/pdf/png）同属一个知识库，叶子节点共享 `kbId` 与 `collectionName` |
 | 格式覆盖 | 覆盖 Markdown、Tika(txt)、CSV、Excel、MinerU(docx/pdf)、Image(png) 全解析链路 |
 
 ---
@@ -50,7 +50,7 @@ biz-security（DOMAIN）
 
 **节点统计**：1 DOMAIN + 4 CATEGORY + 6 TOPIC = **11 个节点**
 
-系统交互节点（`sys` / `sys-welcome` / `sys-about-bot`）为全局共用，见 `docs/examples/mcp-intent-nodes-import.sql`，不在本知识库脚本中重复导入。
+系统交互节点（`sys` / `sys-welcome` / `sys-about-bot`）为全局共用，见 `resources/database/imports/intent-nodes/mcp-intent-nodes-import.sql`，不在本知识库脚本中重复导入。
 
 ---
 
@@ -161,7 +161,7 @@ biz-security（DOMAIN）
 ## 7. 导入步骤
 
 1. 在管理后台创建 `biz-security` 知识库（建议名称：`biz-security` 或 `企业信息安全与合规`）。
-2. 上传 `resources/docs/knowledge/biz/biz-security/` 目录下全部 8 个文件，完成分块入库。
+2. 上传 `resources/docs/knowledge/biz/biz-security/` 目录下全部 7 个文件，完成分块入库。
    - `.md` / `.txt`：默认 Markdown / Tika 解析
    - `.csv`：Csv 解析器
    - `.xlsx`：ExcelPoi 解析器
@@ -173,7 +173,7 @@ biz-security（DOMAIN）
    SELECT id, name, collection_name FROM t_knowledge_base WHERE name LIKE '%biz-security%';
    ```
 
-4. 编辑 `docs/examples/biz-security-intent-nodes-import.sql`，全文替换：
+4. 编辑 `resources/database/imports/intent-nodes/biz-security-intent-nodes-import.sql`，全文替换：
    - `__KB_ID_BIZ_SECURITY__`
    - `__COLLECTION_BIZ_SECURITY__`
 5. 在 PostgreSQL 中执行 SQL 脚本。
