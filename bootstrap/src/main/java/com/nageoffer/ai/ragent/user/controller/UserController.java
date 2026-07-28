@@ -31,13 +31,16 @@ import com.nageoffer.ai.ragent.framework.convention.Result;
 import com.nageoffer.ai.ragent.framework.web.Results;
 import com.nageoffer.ai.ragent.user.service.UserService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 /**
  * 用户控制器
@@ -108,5 +111,31 @@ public class UserController {
     public Result<Void> changePassword(@RequestBody ChangePasswordRequest requestParam) {
         userService.changePassword(requestParam);
         return Results.success();
+    }
+
+    /**
+     * 当前用户上传并更新头像
+     */
+    @PostMapping(value = "/user/avatar", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public Result<String> uploadAvatar(@RequestPart("file") MultipartFile file) {
+        return Results.success(userService.uploadAvatar(file));
+    }
+
+    /**
+     * 管理员上传头像文件（仅落资产桶，返回公开 URL，供创建用户表单回填）
+     */
+    @PostMapping(value = "/users/avatar/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public Result<String> storeAvatarAsset(@RequestPart("file") MultipartFile file) {
+        StpUtil.checkRole("admin");
+        return Results.success(userService.storeAvatarAsset(file));
+    }
+
+    /**
+     * 管理员为指定用户上传并更新头像
+     */
+    @PostMapping(value = "/users/{id}/avatar", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public Result<String> uploadAvatarForUser(@PathVariable String id, @RequestPart("file") MultipartFile file) {
+        StpUtil.checkRole("admin");
+        return Results.success(userService.uploadAvatarForUser(id, file));
     }
 }

@@ -3,6 +3,7 @@ import { differenceInCalendarDays, isValid } from "date-fns";
 import {
   BookOpen,
   Bot,
+  ImagePlus,
   LogOut,
   MessageSquare,
   MoreHorizontal,
@@ -13,6 +14,7 @@ import {
   Trash2
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 
 import {
   AlertDialog,
@@ -32,8 +34,13 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Loading } from "@/components/common/Loading";
 import { cn } from "@/lib/utils";
+import { uploadMyAvatar } from "@/services/userService";
 import { useAuthStore } from "@/stores/authStore";
 import { useChatStore } from "@/stores/chatStore";
+import { getErrorMessage } from "@/utils/error";
+
+const AVATAR_ACCEPT = "image/jpeg,image/png,image/webp,image/gif,.jpg,.jpeg,.png,.webp,.gif";
+const MAX_AVATAR_BYTES = 2 * 1024 * 1024;
 
 interface SidebarProps {
   isOpen: boolean;
@@ -53,7 +60,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     fetchSessions
   } = useChatStore();
   const navigate = useNavigate();
-  const { user, logout } = useAuthStore();
+  const { user, logout, setAvatar } = useAuthStore();
   const [query, setQuery] = React.useState("");
   const [renamingId, setRenamingId] = React.useState<string | null>(null);
   const [renameValue, setRenameValue] = React.useState("");
@@ -62,7 +69,9 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     title: string;
   } | null>(null);
   const [avatarFailed, setAvatarFailed] = React.useState(false);
+  const [avatarUploading, setAvatarUploading] = React.useState(false);
   const renameInputRef = React.useRef<HTMLInputElement | null>(null);
+  const avatarInputRef = React.useRef<HTMLInputElement | null>(null);
 
   React.useEffect(() => {
     if (sessions.length === 0) {
@@ -119,6 +128,27 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   React.useEffect(() => {
     setAvatarFailed(false);
   }, [user?.avatar, user?.userId]);
+
+  const handleAvatarFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    if (file.size > MAX_AVATAR_BYTES) {
+      toast.error("头像大小不能超过 2MB");
+      return;
+    }
+    try {
+      setAvatarUploading(true);
+      const url = await uploadMyAvatar(file);
+      setAvatar(url);
+      setAvatarFailed(false);
+      toast.success("头像已更新");
+    } catch (error) {
+      toast.error(getErrorMessage(error, "头像上传失败"));
+    } finally {
+      setAvatarUploading(false);
+    }
+  };
 
   const avatarUrl = user?.avatar?.trim();
   const showAvatar = Boolean(avatarUrl) && !avatarFailed;
@@ -421,12 +451,29 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
                   官方文档
                 </a>
               </DropdownMenuItem>
+              <DropdownMenuItem
+                disabled={avatarUploading}
+                onSelect={(event) => {
+                  event.preventDefault();
+                  avatarInputRef.current?.click();
+                }}
+              >
+                <ImagePlus className="mr-2 h-4 w-4" />
+                {avatarUploading ? "上传中..." : "修改头像"}
+              </DropdownMenuItem>
               <DropdownMenuItem onClick={() => logout()} className="text-rose-600 focus:text-rose-600">
                 <LogOut className="mr-2 h-4 w-4" />
                 退出登录
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+          <input
+            ref={avatarInputRef}
+            type="file"
+            accept={AVATAR_ACCEPT}
+            className="hidden"
+            onChange={handleAvatarFileChange}
+          />
         </div>
       </aside>
       <AlertDialog open={Boolean(deleteTarget)} onOpenChange={(open) => {

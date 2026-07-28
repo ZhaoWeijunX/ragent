@@ -23,6 +23,7 @@ import com.nageoffer.ai.ragent.user.controller.request.UserCreateRequest;
 import com.nageoffer.ai.ragent.user.controller.request.UserPageRequest;
 import com.nageoffer.ai.ragent.user.controller.request.UserUpdateRequest;
 import com.nageoffer.ai.ragent.user.controller.vo.UserVO;
+import org.springframework.web.multipart.MultipartFile;
 
 public interface UserService {
 
@@ -50,4 +51,19 @@ public interface UserService {
      * 修改当前用户密码
      */
     void changePassword(ChangePasswordRequest requestParam);
+
+    /**
+     * 上传头像到资产桶并返回公开 URL（不落库，供创建用户表单回填）
+     */
+    String storeAvatarAsset(MultipartFile file);
+
+    /**
+     * 当前用户上传并更新头像，返回公开 URL
+     */
+    String uploadAvatar(MultipartFile file);
+
+    /**
+     * 管理员为指定用户上传并更新头像，返回公开 URL
+     */
+    String uploadAvatarForUser(String id, MultipartFile file);
 }

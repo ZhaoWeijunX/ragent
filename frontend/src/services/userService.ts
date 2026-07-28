@@ -61,3 +61,28 @@ export async function deleteUser(id: string): Promise<void> {
 export async function changePassword(payload: ChangePasswordPayload): Promise<void> {
   await api.put("/user/password", payload);
 }
+
+async function postAvatarFile(url: string, file: File): Promise<string> {
+  const formData = new FormData();
+  formData.append("file", file);
+  return api.post<string, string>(url, formData, {
+    headers: {
+      "Content-Type": "multipart/form-data"
+    }
+  });
+}
+
+/** 当前用户上传并更新头像，返回公开 URL */
+export async function uploadMyAvatar(file: File): Promise<string> {
+  return postAvatarFile("/user/avatar", file);
+}
+
+/** 管理员上传头像文件（不落库），返回公开 URL，供创建用户表单回填 */
+export async function uploadAvatarAsset(file: File): Promise<string> {
+  return postAvatarFile("/users/avatar/upload", file);
+}
+
+/** 管理员为指定用户上传并更新头像，返回公开 URL */
+export async function uploadUserAvatar(userId: string, file: File): Promise<string> {
+  return postAvatarFile(`/users/${userId}/avatar`, file);
+}

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type KeyboardEvent } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   ChevronDown,
@@ -15,6 +15,7 @@ import {
   Menu,
   MessageSquare,
   KeyRound,
+  ImagePlus,
   Search,
   Share2,
   ShieldCheck,
@@ -37,7 +38,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { changePassword } from "@/services/userService";
+import { changePassword, uploadMyAvatar } from "@/services/userService";
 import {
   getKnowledgeBases,
   searchKnowledgeDocuments,
@@ -45,6 +46,10 @@ import {
   type KnowledgeDocumentSearchItem
 } from "@/services/knowledgeService";
 import { Avatar } from "@/components/common/Avatar";
+import { getErrorMessage } from "@/utils/error";
+
+const AVATAR_ACCEPT = "image/jpeg,image/png,image/webp,image/gif,.jpg,.jpeg,.png,.webp,.gif";
+const MAX_AVATAR_BYTES = 2 * 1024 * 1024;
 
 type MenuChild = {
   path: string;
@@ -181,10 +186,11 @@ const breadcrumbMap: Record<string, string> = {
 export function AdminLayout() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, logout } = useAuthStore();
+  const { user, logout, setAvatar } = useAuthStore();
   const [collapsed, setCollapsed] = useState(false);
   const [passwordOpen, setPasswordOpen] = useState(false);
   const [passwordSubmitting, setPasswordSubmitting] = useState(false);
+  const [avatarUploading, setAvatarUploading] = useState(false);
   const [passwordForm, setPasswordForm] = useState({
     currentPassword: "",
     newPassword: "",
@@ -198,6 +204,7 @@ export function AdminLayout() {
   const [searchFocused, setSearchFocused] = useState(false);
   const blurTimeoutRef = useRef<number | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const avatarInputRef = useRef<HTMLInputElement | null>(null);
   const isDashboardRoute = location.pathname.startsWith("/admin/dashboard");
   // 知识图谱页要沉浸式铺满，去掉内容区内边距与面包屑
   const isGraphRoute = location.pathname.startsWith("/admin/knowledge-graph");
@@ -205,6 +212,26 @@ export function AdminLayout() {
   const handleLogout = async () => {
     await logout();
     navigate("/login");
+  };
+
+  const handleAvatarFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    if (file.size > MAX_AVATAR_BYTES) {
+      toast.error("头像大小不能超过 2MB");
+      return;
+    }
+    try {
+      setAvatarUploading(true);
+      const url = await uploadMyAvatar(file);
+      setAvatar(url);
+      toast.success("头像已更新");
+    } catch (error) {
+      toast.error(getErrorMessage(error, "头像上传失败"));
+    } finally {
+      setAvatarUploading(false);
+    }
   };
 
   useEffect(() => {
@@ -697,6 +724,16 @@ export function AdminLayout() {
                     {user?.username || "管理员"} · {roleLabel}
                   </div>
                   <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    disabled={avatarUploading}
+                    onSelect={(event) => {
+                      event.preventDefault();
+                      avatarInputRef.current?.click();
+                    }}
+                  >
+                    <ImagePlus className="mr-2 h-4 w-4" />
+                    {avatarUploading ? "上传中..." : "修改头像"}
+                  </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => setPasswordOpen(true)}>
                     <KeyRound className="mr-2 h-4 w-4" />
                     修改密码
@@ -707,6 +744,13 @@ export function AdminLayout() {
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
+              <input
+                ref={avatarInputRef}
+                type="file"
+                accept={AVATAR_ACCEPT}
+                className="hidden"
+                onChange={handleAvatarFileChange}
+              />
             </div>
           </div>
         </header>

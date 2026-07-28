@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { Pencil, Plus, RefreshCw, Trash2, UserPlus } from "lucide-react";
+import { useEffect, useRef, useState, type ChangeEvent } from "react";
+import { ImagePlus, Pencil, Plus, RefreshCw, Trash2, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -12,11 +12,14 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { PageResult, UserItem, UserCreatePayload, UserUpdatePayload } from "@/services/userService";
-import { createUser, deleteUser, getUsersPage, updateUser } from "@/services/userService";
+import { createUser, deleteUser, getUsersPage, updateUser, uploadAvatarAsset, uploadUserAvatar } from "@/services/userService";
+import { useAuthStore } from "@/stores/authStore";
 import { getErrorMessage } from "@/utils/error";
 import { RelativeTime } from "@/components/RelativeTime";
 
 const PAGE_SIZE = 10;
+const AVATAR_ACCEPT = "image/jpeg,image/png,image/webp,image/gif,.jpg,.jpeg,.png,.webp,.gif";
+const MAX_AVATAR_BYTES = 2 * 1024 * 1024;
 
 const roleOptions = [
   { value: "admin", label: "管理员" },
@@ -43,6 +46,10 @@ export function UserListPage() {
     user: null
   });
   const [form, setForm] = useState(buildEmptyForm());
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const avatarInputRef = useRef<HTMLInputElement | null>(null);
+  const setAvatar = useAuthStore((state) => state.setAvatar);
+  const currentUserId = useAuthStore((state) => state.user?.userId);
 
   const users = pageData?.records || [];
 
@@ -147,6 +154,36 @@ export function UserListPage() {
   };
 
   const isProtectedAdmin = (user: UserItem) => user.username === "admin";
+
+  const handleAvatarFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    if (file.size > MAX_AVATAR_BYTES) {
+      toast.error("头像大小不能超过 2MB");
+      return;
+    }
+    try {
+      setAvatarUploading(true);
+      let url: string;
+      if (dialogState.mode === "edit" && dialogState.user) {
+        url = await uploadUserAvatar(dialogState.user.id, file);
+        if (currentUserId && String(currentUserId) === String(dialogState.user.id)) {
+          setAvatar(url);
+        }
+        await loadUsers(pageNo, keyword);
+      } else {
+        url = await uploadAvatarAsset(file);
+      }
+      setForm((prev) => ({ ...prev, avatar: url }));
+      toast.success("头像上传成功");
+    } catch (error) {
+      toast.error(getErrorMessage(error, "头像上传失败"));
+      console.error(error);
+    } finally {
+      setAvatarUploading(false);
+    }
+  };
 
   return (
     <div className="admin-page">
@@ -311,11 +348,40 @@ export function UserListPage() {
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">头像</label>
-              <Input
-                value={form.avatar}
-                onChange={(event) => setForm((prev) => ({ ...prev, avatar: event.target.value }))}
-                placeholder="可选，填写头像 URL"
-              />
+              <div className="flex items-center gap-3">
+                <Avatar
+                  name={form.username || "用户"}
+                  src={form.avatar?.trim() || undefined}
+                  className="h-10 w-10 border border-slate-200 bg-indigo-50 text-xs font-semibold text-indigo-600"
+                />
+                <div className="flex min-w-0 flex-1 flex-col gap-2">
+                  <Input
+                    value={form.avatar}
+                    onChange={(event) => setForm((prev) => ({ ...prev, avatar: event.target.value }))}
+                    placeholder="可选，上传或填写头像 URL"
+                  />
+                  <div className="flex items-center gap-2">
+                    <input
+                      ref={avatarInputRef}
+                      type="file"
+                      accept={AVATAR_ACCEPT}
+                      className="hidden"
+                      onChange={handleAvatarFileChange}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={avatarUploading}
+                      onClick={() => avatarInputRef.current?.click()}
+                    >
+                      <ImagePlus className="mr-1.5 h-4 w-4" />
+                      {avatarUploading ? "上传中..." : "上传图片"}
+                    </Button>
+                    <span className="text-xs text-slate-400">JPG / PNG / WEBP / GIF，≤2MB</span>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
           <DialogFooter>

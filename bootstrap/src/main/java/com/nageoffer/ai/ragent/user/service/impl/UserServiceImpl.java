@@ -29,6 +29,8 @@ import com.nageoffer.ai.ragent.audit.support.BizChangeLogContext;
 import com.nageoffer.ai.ragent.framework.context.LoginUser;
 import com.nageoffer.ai.ragent.framework.context.UserContext;
 import com.nageoffer.ai.ragent.framework.exception.ClientException;
+import com.nageoffer.ai.ragent.rag.dto.StoredFileDTO;
+import com.nageoffer.ai.ragent.rag.service.FileStorageService;
 import com.nageoffer.ai.ragent.user.controller.request.ChangePasswordRequest;
 import com.nageoffer.ai.ragent.user.controller.request.UserCreateRequest;
 import com.nageoffer.ai.ragent.user.controller.request.UserPageRequest;
@@ -39,16 +41,29 @@ import com.nageoffer.ai.ragent.user.dao.mapper.UserMapper;
 import com.nageoffer.ai.ragent.user.enums.UserRole;
 import com.nageoffer.ai.ragent.user.service.UserService;
 import lombok.RequiredArgsConstructor;
+import lombok.SneakyThrows;
 import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.util.Locale;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
 public class UserServiceImpl implements UserService {
 
     private static final String DEFAULT_ADMIN_USERNAME = "admin";
+    private static final long MAX_AVATAR_BYTES = 2L * 1024 * 1024;
+    private static final Set<String> ALLOWED_AVATAR_CONTENT_TYPES = Set.of(
+            "image/jpeg",
+            "image/png",
+            "image/webp",
+            "image/gif"
+    );
 
     private final UserMapper userMapper;
     private final BizChangeLogContext bizChangeLogContext;
+    private final FileStorageService fileStorageService;
 
     @Override
     public IPage<UserVO> pageQuery(UserPageRequest requestParam) {
@@ -197,6 +212,99 @@ public class UserServiceImpl implements UserService {
         record.setPassword(next);
         userMapper.updateById(record);
         bizChangeLogContext.put(loginUser.getUserId(), before, toVO(userMapper.selectById(loginUser.getUserId())));
+    }
+
+    @Override
+    public String storeAvatarAsset(MultipartFile file) {
+        return storeAvatarPublicUrl(file);
+    }
+
+    @Override
+    @LogRecord(
+            success = "更新当前用户头像",
+            fail = "更新当前用户头像失败：{{#_errorMsg}}",
+            type = BizChangeBizType.USER,
+            subType = BizChangeOperationType.UPDATE,
+            bizNo = "{{T(com.nageoffer.ai.ragent.framework.context.UserContext).getUserId()}}",
+            extra = BizChangeLogContext.SNAPSHOT_EXPRESSION,
+            condition = BizChangeLogContext.RECORD_CONDITION
+    )
+    public String uploadAvatar(MultipartFile file) {
+        LoginUser loginUser = UserContext.requireUser();
+        UserDO record = userMapper.selectOne(
+                Wrappers.lambdaQuery(UserDO.class)
+                        .eq(UserDO::getId, loginUser.getUserId())
+                        .eq(UserDO::getDeleted, 0)
+        );
+        Assert.notNull(record, () -> new ClientException("用户不存在"));
+        return applyAvatar(record, file);
+    }
+
+    @Override
+    @LogRecord(
+            success = "更新用户头像：{{#id}}",
+            fail = "更新用户头像失败：{{#_errorMsg}}",
+            type = BizChangeBizType.USER,
+            subType = BizChangeOperationType.UPDATE,
+            bizNo = "{{#id}}",
+            extra = BizChangeLogContext.SNAPSHOT_EXPRESSION,
+            condition = BizChangeLogContext.RECORD_CONDITION
+    )
+    public String uploadAvatarForUser(String id, MultipartFile file) {
+        UserDO record = loadById(id);
+        ensureNotDefaultAdmin(record);
+        return applyAvatar(record, file);
+    }
+
+    private String applyAvatar(UserDO record, MultipartFile file) {
+        UserVO before = toVO(record);
+        String publicUrl = storeAvatarPublicUrl(file);
+        record.setAvatar(publicUrl);
+        userMapper.updateById(record);
+        bizChangeLogContext.put(String.valueOf(record.getId()), before, toVO(userMapper.selectById(record.getId())));
+        return publicUrl;
+    }
+
+    @SneakyThrows
+    private String storeAvatarPublicUrl(MultipartFile file) {
+        Assert.notNull(file, () -> new ClientException("头像文件不能为空"));
+        Assert.isFalse(file.isEmpty(), () -> new ClientException("头像文件不能为空"));
+        Assert.isTrue(file.getSize() <= MAX_AVATAR_BYTES, () -> new ClientException("头像大小不能超过 2MB"));
+
+        String contentType = StrUtil.trimToEmpty(file.getContentType()).toLowerCase(Locale.ROOT);
+        String filename = StrUtil.blankToDefault(file.getOriginalFilename(), "avatar.png");
+        if (!ALLOWED_AVATAR_CONTENT_TYPES.contains(contentType) && !isAllowedAvatarFilename(filename)) {
+            throw new ClientException("仅支持 JPG / PNG / WEBP / GIF 头像");
+        }
+        if (!ALLOWED_AVATAR_CONTENT_TYPES.contains(contentType)) {
+            contentType = guessAvatarContentType(filename);
+        }
+
+        StoredFileDTO stored = fileStorageService.uploadAsset(file.getBytes(), filename, contentType);
+        return fileStorageService.getPublicUrl(stored.getUrl());
+    }
+
+    private boolean isAllowedAvatarFilename(String filename) {
+        String lower = filename.toLowerCase(Locale.ROOT);
+        return lower.endsWith(".jpg")
+                || lower.endsWith(".jpeg")
+                || lower.endsWith(".png")
+                || lower.endsWith(".webp")
+                || lower.endsWith(".gif");
+    }
+
+    private String guessAvatarContentType(String filename) {
+        String lower = filename.toLowerCase(Locale.ROOT);
+        if (lower.endsWith(".png")) {
+            return "image/png";
+        }
+        if (lower.endsWith(".webp")) {
+            return "image/webp";
+        }
+        if (lower.endsWith(".gif")) {
+            return "image/gif";
+        }
+        return "image/jpeg";
     }
 
     private UserDO loadById(String id) {
