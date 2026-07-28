@@ -87,6 +87,7 @@ psql "postgresql://postgres:postgres@localhost:5432/ragent" -f resources/databas
 | `onboarding-intent-nodes-import.sql` | 入职知识库意图树（7 篇文档） |
 | `biz-security-intent-nodes-import.sql` | 信息安全知识库意图树（7 篇文档） |
 | `ragent-test-intent-nodes-import.sql` | 技术专栏意图树（53 篇文档） |
+| `12306-intent-nodes-import.sql` | 12306 实战专栏意图树（按正文聚类；87 篇有效 PDF） |
 
 知识库意图脚本使用占位符，执行前全文替换：
 
@@ -95,6 +96,7 @@ psql "postgresql://postgres:postgres@localhost:5432/ragent" -f resources/databas
 | onboarding | `__KB_ID_ONBOARDING__` / `__COLLECTION_ONBOARDING__` |
 | biz-security | `__KB_ID_BIZ_SECURITY__` / `__COLLECTION_BIZ_SECURITY__` |
 | ragent-test | `__KB_ID_RAGENT_TEST__` / `__COLLECTION_RAGENT_TEST__` |
+| 12306 | `__KB_ID_12306__` / `__COLLECTION_12306__` |
 
 ```sql
 SELECT id, name, collection_name FROM t_knowledge_base;
@@ -107,12 +109,14 @@ SELECT id, name, collection_name FROM t_knowledge_base;
 | onboarding | `resources/docs/knowledge/group/onboarding/` | 同目录 `intent-tree-design.md` |
 | biz-security | `resources/docs/knowledge/biz/biz-security/` | 同目录 `intent-tree-design.md` |
 | ragent-test | `resources/docs/ragent-test/` | 同目录 `intent-tree-design.md` |
+| 12306 | `resources/docs/12306-pdf-doc/` | 同目录 `intent-tree-design.md` |
 
 ### 与文档内容对齐说明（校验结论）
 
 - **onboarding / biz-security**：叶子意图与目录下 7 个内容文件一一对应（此前注释误写「8 篇」，已更正）。
 - **ragent-test**：已覆盖 53 篇 Markdown；技术文档系列含 `tech-docs-threadpool`（线程池）与 `tech-docs-patterns`（设计模式全景）。
-- **sample-questions**：Demo 区 OA / 保险问法已对齐现有「数据安全规范」文档（非功能介绍 / 整体架构文档）。
+- **12306**：按 PDF **正文内容**聚类为 17 个 TOPIC（非原目录结构）；89 篇中有 **2 篇近似空文档**不纳入叶子映射，详见 `resources/docs/12306-pdf-doc/intent-tree-design.md` §0。
+- **sample-questions**：Demo 区 OA / 保险问法已对齐现有「数据安全规范」文档（非功能介绍 / 整体架构文档）；含 12306 开场示例。
 
 ---
 
