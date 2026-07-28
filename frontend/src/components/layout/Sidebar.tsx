@@ -203,8 +203,8 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
               <Bot className="h-5 w-5 text-white" />
             </div>
             <div style={{ fontFamily: sessionTitleFont }}>
-              <p className="text-base font-semibold text-[#1A1A1A]">Ragent AI 智能体</p>
-              <p className="text-xs text-[#999999]">Powered by AI</p>
+              <p className="text-base font-semibold text-[#1A1A1A]">知航中枢 KnowPilot RAG</p>
+              <p className="text-xs text-[#999999]">企业级智能知识与工具协同平台</p>
             </div>
           </div>
         </div>

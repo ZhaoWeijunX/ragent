@@ -455,7 +455,7 @@ export function AdminLayout() {
             <div className="admin-sidebar__logo">R</div>
             {!collapsed && (
               <div className="min-w-0">
-                <h1 className="admin-sidebar__title">Ragent AI 管理后台</h1>
+                <h1 className="admin-sidebar__title">KnowPilot RAG 管理后台</h1>
                 <p className="admin-sidebar__subtitle">Knowledge Console</p>
               </div>
             )}
