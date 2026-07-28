@@ -17,6 +17,7 @@ local liveCount = 0
 for i = 1, #headEntries do
     local member = headEntries[i]
     if redis.call('EXISTS', entryPrefix .. member) == 1 then
+        --遍历过程中如果遇到当前 requestId，记录它在存活成员中的排名 liveRank
         if member == requestId then
             liveRank = liveCount
         end
@@ -28,9 +29,10 @@ for i = 1, #headEntries do
 end
 
 -- 不在存活队头窗口内（要么不在队列、要么落在 maxRank 之外）
+-- claim 失败
 if liveRank < 0 or liveRank >= maxRank then return {0} end
 
--- 获取原始 score（便于必要时按原位次重入队）
+-- 获取原始 score（便于必要时按原位次重入队）---- FIFO 公平
 local score = redis.call('ZSCORE', queueKey, requestId)
 
 -- 出队 claim：同步删除 entry 标记，避免后续被自己误判

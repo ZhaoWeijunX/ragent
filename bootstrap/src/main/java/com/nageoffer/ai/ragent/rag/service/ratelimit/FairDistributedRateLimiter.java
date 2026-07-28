@@ -144,6 +144,7 @@ public final class FairDistributedRateLimiter {
         setEntryMarker(ticket.requestId, req.maxWaitMillis());
         RScoredSortedSet<String> queue = redissonClient.getScoredSortedSet(queueKey, StringCodec.INSTANCE);
         queue.add(nextQueueSeq(), ticket.requestId);
+        // 立即抢占：跳过排队的快速路径
         if (tryAcquireIfReady(ticket)) {
             return;
         }
@@ -214,6 +215,7 @@ public final class FairDistributedRateLimiter {
                 }
                 return false;
             }
+            // 注销 poller + 定时器，关闭轮询
             unregisterFromNotifier();
             cancelFutureQuietly();
             Runnable wrapped = () -> {
@@ -227,6 +229,7 @@ public final class FairDistributedRateLimiter {
                 req.onAcquiredExecutor().execute(wrapped);
                 return true;
             } catch (RejectedExecutionException ex) {
+                // 线程池满了
                 log.warn("[{}] onAcquired 提交失败，降级为 timeout 拒绝路径", name, ex);
                 releaseHeldPermit();   // 业务未运行，必须显式释放（cleanup 在 GRANTED 状态不会释放 permit）
                 cleanup();
@@ -280,6 +283,9 @@ public final class FairDistributedRateLimiter {
             pollNotifier.unregister(requestId);
         }
 
+        /**
+         * 幂等取消
+         */
         void cancelFutureQuietly() {
             ScheduledFuture<?> f = future;
             if (f != null && !f.isCancelled()) {
@@ -299,17 +305,21 @@ public final class FairDistributedRateLimiter {
     // ==================== 抢占核心 ====================
 
     private boolean tryAcquireIfReady(Ticket ticket) {
+        // 阶段 1：状态检测，只有pending才继续抢占
         if (!ticket.isPending()) {
             return false;
         }
+        // 阶段 2：availablePermits 快速判断
         int avail = availablePermits();
         if (avail <= 0) {
             return false;
         }
+        // 阶段 3：Lua 脚本 claim 队列位置
         long claimedScore = claimIfReady(ticket.requestId, avail);
         if (claimedScore < 0L) {
             return false;
         }
+        // 阶段 4：tryAcquirePermit 拿真实许可
         String permitId = tryAcquirePermit();
         if (permitId == null) {
             // 队头但无 permit：按原 score 重入队，保留排队位次（公平性）
@@ -336,20 +346,26 @@ public final class FairDistributedRateLimiter {
     }
 
     private void scheduleQueuePoll(Ticket ticket) {
+        // 配置默认 200ms
         int interval = Math.max(50, pollIntervalMsSupplier.getAsInt());
         Runnable poller = () -> {
+            // 分支 1：取消 或 已完成
             if (!ticket.isPending()) {
                 ticket.unregisterFromNotifier();
                 ticket.cancelFutureQuietly();
                 return;
             }
+            // 分支 2：超时拒绝，默认 20s
             if (System.currentTimeMillis() > ticket.deadline) {
                 ticket.timeout();
                 return;
             }
+            // 分支 3：再次尝试快速路径抢占
             tryAcquireIfReady(ticket);
         };
         ticket.future = scheduler.scheduleAtFixedRate(poller, interval, interval, TimeUnit.MILLISECONDS);
+        // 把 poller 注册到广播通知器
+        // 两条路径合并点，即受 scheduler 周期调用，又在收到广播通知后调用
         pollNotifier.register(ticket.requestId, poller);
     }
 
@@ -413,6 +429,7 @@ public final class FairDistributedRateLimiter {
                 String.valueOf(availablePermits),
                 entryKeyPrefix
         );
+//        返回值是一个数组：第一位是 0 / 1 表示是否 claim 成功，第二位是原始 score。
         if (result == null || result.isEmpty() || parseLong(result.get(0)) != 1L) {
             return -1L;
         }
@@ -514,17 +531,25 @@ public final class FairDistributedRateLimiter {
             pollers.remove(requestId);
         }
 
+        /**
+         * 三层控制：
+         * <p> - CAS 争夺执行权，使串行进行
+         * <p> - pendingNotifications 多次连续触发 fire() 合并为“一次”执行，减少遍历次数 <防惊群效应>
+         * <p> - 执行前判当前许可数，空则直接退出，不在内部多次查permit
+         */
         void fire() {
+            // CAS抢占执行权
             pendingNotifications.incrementAndGet();
             if (!firing.compareAndSet(false, true)) {
                 return;
             }
             executor.execute(() -> {
                 do {
+                    // 清除累计的通知，多次通知合并为一次进行，消化掉在此之前的 fire() 消息
                     pendingNotifications.set(0);
                     try {
                         if (permitSupplier.getAsInt() <= 0) {
-                            // permit 已耗尽，本轮不必扫描所有 poller。下一次真正的 release 会发新通知重新驱动
+                            // 短路路径，permit 已耗尽，本轮不必扫描所有 poller。下一次真正的 release 会发新通知重新驱动
                             break;
                         }
                         for (Runnable poller : pollers.values()) {
@@ -535,8 +560,10 @@ public final class FairDistributedRateLimiter {
                             }
                         }
                     } finally {
+                        // 跑完一轮 pollers，置回 false
                         firing.set(false);
                     }
+                    //跑期间如果有新通知来，重新拿回执行权，接着跑
                 } while (pendingNotifications.get() > 0 && firing.compareAndSet(false, true));
             });
         }
