@@ -97,6 +97,9 @@ export function ModelCandidateProbeTable({
   probingKeys,
   onProbeOne
 }: ModelCandidateProbeTableProps) {
+  // chat 走档位排序，priority 对路由无意义，仅 embedding/rerank 展示
+  const showPriority = capability !== "chat";
+
   return (
     <Table className="min-w-[860px]">
         <TableHeader>
@@ -109,7 +112,7 @@ export function ModelCandidateProbeTable({
                 {column.header}
               </TableHead>
             ))}
-            <TableHead className="w-[90px]">Priority</TableHead>
+            {showPriority ? <TableHead className="w-[90px]">Priority</TableHead> : null}
             <TableHead className="w-[120px]">健康状态</TableHead>
             <TableHead className="w-[90px]">耗时</TableHead>
             <TableHead className="w-[90px]">操作</TableHead>
@@ -130,7 +133,7 @@ export function ModelCandidateProbeTable({
                 {extraColumns.map((column) => (
                   <TableCell key={column.header}>{column.render(item)}</TableCell>
                 ))}
-                <TableCell>{item.priority}</TableCell>
+                {showPriority ? <TableCell>{item.priority}</TableCell> : null}
                 <TableCell>
                   {disabled ? (
                     <Badge variant="outline">已禁用</Badge>
