@@ -348,7 +348,6 @@ public class KnowledgeChunkServiceImpl implements KnowledgeChunkService {
     }
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
     @LogRecord(
             success = "{{#enabled ? '启用' : '禁用'}} Chunk：{{#chunkId}}",
             fail = "修改 Chunk 启用状态失败：{{#_errorMsg}}",
@@ -373,26 +372,54 @@ public class KnowledgeChunkServiceImpl implements KnowledgeChunkService {
 
         // 如果状态没变，直接返回
         int enabledValue = enabled ? 1 : 0;
+        int previousEnabled = enabled ? 0 : 1;
         if (chunkDO.getEnabled().equals(enabledValue)) {
             bizChangeLogContext.skip();
             return;
         }
 
-        chunkDO.setEnabled(enabledValue);
-        chunkDO.setUpdatedBy(UserContext.getUsername());
-        chunkMapper.updateById(chunkDO);
-
         KnowledgeBaseDO kbDO = knowledgeBaseMapper.selectById(documentDO.getKbId());
         String collectionName = kbDO.getCollectionName();
-        log.info("{}Chunk 成功, kbId={}, docId={}, chunkId={}", enabled ? "启用" : "禁用", documentDO.getKbId(), docId, chunkId);
 
+        // 启用时：embed 耗时较长，在事务外提前执行，避免长事务占用连接
+        VectorChunk preparedChunk = null;
         if (enabled) {
-            String embeddingModel = kbDO.getEmbeddingModel();
-            syncChunkToVector(collectionName, docId, chunkDO, embeddingModel);
-        } else {
-            deleteChunkFromVector(collectionName, chunkId);
+            List<Float> embedding = embedContent(chunkDO.getContent(), kbDO.getEmbeddingModel());
+            preparedChunk = VectorChunk.builder()
+                    .index(chunkDO.getChunkIndex())
+                    .content(chunkDO.getContent())
+                    .chunkId(String.valueOf(chunkDO.getId()))
+                    .embedding(toArray(embedding))
+                    .build();
         }
-        bizChangeLogContext.put(chunkId, before, chunkMapper.selectById(chunkId));
+        final VectorChunk toIndex = preparedChunk;
+
+        transactionOperations.executeWithoutResult(status -> {
+            int updated = chunkMapper.update(
+                    Wrappers.lambdaUpdate(KnowledgeChunkDO.class)
+                            .eq(KnowledgeChunkDO::getId, chunkId)
+                            .eq(KnowledgeChunkDO::getEnabled, previousEnabled)
+                            .set(KnowledgeChunkDO::getEnabled, enabledValue)
+                            .set(KnowledgeChunkDO::getUpdatedBy, UserContext.getUsername())
+            );
+            // 并发下已被其他请求改到目标状态：视为幂等成功，不再重复写向量
+            if (updated == 0) {
+                return;
+            }
+            if (enabled) {
+                vectorStoreService.updateChunk(collectionName, docId, toIndex);
+            } else {
+                deleteChunkFromVector(collectionName, chunkId);
+            }
+        });
+
+        KnowledgeChunkDO after = chunkMapper.selectById(chunkId);
+        if (after == null || !Integer.valueOf(enabledValue).equals(after.getEnabled())) {
+            bizChangeLogContext.skip();
+            throw new ClientException(enabled ? "启用 Chunk 失败，请刷新后重试" : "禁用 Chunk 失败，请刷新后重试");
+        }
+        log.info("{}Chunk 成功, kbId={}, docId={}, chunkId={}", enabled ? "启用" : "禁用", documentDO.getKbId(), docId, chunkId);
+        bizChangeLogContext.put(chunkId, before, after);
     }
 
     @Override
@@ -466,22 +493,30 @@ public class KnowledgeChunkServiceImpl implements KnowledgeChunkService {
             attachEmbeddings(vectorChunks, kbDO.getEmbeddingModel());
 
             transactionOperations.executeWithoutResult(status -> {
-                chunkMapper.update(
+                int updated = chunkMapper.update(
                         Wrappers.lambdaUpdate(KnowledgeChunkDO.class)
                                 .in(KnowledgeChunkDO::getId, needUpdateIds)
+                                .eq(KnowledgeChunkDO::getEnabled, 0)
                                 .set(KnowledgeChunkDO::getEnabled, 1)
                                 .set(KnowledgeChunkDO::getUpdatedBy, UserContext.getUsername())
                 );
+                if (updated == 0) {
+                    return;
+                }
                 vectorStoreService.indexDocumentChunks(collectionName, docId, vectorChunks);
             });
         } else {
             transactionOperations.executeWithoutResult(status -> {
-                chunkMapper.update(
+                int updated = chunkMapper.update(
                         Wrappers.lambdaUpdate(KnowledgeChunkDO.class)
                                 .in(KnowledgeChunkDO::getId, needUpdateIds)
+                                .eq(KnowledgeChunkDO::getEnabled, 1)
                                 .set(KnowledgeChunkDO::getEnabled, 0)
                                 .set(KnowledgeChunkDO::getUpdatedBy, UserContext.getUsername())
                 );
+                if (updated == 0) {
+                    return;
+                }
                 vectorStoreService.deleteChunksByIds(collectionName, needUpdateIds);
             });
         }

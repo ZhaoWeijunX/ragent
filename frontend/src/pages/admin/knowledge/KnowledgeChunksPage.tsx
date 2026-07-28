@@ -54,6 +54,8 @@ export function KnowledgeChunksPage() {
     chunk: null
   });
   const [deleteTarget, setDeleteTarget] = useState<KnowledgeChunk | null>(null);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [batchSubmitting, setBatchSubmitting] = useState<null | "enable" | "disable">(null);
   const chunks = pageData?.records || [];
 
   const selectedList = useMemo(() => Array.from(selectedIds), [selectedIds]);
@@ -135,6 +137,7 @@ export function KnowledgeChunksPage() {
       toast.error("请选择需要操作的分块");
       return;
     }
+    if (batchSubmitting || togglingId) return;
     const targetValue = enabled ? 1 : 0;
     const selectedChunks = chunks.filter((c) => selectedList.includes(String(c.id)));
     const needChange = selectedChunks.some((c) => c.enabled !== targetValue);
@@ -142,6 +145,7 @@ export function KnowledgeChunksPage() {
       toast.info(enabled ? "所选分块已全部启用" : "所选分块已全部禁用");
       return;
     }
+    setBatchSubmitting(enabled ? "enable" : "disable");
     try {
       await batchToggleChunks(docId, enabled, selectedList);
       toast.success(enabled ? "批量启用成功" : "批量禁用成功");
@@ -150,6 +154,8 @@ export function KnowledgeChunksPage() {
     } catch (error) {
       toast.error(getErrorMessage(error, enabled ? "批量启用失败" : "批量禁用失败"));
       console.error(error);
+    } finally {
+      setBatchSubmitting(null);
     }
   };
 
@@ -168,14 +174,19 @@ export function KnowledgeChunksPage() {
 
   const handleToggleEnabled = async (chunk: KnowledgeChunk) => {
     if (!docId) return;
+    const chunkId = String(chunk.id);
+    if (togglingId || batchSubmitting) return;
+    const enable = chunk.enabled !== 1;
+    setTogglingId(chunkId);
     try {
-      const enable = chunk.enabled !== 1;
-      await toggleChunk(docId, String(chunk.id), enable);
+      await toggleChunk(docId, chunkId, enable);
       toast.success(enable ? "已启用" : "已禁用");
       await loadChunks(pageNo, enabledFilter);
     } catch (error) {
       toast.error(getErrorMessage(error, "操作失败"));
       console.error(error);
+    } finally {
+      setTogglingId(null);
     }
   };
 
@@ -233,13 +244,21 @@ export function KnowledgeChunksPage() {
                 <RefreshCw className="mr-2 h-4 w-4" />
                 刷新
               </Button>
-              <Button variant="outline" onClick={() => handleBatchToggle(true)} disabled={selectedList.length === 0}>
+              <Button
+                variant="outline"
+                onClick={() => handleBatchToggle(true)}
+                disabled={selectedList.length === 0 || batchSubmitting !== null || togglingId !== null}
+              >
                 <ShieldCheck className="mr-2 h-4 w-4" />
-                批量启用
+                {batchSubmitting === "enable" ? "启用中..." : "批量启用"}
               </Button>
-              <Button variant="outline" onClick={() => handleBatchToggle(false)} disabled={selectedList.length === 0}>
+              <Button
+                variant="outline"
+                onClick={() => handleBatchToggle(false)}
+                disabled={selectedList.length === 0 || batchSubmitting !== null || togglingId !== null}
+              >
                 <ShieldX className="mr-2 h-4 w-4" />
-                批量禁用
+                {batchSubmitting === "disable" ? "禁用中..." : "批量禁用"}
               </Button>
             </div>
           </div>
@@ -307,8 +326,19 @@ export function KnowledgeChunksPage() {
                           <PenSquare className="mr-0.1 h-4 w-4" />
                           编辑
                         </Button>
-                        <Button size="sm" variant="outline" onClick={() => handleToggleEnabled(chunk)}>
-                          {chunk.enabled === 1 ? "禁用" : "启用"}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={togglingId === String(chunk.id) || batchSubmitting !== null}
+                          onClick={() => handleToggleEnabled(chunk)}
+                        >
+                          {togglingId === String(chunk.id)
+                            ? chunk.enabled === 1
+                              ? "禁用中..."
+                              : "启用中..."
+                            : chunk.enabled === 1
+                              ? "禁用"
+                              : "启用"}
                         </Button>
                         <Button
                           size="sm"

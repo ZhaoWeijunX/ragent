@@ -27,10 +27,8 @@ import com.nageoffer.ai.ragent.framework.exception.ClientException;
 import com.nageoffer.ai.ragent.rag.config.RAGDefaultProperties;
 import io.milvus.v2.client.MilvusClientV2;
 import io.milvus.v2.service.vector.request.DeleteReq;
-import io.milvus.v2.service.vector.request.InsertReq;
 import io.milvus.v2.service.vector.request.UpsertReq;
 import io.milvus.v2.service.vector.response.DeleteResp;
-import io.milvus.v2.service.vector.response.InsertResp;
 import io.milvus.v2.service.vector.response.UpsertResp;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -79,13 +77,13 @@ public class MilvusVectorStoreService implements VectorStoreService {
             rows.add(row);
         }
 
-        InsertReq req = InsertReq.builder()
+        UpsertReq req = UpsertReq.builder()
                 .collectionName(sharedCollection())
                 .data(rows)
                 .build();
 
-        InsertResp resp = milvusClient.insert(req);
-        log.info("Milvus chunk 建立/写入向量索引成功, collection={}, rows={}", collectionName, resp.getInsertCnt());
+        UpsertResp resp = milvusClient.upsert(req);
+        log.info("Milvus chunk 建立/写入向量索引成功, collection={}, rows={}", collectionName, resp.getUpsertCnt());
     }
 
     @Override
