@@ -97,6 +97,78 @@ interface MarkdownNode {
   children?: MarkdownNode[];
 }
 
+/** 单个角标 token：规范链接 / 全角【N】/ 裸写 [N] */
+const CITATION_TOKEN =
+  /\[([1-9]\d*)\]\(#cite-[1-9]\d*\)|【([1-9]\d*)】|\[([1-9]\d*)\]/g;
+
+/**
+ * 进 Markdown 前清洗：去掉“只含角标”的行内代码反引号，并解开被转义的角标
+ *
+ * 模型常写出 ``寿命 `[1](#cite-1)`。`` —— 反引号会让整段变成 code，原文直接露出。
+ * 这里先剥掉这类反引号，再交给常规 link / SourceCitation 渲染。
+ */
+function normalizeCitationMarkup(content: string): string {
+  if (!content) return content;
+  let next = content;
+  // \[1\](#cite-1) → [1](#cite-1)
+  next = next.replace(/\\\[([1-9]\d*)\\\]\(#cite-\1\)/g, "[$1](#cite-$1)");
+  // `[1](#cite-1)` / `[1](#cite-1)[2](#cite-2)` / `【1】` / `[1]` → 去掉外层反引号
+  next = next.replace(
+    /`((?:\s*(?:\[[1-9]\d*\]\(#cite-[1-9]\d*\)|【[1-9]\d*】|\[[1-9]\d*\]))+)\s*`/g,
+    "$1"
+  );
+  return next;
+}
+
+/**
+ * 若整段文本（可含空白）只由角标组成，拆成 link 节点；否则返回 null
+ */
+function linksFromCitationOnlyText(value: string): MarkdownNode[] | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  const links: MarkdownNode[] = [];
+  let cursor = 0;
+  CITATION_TOKEN.lastIndex = 0;
+  for (const match of trimmed.matchAll(CITATION_TOKEN)) {
+    if (match.index == null) continue;
+    const gap = trimmed.slice(cursor, match.index);
+    if (gap.trim() !== "") return null;
+    const index = Number(match[1] ?? match[2] ?? match[3]);
+    if (!Number.isFinite(index)) return null;
+    links.push({
+      type: "link",
+      url: `#cite-${index}`,
+      children: [{ type: "text", value: String(index) }]
+    });
+    cursor = match.index + match[0].length;
+  }
+  if (links.length === 0) return null;
+  if (trimmed.slice(cursor).trim() !== "") return null;
+  return links;
+}
+
+/**
+ * AST 兜底：若仍有 inlineCode 整段都是角标，改写成 link
+ */
+function remarkUnwrapCitationCode() {
+  return (tree: MarkdownNode) => {
+    const visit = (node: MarkdownNode) => {
+      if (!Array.isArray(node.children)) return;
+      node.children = node.children.flatMap((child) => {
+        if (child.type === "inlineCode" && typeof child.value === "string") {
+          const links = linksFromCitationOnlyText(child.value);
+          if (links) return links;
+          return [child];
+        }
+        visit(child);
+        return [child];
+      });
+    };
+    visit(tree);
+  };
+}
+
 function remarkPlainSourceCitations(options?: { indexes?: number[] }) {
   const indexes = new Set(options?.indexes ?? []);
   const markerPattern = /(?:\[([1-9]\d*)\]|【([1-9]\d*)】)/g;
@@ -217,29 +289,32 @@ function parseCitationIndex(href: string | undefined) {
 /**
  * 收集本条回答里可渲染为角标的编号
  *
- * 只有正文出现过规范角标 `[N](#cite-N)`，才认为模型处于引用模式：此时把它漏写成
- * `[N]`、`【N】` 的兄弟角标一并补齐。引用功能关闭（或模型没有标注）时返回空集合，
- * 正文里的 `[1]` 保持原样，不会被误升级成来源角标
+ * 进入引用模式的条件（满足其一即可）：
+ * 1. 正文出现过规范角标 `[N](#cite-N)`（含曾被反引号误包的形式）
+ * 2. 本条消息带有 sources —— 此时把裸写 `[N]` / `【N】` 且 N∈sources 的一并升级
  */
 function resolveCitationIndexes(content: string, sources?: SourceRef[]) {
   const result = new Set<number>();
-  for (const match of content.matchAll(/\[([1-9]\d*)\]\(#cite-\1\)/g)) {
+  for (const match of content.matchAll(/`?\[([1-9]\d*)\]\(#cite-\1\)`?/g)) {
     result.add(Number(match[1]));
   }
-  if (result.size === 0) {
+  const sourceIndexes =
+    sources
+      ?.map((source) => source.index)
+      .filter((index): index is number => typeof index === "number") ?? [];
+  if (result.size === 0 && sourceIndexes.length === 0) {
     return [];
   }
-  sources?.forEach((source) => {
-    if (typeof source.index === "number") result.add(source.index);
-  });
+  sourceIndexes.forEach((index) => result.add(index));
   return [...result];
 }
 
 export function MarkdownRenderer({ content, messageId, sources }: MarkdownRendererProps) {
   const theme = useThemeStore((state) => state.theme);
+  const normalizedContent = React.useMemo(() => normalizeCitationMarkup(content), [content]);
   const citationIndexes = React.useMemo(
-    () => resolveCitationIndexes(content, sources),
-    [content, sources]
+    () => resolveCitationIndexes(normalizedContent, sources),
+    [normalizedContent, sources]
   );
 
   return (
@@ -248,6 +323,7 @@ export function MarkdownRenderer({ content, messageId, sources }: MarkdownRender
             [remarkGfm, { singleTilde: false }],
             remarkMath,
             remarkCjkFriendly,
+            remarkUnwrapCitationCode,
             [remarkPlainSourceCitations, { indexes: citationIndexes }],
             remarkNormalizeCitations
         ]}
@@ -264,6 +340,27 @@ export function MarkdownRenderer({ content, messageId, sources }: MarkdownRender
 
           // 判断是否为内联代码：inline 为 true 或者没有换行符
           if (inline || !value.includes('\n')) {
+            // 组件层最后兜底：若仍是纯角标行内代码，直接渲染角标（防止插件链漏网）
+            const citationLinks = linksFromCitationOnlyText(value);
+            if (citationLinks && citationLinks.length > 0) {
+              return (
+                <>
+                  {citationLinks.map((link, i) => {
+                    const citationIndex = parseCitationIndex(link.url);
+                    if (citationIndex == null) return null;
+                    const source = sources?.find((item) => item.index === citationIndex);
+                    return (
+                      <SourceCitation
+                        key={`cite-code-${citationIndex}-${i}`}
+                        index={citationIndex}
+                        messageId={messageId}
+                        source={source}
+                      />
+                    );
+                  })}
+                </>
+              );
+            }
             return (
               <code
                 className={cn(
@@ -331,7 +428,8 @@ export function MarkdownRenderer({ content, messageId, sources }: MarkdownRender
           );
         },
         a({ children, href, ...props }) {
-          const citationIndex = messageId ? parseCitationIndex(href) : null;
+          // #cite-N 一律走角标组件，避免退回普通锚点
+          const citationIndex = parseCitationIndex(href);
           if (citationIndex != null) {
             const source = sources?.find((item) => item.index === citationIndex);
             return (
@@ -491,7 +589,7 @@ export function MarkdownRenderer({ content, messageId, sources }: MarkdownRender
       }}
       className="prose prose-gray max-w-none break-words leading-[1.6] dark:prose-invert prose-headings:text-[#1A1A1A] dark:prose-headings:text-[#EEEEEE] prose-p:text-[#333333] dark:prose-p:text-[#CCCCCC] prose-p:leading-relaxed prose-li:text-[#333333] dark:prose-li:text-[#CCCCCC] prose-strong:text-[#1A1A1A] dark:prose-strong:text-[#EEEEEE]"
     >
-      {content}
+      {normalizedContent}
     </ReactMarkdown>
   );
 }
