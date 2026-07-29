@@ -17,6 +17,7 @@
 
 package com.nageoffer.ai.ragent.rag.core.retrieval;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -76,6 +77,7 @@ public class RetrieveRequest {
     /**
      * 新的多 Collection 参数优先，旧的单 Collection 参数用于兼容已有调用方
      */
+    @JsonIgnore
     public List<String> getEffectiveCollectionNames() {
         LinkedHashSet<String> normalized = new LinkedHashSet<>();
         if (collectionNames != null) {
