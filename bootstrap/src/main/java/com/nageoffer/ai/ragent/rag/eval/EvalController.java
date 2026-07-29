@@ -53,6 +53,8 @@ import java.util.stream.Collectors;
 @ConditionalOnProperty(prefix = "app.eval", name = "enabled", havingValue = "true")
 public class EvalController {
 
+    private static final String SKIP_REASON_SYSTEM_ONLY = "SYSTEM_ONLY";
+
     private final QueryRewriteService queryRewriteService;
     private final IntentResolver intentResolver;
     private final RetrievalEngine retrievalEngine;
@@ -65,12 +67,20 @@ public class EvalController {
 
         RewriteResult rewriteResult = queryRewriteService.rewriteWithSplit(question, List.of());
         List<SubQuestionIntent> subIntents = intentResolver.resolve(rewriteResult);
+        if (intentResolver.areAllSystemOnly(subIntents)) {
+            return Results.success(buildResponse(null, subIntents, System.currentTimeMillis() - start,
+                    true, SKIP_REASON_SYSTEM_ONLY));
+        }
         RetrievalContext rc = retrievalEngine.retrieve(subIntents);
 
-        return Results.success(buildResponse(rc, subIntents, System.currentTimeMillis() - start));
+        return Results.success(buildResponse(rc, subIntents, System.currentTimeMillis() - start, false, null));
     }
 
-    private EvalResponse buildResponse(RetrievalContext rc, List<SubQuestionIntent> subIntents, long latencyMs) {
+    private EvalResponse buildResponse(RetrievalContext rc,
+                                       List<SubQuestionIntent> subIntents,
+                                       long latencyMs,
+                                       boolean retrievalSkipped,
+                                       String skipReason) {
         List<RetrievedChunk> uniqueChunks = flattenChunks(rc);
         List<String> chunkIds = uniqueChunks.stream()
                 .map(RetrievedChunk::getId)
@@ -93,6 +103,8 @@ public class EvalController {
                 .mcpContext(rc == null ? null : rc.getMcpContext())
                 .hasMcp(rc != null && rc.hasMcp())
                 .hasKb(rc != null && rc.hasKb())
+                .retrievalSkipped(retrievalSkipped)
+                .skipReason(skipReason)
                 .subIntents(extractSubIntents(subIntents))
                 .intentLeafIds(extractTopLeafIds(subIntents))
                 .latencyMs(latencyMs)

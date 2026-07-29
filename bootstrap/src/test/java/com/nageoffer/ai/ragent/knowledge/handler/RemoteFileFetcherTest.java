@@ -17,7 +17,9 @@
 
 package com.nageoffer.ai.ragent.knowledge.handler;
 
+import com.nageoffer.ai.ragent.ingestion.strategy.fetcher.FeishuFetcher;
 import com.nageoffer.ai.ragent.ingestion.util.HttpClientHelper;
+import com.nageoffer.ai.ragent.knowledge.config.FeishuCredentialsProvider;
 import com.nageoffer.ai.ragent.rag.service.FileStorageService;
 import okhttp3.MediaType;
 import okhttp3.Protocol;
@@ -60,11 +62,17 @@ class RemoteFileFetcherTest {
     @Mock
     private FileStorageService fileStorageService;
 
+    @Mock
+    private FeishuFetcher feishuFetcher;
+
+    @Mock
+    private FeishuCredentialsProvider feishuCredentialsProvider;
+
     private RemoteFileFetcher fetcher;
 
     @BeforeEach
     void setUp() throws Exception {
-        fetcher = new RemoteFileFetcher(httpClientHelper, fileStorageService);
+        fetcher = new RemoteFileFetcher(httpClientHelper, fileStorageService, feishuFetcher, feishuCredentialsProvider);
         Field maxFileSize = RemoteFileFetcher.class.getDeclaredField("maxFileSize");
         maxFileSize.setAccessible(true);
         maxFileSize.set(fetcher, DataSize.ofMegabytes(1));

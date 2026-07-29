@@ -66,6 +66,16 @@ public class EvalResponse {
     private boolean hasKb;
 
     /**
+     * 是否因路由决策主动跳过检索
+     */
+    private boolean retrievalSkipped;
+
+    /**
+     * 主动跳过检索的原因；未跳过时为 null
+     */
+    private String skipReason;
+
+    /**
      * 子问题列表（改写拆分结果）
      */
     private List<String> subIntents;

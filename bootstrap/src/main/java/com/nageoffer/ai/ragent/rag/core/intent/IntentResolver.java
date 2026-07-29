@@ -90,6 +90,17 @@ public class IntentResolver {
                 && nodeScores.get(0).getNode().getKind() == SYSTEM;
     }
 
+    /**
+     * 判断全部子问题是否都只命中一个 SYSTEM 意图。
+     *
+     * @param subIntents 子问题意图识别结果
+     * @return 非空且每个子问题都只命中 SYSTEM 意图时返回 true
+     */
+    public boolean areAllSystemOnly(List<SubQuestionIntent> subIntents) {
+        return CollUtil.isNotEmpty(subIntents)
+                && subIntents.stream().allMatch(si -> isSystemOnly(si.nodeScores()));
+    }
+
     private List<NodeScore> classifyIntents(String question) {
         List<NodeScore> scores = intentClassifier.classifyTargets(question);
         return scores.stream()
