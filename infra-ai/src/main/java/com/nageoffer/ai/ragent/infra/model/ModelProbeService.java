@@ -200,7 +200,7 @@ public class ModelProbeService {
                 }
                 ChatRequest request = ChatRequest.builder()
                         .messages(List.of(ChatMessage.user(PROBE_TEXT)))
-                        .maxTokens(1)
+                        .maxTokens(16)
                         .temperature(0.0)
                         .thinking(false)
                         .build();
