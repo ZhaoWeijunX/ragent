@@ -7,6 +7,10 @@
 
 新环境直接按顺序执行这两个文件，不需要再执行历史升级脚本
 
+## 模块脚本
+
+- `evaluation/`：RAG 评测工作台建表权威脚本（`schema_eval_workbench.sql`），与 `schema_pg.sql` 中评测表段落保持同步；说明见 [`evaluation/README.md`](evaluation/README.md)
+
 ## 增量升级
 
 `upgrades/` 按正式发布版本划分目录。当前正式版本是 v1.0，因此开发期间产生的 v1.1.0 数据库升级脚本统一放在 `upgrades/v1.1.0/`

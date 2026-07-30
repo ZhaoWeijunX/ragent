@@ -2,9 +2,10 @@
 
 > 对应需求：[rag-evaluation-workbench-requirements.md](./rag-evaluation-workbench-requirements.md)  
 > 参考资料：`resources/docs/ragent-test/RAG 评测——从指标到实践/`、外部项目 `D:\code\ragenteval`  
-> 状态：Draft · 2026-07-30（阶段 0 已完成规格冻结；在线 spike 待本地服务验证）  
+> 状态：Draft · 2026-07-30（阶段 0 完成；阶段 1 骨架与建表已落地）  
 > 决策摘要：MVP 沿用 `/rag/v3/chat` + `/rag/eval` 双路径采集并显式披露漂移风险；RAGAS 将 `ragenteval` 改造成独立 HTTP 评分服务。  
-> 阶段 0 产物：[docs/evaluation/](./evaluation/README.md) · [退出报告](./evaluation/phase-0-exit-report.md)
+> 阶段 0 产物：[docs/evaluation/](./evaluation/README.md) · [退出报告](./evaluation/phase-0-exit-report.md)  
+> 阶段 1 建表：[resources/database/evaluation/](../resources/database/evaluation/README.md)
 
 ## 目标架构与边界
 
@@ -68,6 +69,13 @@ MVP 累计约 **6–8** 个日历周；V1 累计约 **10–13** 个日历周（�
 - 新增专用评测线程池，不复用聊天生成线程池；控制 `max-active-runs=1` 和低默认并发，避免批测挤占在线聊天资源。
 - 扩展审计业务类型；所有 Controller 后端执行 `admin` 角色校验，不能只依赖前端路由守卫。
 - **退出条件**：迁移可在空库和升级库执行；8 张表约束测试通过；关闭 feature flag 时无工作台入口和后台任务。
+- **阶段 1 落地**：
+  - 权威建表：[`resources/database/evaluation/schema_eval_workbench.sql`](../resources/database/evaluation/schema_eval_workbench.sql)
+  - 升级入口：`resources/database/upgrades/v1.1.0/260730_eval_workbench.sql`（与权威脚本同步）
+  - 全量 schema 已追加评测表段落：`resources/database/schema_pg.sql`
+  - Java 包骨架：`bootstrap/.../rag/evaluation/`（entity/mapper/config/constant + 后续分层 package-info）
+  - 配置：`app.eval.workbench-enabled` 默认 false；`evalRecordExecutor` 仅在开关开启时注册
+  - 审计类型：`EVAL_DATASET` / `EVAL_DATASET_VERSION` / `EVAL_RUN` / `EVAL_MANUAL_OVERRIDE`
 
 ## 阶段 2：评估集资产化 M1（1.5–2 周）
 
@@ -145,7 +153,7 @@ MVP 累计约 **6–8** 个日历周；V1 累计约 **10–13** 个日历周（�
 ## 阶段检查清单
 
 - [x] 阶段 0：契约与 ADR 冻结；离线 Schema 互转通过；SSE/Trace spike 脚本就绪（在线 dry-run 待本地服务）
-- [ ] 阶段 1：8 张表与模块骨架就绪，feature flag 可控
+- [x] 阶段 1：8 张表与模块骨架就绪，feature flag 可控（`workbench-enabled=false` 无工作台任务 Bean）
 - [ ] 阶段 2：评估集可导入、发布、导出（M1）
 - [ ] 阶段 3：双路径录制与 Run 状态机可用（M2-A）
 - [ ] 阶段 4：确定性指标与报告通过 MVP 验收（M2-B）

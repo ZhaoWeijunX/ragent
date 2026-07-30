@@ -346,4 +346,23 @@ logging:
 app:
   demo-mode: false
   eval:
+    # 旁路 /rag/eval；开发可开，生产建议 false
     enabled: true
+    # 评测工作台 API / Runner / 专用线程池；阶段1默认关闭
+    workbench-enabled: false
+    max-active-runs: 1
+    record-concurrency: 1
+    sample-timeout-seconds: 120
+    sample-retry-times: 1
+    record-thinking: false
+    lease-heartbeat-seconds: 30
+    lease-expire-seconds: 90
+    ragas:
+      enabled: false
+      endpoint: ${RAGAS_ENDPOINT:}
+      service-token: ${RAGAS_SERVICE_TOKEN:}
+      concurrency: 2
+      timeout-seconds: 180
+      retry-times: 2
+      max-samples-per-run: 500
+      max-independent-runs: 3

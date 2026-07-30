@@ -28,6 +28,10 @@ public final class BizChangeBizType {
     public static final String QUERY_TERM_MAPPING = "QUERY_TERM_MAPPING";
     public static final String SAMPLE_QUESTION = "SAMPLE_QUESTION";
     public static final String USER = "USER";
+    public static final String EVAL_DATASET = "EVAL_DATASET";
+    public static final String EVAL_DATASET_VERSION = "EVAL_DATASET_VERSION";
+    public static final String EVAL_RUN = "EVAL_RUN";
+    public static final String EVAL_MANUAL_OVERRIDE = "EVAL_MANUAL_OVERRIDE";
 
     private BizChangeBizType() {
     }
