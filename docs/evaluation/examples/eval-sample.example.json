@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "1.0.0",
+  "queryId": "F1-01",
+  "query": "我的扫地机充不进电了",
+  "intentL1": "FEEDBACK",
+  "intentL2": "F1_故障报告",
+  "difficulty": "easy",
+  "requiresRag": true,
+  "expectedDocIds": ["FAQ_VAC_001", "CODE_VAC_001", "MANUAL_VAC_001"],
+  "niceToHaveDocIds": [],
+  "groundTruth": "可以先按这个顺序排查：1) 把主机放回充电座或基站，看指示灯是否亮起。",
+  "expectedAnswerType": "fault_troubleshooting",
+  "trapType": "single_fault",
+  "enabledMetrics": ["hit@5", "recall@5"],
+  "tags": ["smoke"],
+  "metadata": {}
+}

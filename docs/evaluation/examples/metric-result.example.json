@@ -1,0 +1,27 @@
+{
+  "schemaVersion": "1.0.0",
+  "name": "hit@5",
+  "algorithmVersion": "deterministic-1.0.0",
+  "overall": 0.9,
+  "byIntentL1": {
+    "FEEDBACK": 1.0,
+    "SUPPORT": 0.85
+  },
+  "byIntentL2": {
+    "F1_故障报告": 1.0
+  },
+  "byDifficulty": {
+    "easy": 1.0,
+    "medium": 0.8
+  },
+  "perSample": {
+    "F1-01": 1.0,
+    "S1-01": 0.0
+  },
+  "meta": {
+    "eligibleCount": 10,
+    "hitCount": 9,
+    "k": 5
+  },
+  "isPct": true
+}

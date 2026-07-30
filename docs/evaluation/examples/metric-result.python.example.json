@@ -1,0 +1,27 @@
+{
+  "schema_version": "1.0.0",
+  "name": "hit@5",
+  "algorithm_version": "deterministic-1.0.0",
+  "overall": 0.9,
+  "by_intent_l1": {
+    "FEEDBACK": 1.0,
+    "SUPPORT": 0.85
+  },
+  "by_intent_l2": {
+    "F1_故障报告": 1.0
+  },
+  "by_difficulty": {
+    "easy": 1.0,
+    "medium": 0.8
+  },
+  "per_sample": {
+    "F1-01": 1.0,
+    "S1-01": 0.0
+  },
+  "meta": {
+    "eligible_count": 10,
+    "hit_count": 9,
+    "k": 5
+  },
+  "is_pct": true
+}

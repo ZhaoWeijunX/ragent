@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ragent.local/schemas/evaluation/metric-result.schema.json",
+  "title": "MetricResult",
+  "description": "单指标输出。Java 确定性指标与 Python RAGAS 服务统一此形状。schemaVersion=1.0.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "name", "algorithmVersion", "overall", "isPct"],
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "const": "1.0.0"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "如 intent_top1、hit@5、faithfulness、ttft_p50_ms"
+    },
+    "algorithmVersion": {
+      "type": "string",
+      "minLength": 1,
+      "description": "指标算法版本，写入 score_batch.algorithm_version"
+    },
+    "overall": {
+      "type": ["number", "null"],
+      "description": "不可算时为 null（如零分母、全跳过）"
+    },
+    "byIntentL1": {
+      "type": "object",
+      "additionalProperties": { "type": ["number", "null"] },
+      "default": {}
+    },
+    "byIntentL2": {
+      "type": "object",
+      "additionalProperties": { "type": ["number", "null"] },
+      "default": {}
+    },
+    "byDifficulty": {
+      "type": "object",
+      "additionalProperties": { "type": ["number", "null"] },
+      "default": {}
+    },
+    "perSample": {
+      "type": "object",
+      "additionalProperties": { "type": ["number", "null"] },
+      "default": {},
+      "description": "queryId → 分数"
+    },
+    "meta": {
+      "type": "object",
+      "additionalProperties": true,
+      "default": {},
+      "description": "分母、跳过数、NaN 数、token、成本等"
+    },
+    "isPct": {
+      "type": "boolean",
+      "description": "true 表示比例类（0~1）；延迟类为 false"
+    }
+  }
+}

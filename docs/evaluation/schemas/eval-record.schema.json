@@ -1,0 +1,136 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ragent.local/schemas/evaluation/eval-record.schema.json",
+  "title": "EvalRecord",
+  "description": "单次录制合并结果（Chat SSE + /rag/eval + Trace）。工作台 camelCase；Python 侧见 field-mapping.md。schemaVersion=1.0.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "queryId",
+    "userInput",
+    "requiresRag",
+    "response",
+    "finalStatus",
+    "latencyMs",
+    "retrievedDocIds",
+    "retrievedContexts",
+    "evidenceSource"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "const": "1.0.0"
+    },
+    "queryId": { "type": "string", "minLength": 1 },
+    "userInput": {
+      "type": "string",
+      "description": "等同评估集 query；对齐 RAGAS user_input"
+    },
+    "reference": {
+      "type": "string",
+      "default": "",
+      "description": "groundTruth 拷贝；对齐 RAGAS reference"
+    },
+    "referenceDocIds": {
+      "type": "array",
+      "items": { "type": "string" },
+      "default": []
+    },
+    "referenceDocIdsNice": {
+      "type": "array",
+      "items": { "type": "string" },
+      "default": []
+    },
+    "intentL1": { "type": "string", "default": "" },
+    "intentL2": { "type": "string", "default": "" },
+    "difficulty": {
+      "type": "string",
+      "enum": ["easy", "medium", "hard"],
+      "default": "medium"
+    },
+    "requiresRag": { "type": "boolean" },
+
+    "response": { "type": "string" },
+    "thinking": {
+      "type": ["string", "null"],
+      "default": null,
+      "description": "MVP 默认不落库；录制期可暂存内存，持久化为 null"
+    },
+    "latencyMs": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Chat 端到端耗时（毫秒）"
+    },
+    "firstTokenMs": {
+      "type": ["integer", "null"],
+      "minimum": 0,
+      "description": "TTFT：首个 type=response 非空 delta 到达时刻"
+    },
+    "finalStatus": {
+      "type": "string",
+      "enum": ["success", "refused", "error", "cancelled", "unknown"]
+    },
+    "error": { "type": ["string", "null"], "default": null },
+    "conversationId": { "type": ["string", "null"], "default": null },
+    "taskId": { "type": ["string", "null"], "default": null },
+    "traceId": { "type": ["string", "null"], "default": null },
+
+    "retrievedDocIds": {
+      "type": "array",
+      "items": { "type": "string" },
+      "default": [],
+      "description": "业务码（去重）；文档级 Hit/Recall/MRR"
+    },
+    "retrievedDocIdsRaw": {
+      "type": "array",
+      "items": { "type": "string" },
+      "default": [],
+      "description": "映射前原始 ID（若有）"
+    },
+    "retrievedChunkIds": {
+      "type": "array",
+      "items": { "type": "string" },
+      "default": []
+    },
+    "retrievedContexts": {
+      "type": "array",
+      "items": { "type": "string" },
+      "default": []
+    },
+    "retrievedContextDocIds": {
+      "type": "array",
+      "items": { "type": ["string", "null"] },
+      "default": [],
+      "description": "与 retrievedContexts 同序，可含 null"
+    },
+    "intentPred": {
+      "type": ["string", "null"],
+      "default": null,
+      "description": "Top-1 意图叶子；通常取 intentLeafIds[0]"
+    },
+    "intentPredAll": {
+      "type": "array",
+      "items": { "type": "string" },
+      "default": []
+    },
+    "hasKb": { "type": ["boolean", "null"], "default": null },
+    "hasMcp": { "type": ["boolean", "null"], "default": null },
+    "retrievalSkipped": { "type": "boolean", "default": false },
+    "skipReason": { "type": ["string", "null"], "default": null },
+    "evalLatencyMs": {
+      "type": ["integer", "null"],
+      "minimum": 0,
+      "description": "旁路 /rag/eval 耗时；不等于 TTFT"
+    },
+    "evidenceSource": {
+      "type": "string",
+      "enum": ["DUAL_PATH_CHAT_AND_EVAL", "TRACE_SINGLE_PATH"],
+      "description": "MVP 固定 DUAL_PATH_CHAT_AND_EVAL；披露证据可能漂移"
+    },
+    "chatStartedAt": { "type": ["string", "null"], "format": "date-time", "default": null },
+    "chatFinishedAt": { "type": ["string", "null"], "format": "date-time", "default": null },
+    "evalStartedAt": { "type": ["string", "null"], "format": "date-time", "default": null },
+    "evalFinishedAt": { "type": ["string", "null"], "format": "date-time", "default": null }
+  }
+}
