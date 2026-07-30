@@ -142,8 +142,13 @@ const menuGroups: MenuGroup[] = [
       },
       {
         path: "/admin/evaluations/datasets",
-        label: "RAG 评测",
+        label: "评估集",
         icon: FlaskConical
+      },
+      {
+        path: "/admin/evaluations/runs",
+        label: "评测运行",
+        icon: ClipboardList
       },
       {
         path: "/admin/change-logs",
@@ -185,6 +190,7 @@ const breadcrumbMap: Record<string, string> = {
   evaluations: "RAG 评测",
   datasets: "评估集",
   "dataset-versions": "评估集版本",
+  runs: "评测运行",
   "change-logs": "审计日志",
   "sample-questions": "示例问题",
   mappings: "关键词映射",

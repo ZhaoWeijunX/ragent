@@ -182,3 +182,112 @@ export async function updateCase(caseId: string, payload: Partial<EvalCase>) {
 export async function deleteCase(caseId: string) {
   await api.delete(`${BASE}/cases/${caseId}`);
 }
+
+export interface EvalRun {
+  id: string;
+  name: string;
+  datasetVersionId: string;
+  datasetId?: string | null;
+  datasetName?: string | null;
+  datasetVersion?: string | null;
+  baselineRunId?: string | null;
+  status: string;
+  currentPhase?: string | null;
+  qualityVerdict?: string | null;
+  cancelRequested?: boolean | null;
+  configSnapshot?: Record<string, unknown>;
+  thresholdSnapshot?: Record<string, unknown>;
+  tags?: Record<string, unknown>;
+  totalCount: number;
+  successCount: number;
+  failedCount: number;
+  progress: number;
+  ragasEnabled?: boolean | null;
+  createdBy?: string | null;
+  startedAt?: string | null;
+  finishedAt?: string | null;
+  errorMessage?: string | null;
+  createTime?: string | null;
+  updateTime?: string | null;
+  dualPathDisclaimer?: string | null;
+}
+
+export interface EvalRecord {
+  id: string;
+  runId: string;
+  caseId: string;
+  queryId?: string | null;
+  status: string;
+  question: string;
+  response?: string | null;
+  retrievedDocIds?: string[];
+  retrievedChunkIds?: string[];
+  retrievedContexts?: string[];
+  retrievedContextDocIds?: string[];
+  predictedIntents?: string[];
+  intentPred?: string | null;
+  hasKb?: boolean | null;
+  hasMcp?: boolean | null;
+  retrievalSkipped?: boolean | null;
+  skipReason?: string | null;
+  ttftMs?: number | null;
+  totalLatencyMs?: number | null;
+  evalLatencyMs?: number | null;
+  conversationId?: string | null;
+  taskId?: string | null;
+  traceId?: string | null;
+  evidenceSource?: string | null;
+  errorCode?: string | null;
+  errorMessage?: string | null;
+  startedAt?: string | null;
+  finishedAt?: string | null;
+  createTime?: string | null;
+  updateTime?: string | null;
+}
+
+export async function pageRuns(
+  current = 1,
+  size = 10,
+  params?: { keyword?: string; status?: string; datasetVersionId?: string }
+) {
+  return api.get<PageResult<EvalRun>, PageResult<EvalRun>>(`${BASE}/runs`, {
+    params: { current, size, ...params }
+  });
+}
+
+export async function createRun(payload: {
+  name: string;
+  datasetVersionId: string;
+  baselineRunId?: string;
+  ragasEnabled?: boolean;
+  tags?: Record<string, unknown>;
+}) {
+  return api.post<string, string>(`${BASE}/runs`, payload);
+}
+
+export async function getRun(runId: string) {
+  return api.get<EvalRun, EvalRun>(`${BASE}/runs/${runId}`);
+}
+
+export async function cancelRun(runId: string) {
+  await api.post(`${BASE}/runs/${runId}/cancel`);
+}
+
+export async function resumeRun(runId: string) {
+  await api.post(`${BASE}/runs/${runId}/resume`);
+}
+
+export async function pageRecords(
+  runId: string,
+  current = 1,
+  size = 10,
+  params?: { status?: string; keyword?: string }
+) {
+  return api.get<PageResult<EvalRecord>, PageResult<EvalRecord>>(`${BASE}/runs/${runId}/records`, {
+    params: { current, size, ...params }
+  });
+}
+
+export async function getRecord(recordId: string) {
+  return api.get<EvalRecord, EvalRecord>(`${BASE}/records/${recordId}`);
+}

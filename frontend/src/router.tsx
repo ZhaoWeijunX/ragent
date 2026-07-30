@@ -25,6 +25,8 @@ import { UserListPage } from "@/pages/admin/users/UserListPage";
 import { EvalDatasetListPage } from "@/pages/admin/evaluations/EvalDatasetListPage";
 import { EvalDatasetDetailPage } from "@/pages/admin/evaluations/EvalDatasetDetailPage";
 import { EvalDatasetVersionPage } from "@/pages/admin/evaluations/EvalDatasetVersionPage";
+import { EvalRunListPage } from "@/pages/admin/evaluations/EvalRunListPage";
+import { EvalRunDetailPage } from "@/pages/admin/evaluations/EvalRunDetailPage";
 import { useAuthStore } from "@/stores/authStore";
 
 function RequireAuth({ children }: { children: JSX.Element }) {
@@ -187,6 +189,14 @@ export const router = createBrowserRouter([
       {
         path: "evaluations/dataset-versions/:versionId",
         element: <EvalDatasetVersionPage />
+      },
+      {
+        path: "evaluations/runs",
+        element: <EvalRunListPage />
+      },
+      {
+        path: "evaluations/runs/:runId",
+        element: <EvalRunDetailPage />
       },
       {
         path: "mappings",

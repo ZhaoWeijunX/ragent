@@ -59,4 +59,12 @@ public final class EvalWorkbenchConstants {
 
     /** evidence */
     public static final String EVIDENCE_DUAL_PATH = "DUAL_PATH_CHAT_AND_EVAL";
+
+    /** Record.finalStatus / t_eval_record.status */
+    public static final String RECORD_SUCCESS = "success";
+    public static final String RECORD_REFUSED = "refused";
+    public static final String RECORD_ERROR = "error";
+    public static final String RECORD_CANCELLED = "cancelled";
+    public static final String RECORD_UNKNOWN = "unknown";
+    public static final String RECORD_PENDING = "PENDING";
 }

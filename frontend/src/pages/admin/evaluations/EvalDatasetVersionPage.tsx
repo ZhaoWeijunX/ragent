@@ -457,6 +457,16 @@ export function EvalDatasetVersionPage() {
             <Download className="mr-2 h-4 w-4" />
             导出
           </Button>
+          {version?.status === "PUBLISHED" && (
+            <Button
+              className="admin-primary-gradient"
+              onClick={() =>
+                navigate(`/admin/evaluations/runs?datasetVersionId=${encodeURIComponent(versionId)}`)
+              }
+            >
+              创建 Run
+            </Button>
+          )}
           {isDraft && (
             <>
               <input
