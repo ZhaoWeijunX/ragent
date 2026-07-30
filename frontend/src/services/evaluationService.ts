@@ -291,3 +291,70 @@ export async function pageRecords(
 export async function getRecord(recordId: string) {
   return api.get<EvalRecord, EvalRecord>(`${BASE}/records/${recordId}`);
 }
+
+export interface EvalMetricItem {
+  name: string;
+  overall?: number | null;
+  pct?: boolean | null;
+  sampleCount?: number | null;
+  byIntentL1?: Record<string, number | null>;
+  byIntentL2?: Record<string, number | null>;
+  byDifficulty?: Record<string, number | null>;
+  meta?: Record<string, unknown>;
+}
+
+export interface EvalFailureReason {
+  code: string;
+  message: string;
+}
+
+export interface EvalSampleFailure {
+  recordId: string;
+  queryId?: string | null;
+  question?: string | null;
+  response?: string | null;
+  groundTruth?: string | null;
+  status?: string | null;
+  intentPred?: string | null;
+  intentL2?: string | null;
+  retrievedDocIds?: string[];
+  expectedDocIds?: string[];
+  missedDocIds?: string[];
+  extraDocIds?: string[];
+  failureReasons?: string[];
+  failureDetails?: EvalFailureReason[];
+  errorCode?: string | null;
+  errorMessage?: string | null;
+  traceId?: string | null;
+  hitAt5?: number | null;
+  intentTop1?: number | null;
+}
+
+export interface EvalMetricReport {
+  runId: string;
+  batchId: string;
+  scoreType?: string | null;
+  algorithmVersion?: string | null;
+  status?: string | null;
+  sampleCount?: number | null;
+  intentTop1Note?: string | null;
+  metrics: EvalMetricItem[];
+  failures: EvalSampleFailure[];
+}
+
+export async function getRunMetrics(runId: string, batchId?: string) {
+  return api.get<EvalMetricReport, EvalMetricReport>(`${BASE}/runs/${runId}/metrics`, {
+    params: { batchId: batchId || undefined }
+  });
+}
+
+export async function rescoreRun(runId: string) {
+  return api.post<string, string>(`${BASE}/runs/${runId}/rescore`);
+}
+
+export async function exportRunReport(runId: string, format: "json" | "jsonl" | "csv" = "json", batchId?: string) {
+  return api.get<Blob, Blob>(`${BASE}/runs/${runId}/export`, {
+    params: { format, batchId: batchId || undefined },
+    responseType: "blob"
+  });
+}

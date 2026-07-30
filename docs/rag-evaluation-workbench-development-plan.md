@@ -2,12 +2,13 @@
 
 > 对应需求：[rag-evaluation-workbench-requirements.md](./rag-evaluation-workbench-requirements.md)  
 > 参考资料：`resources/docs/ragent-test/RAG 评测——从指标到实践/`、外部项目 `D:\code\ragenteval`  
-> 状态：Draft · 2026-07-30（阶段 0–3 已落地）  
+> 状态：Draft · 2026-07-30（阶段 0–4 已落地）  
 > 决策摘要：MVP 沿用 `/rag/v3/chat` + `/rag/eval` 双路径采集并显式披露漂移风险；RAGAS 将 `ragenteval` 改造成独立 HTTP 评分服务。  
 > 阶段 0 产物：[docs/evaluation/](./evaluation/README.md) · [退出报告](./evaluation/phase-0-exit-report.md)  
 > 阶段 1 建表：[resources/database/evaluation/](../resources/database/evaluation/README.md)  
 > 阶段 2 评估集：[phase-2-exit-report.md](./evaluation/phase-2-exit-report.md)  
-> 阶段 3 Run 录制：[phase-3-exit-report.md](./evaluation/phase-3-exit-report.md)
+> 阶段 3 Run 录制：[phase-3-exit-report.md](./evaluation/phase-3-exit-report.md)  
+> 阶段 4 确定性评分：[phase-4-exit-report.md](./evaluation/phase-4-exit-report.md)
 
 ## 目标架构与边界
 
@@ -106,7 +107,7 @@ MVP 累计约 **6–8** 个日历周；V1 累计约 **10–13** 个日历周（�
   - API：`/admin/evaluations/runs*`、`/records*`（workbench-enabled + admin）
   - Runner：真实 Chat 管线 + 旁路证据同口径采集 + `taskId→traceId`；写入不可变 `t_eval_record`
   - 租约：`lease_owner` / `lease_expire_at` 心跳与 `EvalRunLeaseReclaimer` 恢复
-  - 终态：`COMPLETED` / `PARTIAL_SUCCESS` / `FAILED` / `CANCELLED`；评分/报告阶段为空转占位（阶段 4）
+  - 终态：`COMPLETED` / `PARTIAL_SUCCESS` / `FAILED` / `CANCELLED`；录制后进入确定性评分（阶段 4）
   - 前端：Run 列表 / 详情进度轮询 / 取消与失败重试 / 双路径漂移披露 / Trace 跳转
   - 退出报告：[phase-3-exit-report.md](./evaluation/phase-3-exit-report.md)
 
@@ -118,6 +119,13 @@ MVP 累计约 **6–8** 个日历周；V1 累计约 **10–13** 个日历周（�
 - 实现报告总览、切片、指标分子/分母、样本详情、失败原因多标签、Trace 链接和 JSONL/JSON/CSV 导出；低样本量性能报告只展示 P50/均值，不声称 P95/P99。
 - 以 Python 现有 score/report 结果建立 golden fixtures，要求 Java 在确定性指标上逐项一致；覆盖空 gold、重复召回、多个 gold、SYSTEM_ONLY、部分失败和零分母。
 - **退出条件**：完成需求文档全部 MVP 验收项；确定性指标可重复、可重评分；RAGAS 未部署时 MVP 仍完整可用。此节点作为首个可发布版本。
+- **阶段 4 落地**：
+  - Metric SPI：`bootstrap/.../rag/evaluation/metric/`（Intent / Retrieval / Behavior / Latency）
+  - 评分服务：`EvalScoreService` 写入 `t_eval_score_batch` / `t_eval_score`；Worker 录制后自动评分
+  - API：`POST .../rescore`、`GET .../metrics`、`GET .../score-batches`、`GET .../export`
+  - 前端：Run 详情指标卡片、Intent L2 切片、失败样本、重评与导出
+  - 单测：`DeterministicMetricsTest`
+  - 退出报告：[phase-4-exit-report.md](./evaluation/phase-4-exit-report.md)
 
 ## 阶段 5：ragenteval 服务化与 RAGAS M3（2–3 周）
 
@@ -170,7 +178,7 @@ MVP 累计约 **6–8** 个日历周；V1 累计约 **10–13** 个日历周（�
 - [x] 阶段 1：8 张表与模块骨架就绪，feature flag 可控（`workbench-enabled=false` 无工作台任务 Bean）
 - [x] 阶段 2：评估集可导入、发布、导出（M1）
 - [x] 阶段 3：双路径录制与 Run 状态机可用（M2-A）
-- [ ] 阶段 4：确定性指标与报告通过 MVP 验收（M2-B）
+- [x] 阶段 4：确定性指标与报告通过 MVP 验收（M2-B）
 - [ ] 阶段 5：RAGAS 服务化接入且失败可降级（M3）
 - [ ] 阶段 6：人工复核、A/B、门禁通过 V1 验收（M4）
 - [ ] 阶段 7：CI/趋势/单轨采集按价值推进（V2）

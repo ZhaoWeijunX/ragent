@@ -25,19 +25,28 @@ import com.nageoffer.ai.ragent.rag.evaluation.constant.EvalWorkbenchConstants;
 import com.nageoffer.ai.ragent.rag.evaluation.controller.request.EvalRecordPageRequest;
 import com.nageoffer.ai.ragent.rag.evaluation.controller.request.EvalRunCreateRequest;
 import com.nageoffer.ai.ragent.rag.evaluation.controller.request.EvalRunPageRequest;
+import com.nageoffer.ai.ragent.rag.evaluation.controller.vo.EvalMetricReportVO;
 import com.nageoffer.ai.ragent.rag.evaluation.controller.vo.EvalRecordVO;
 import com.nageoffer.ai.ragent.rag.evaluation.controller.vo.EvalRunVO;
+import com.nageoffer.ai.ragent.rag.evaluation.controller.vo.EvalScoreBatchVO;
 import com.nageoffer.ai.ragent.rag.evaluation.service.EvalRunService;
+import com.nageoffer.ai.ragent.rag.evaluation.service.EvalScoreService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
+
 /**
- * 评测 Run API（阶段 3）。前缀 /admin/evaluations。
+ * 评测 Run API（阶段 3–4）。前缀 /admin/evaluations。
  */
 @RestController
 @RequiredArgsConstructor
@@ -45,6 +54,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class EvalRunController {
 
     private final EvalRunService evalRunService;
+    private final EvalScoreService evalScoreService;
 
     @GetMapping(EvalWorkbenchConstants.API_PREFIX + "/runs")
     public Result<IPage<EvalRunVO>> pageRuns(EvalRunPageRequest request) {
@@ -76,6 +86,39 @@ public class EvalRunController {
         requireAdmin();
         evalRunService.resumeRun(runId);
         return Results.success();
+    }
+
+    @PostMapping(EvalWorkbenchConstants.API_PREFIX + "/runs/{runId}/rescore")
+    public Result<String> rescore(@PathVariable String runId) {
+        requireAdmin();
+        return Results.success(evalScoreService.scoreDeterministic(runId));
+    }
+
+    @GetMapping(EvalWorkbenchConstants.API_PREFIX + "/runs/{runId}/score-batches")
+    public Result<List<EvalScoreBatchVO>> listScoreBatches(@PathVariable String runId) {
+        requireAdmin();
+        return Results.success(evalScoreService.listBatches(runId));
+    }
+
+    @GetMapping(EvalWorkbenchConstants.API_PREFIX + "/runs/{runId}/metrics")
+    public Result<EvalMetricReportVO> metrics(@PathVariable String runId,
+                                              @RequestParam(required = false) String batchId) {
+        requireAdmin();
+        return Results.success(evalScoreService.getReport(runId, batchId));
+    }
+
+    @GetMapping(EvalWorkbenchConstants.API_PREFIX + "/runs/{runId}/export")
+    public ResponseEntity<byte[]> export(@PathVariable String runId,
+                                         @RequestParam(required = false) String batchId,
+                                         @RequestParam(required = false, defaultValue = "json") String format) {
+        requireAdmin();
+        byte[] body = evalScoreService.exportReport(runId, batchId, format);
+        String filename = "eval-run-" + runId + "." + ("csv".equalsIgnoreCase(format) ? "csv"
+                : "jsonl".equalsIgnoreCase(format) ? "jsonl" : "json");
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
+                .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                .body(body);
     }
 
     @GetMapping(EvalWorkbenchConstants.API_PREFIX + "/runs/{runId}/records")

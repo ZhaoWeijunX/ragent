@@ -31,6 +31,7 @@ import com.nageoffer.ai.ragent.rag.evaluation.dao.mapper.EvalCaseMapper;
 import com.nageoffer.ai.ragent.rag.evaluation.dao.mapper.EvalRecordMapper;
 import com.nageoffer.ai.ragent.rag.evaluation.dao.mapper.EvalRunMapper;
 import com.nageoffer.ai.ragent.rag.evaluation.runner.EvalDualPathSampleRecorder;
+import com.nageoffer.ai.ragent.rag.evaluation.service.EvalScoreService;
 import com.nageoffer.ai.ragent.rag.evaluation.support.EvalRunTerminalStatus;
 import com.nageoffer.ai.ragent.user.dao.entity.UserDO;
 import com.nageoffer.ai.ragent.user.dao.mapper.UserMapper;
@@ -49,7 +50,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 /**
  * Run 录制执行器：租约心跳、逐样本双路径录制、终态结算。
  * <p>
- * 阶段 3：DETERMINISTIC_SCORING / REPORTING 为空转占位，便于阶段 4 接评分。
+ * 阶段 3–4：双路径录制后执行确定性评分并结算终态。
  */
 @Slf4j
 @Component
@@ -74,6 +75,7 @@ public class EvalRunWorker {
     private final EvalDualPathSampleRecorder sampleRecorder;
     private final EvalProperties evalProperties;
     private final UserMapper userMapper;
+    private final EvalScoreService evalScoreService;
     private final Executor evalRecordExecutor;
     private final String leaseOwnerId = resolveLeaseOwner();
 
@@ -83,6 +85,7 @@ public class EvalRunWorker {
                          EvalDualPathSampleRecorder sampleRecorder,
                          EvalProperties evalProperties,
                          UserMapper userMapper,
+                         EvalScoreService evalScoreService,
                          @Qualifier("evalRecordExecutor") Executor evalRecordExecutor) {
         this.runMapper = runMapper;
         this.caseMapper = caseMapper;
@@ -90,6 +93,7 @@ public class EvalRunWorker {
         this.sampleRecorder = sampleRecorder;
         this.evalProperties = evalProperties;
         this.userMapper = userMapper;
+        this.evalScoreService = evalScoreService;
         this.evalRecordExecutor = evalRecordExecutor;
     }
 
@@ -217,16 +221,26 @@ public class EvalRunWorker {
             return;
         }
 
-        // 阶段 3：评分/报告空转占位
+        // 阶段 4：确定性评分 + 报告占位收尾
         runMapper.update(null, Wrappers.lambdaUpdate(EvalRunDO.class)
                 .eq(EvalRunDO::getId, runId)
                 .set(EvalRunDO::getStatus, EvalWorkbenchConstants.RUN_DETERMINISTIC_SCORING)
                 .set(EvalRunDO::getCurrentPhase, EvalWorkbenchConstants.RUN_DETERMINISTIC_SCORING));
+        try {
+            evalScoreService.scoreDeterministic(runId);
+        } catch (Exception ex) {
+            log.error("确定性评分失败，仍按录制结果结算终态 runId={}", runId, ex);
+            runMapper.update(null, Wrappers.lambdaUpdate(EvalRunDO.class)
+                    .eq(EvalRunDO::getId, runId)
+                    .set(EvalRunDO::getErrorMessage, "deterministic scoring failed: " + ex.getMessage()));
+        }
+
         runMapper.update(null, Wrappers.lambdaUpdate(EvalRunDO.class)
                 .eq(EvalRunDO::getId, runId)
                 .set(EvalRunDO::getStatus, EvalWorkbenchConstants.RUN_REPORTING)
                 .set(EvalRunDO::getCurrentPhase, EvalWorkbenchConstants.RUN_REPORTING));
 
+        refreshCounters(runId);
         run = runMapper.selectById(runId);
         int success = run.getSuccessCount() == null ? 0 : run.getSuccessCount();
         int failed = run.getFailedCount() == null ? 0 : run.getFailedCount();
@@ -239,7 +253,8 @@ public class EvalRunWorker {
                 .set(EvalRunDO::getProgress, 100)
                 .set(EvalRunDO::getErrorMessage, EvalWorkbenchConstants.RUN_FAILED.equals(terminal)
                         ? StrUtil.blankToDefault(run.getErrorMessage(), "no successful samples")
-                        : null));
+                        : (StrUtil.startWith(run.getErrorMessage(), "deterministic scoring failed")
+                        ? run.getErrorMessage() : null)));
     }
 
     private void markUnstartedCasesCancelled(String runId, List<EvalCaseDO> cases) {
