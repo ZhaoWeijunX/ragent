@@ -348,8 +348,8 @@ app:
   eval:
     # 旁路 /rag/eval；开发可开，生产建议 false
     enabled: true
-    # 评测工作台 API / Runner / 专用线程池；阶段1默认关闭
-    workbench-enabled: false
+    # 评测工作台 API / Runner / 专用线程池；本地开发可开，生产请关闭
+    workbench-enabled: true
     max-active-runs: 1
     record-concurrency: 1
     sample-timeout-seconds: 120

@@ -22,6 +22,9 @@ import { SystemSettingsPage } from "@/pages/admin/settings/SystemSettingsPage";
 import { SampleQuestionPage } from "@/pages/admin/sample-questions/SampleQuestionPage";
 import { QueryTermMappingPage } from "@/pages/admin/query-term-mapping/QueryTermMappingPage";
 import { UserListPage } from "@/pages/admin/users/UserListPage";
+import { EvalDatasetListPage } from "@/pages/admin/evaluations/EvalDatasetListPage";
+import { EvalDatasetDetailPage } from "@/pages/admin/evaluations/EvalDatasetDetailPage";
+import { EvalDatasetVersionPage } from "@/pages/admin/evaluations/EvalDatasetVersionPage";
 import { useAuthStore } from "@/stores/authStore";
 
 function RequireAuth({ children }: { children: JSX.Element }) {
@@ -172,6 +175,18 @@ export const router = createBrowserRouter([
       {
         path: "sample-questions",
         element: <SampleQuestionPage />
+      },
+      {
+        path: "evaluations/datasets",
+        element: <EvalDatasetListPage />
+      },
+      {
+        path: "evaluations/datasets/:datasetId",
+        element: <EvalDatasetDetailPage />
+      },
+      {
+        path: "evaluations/dataset-versions/:versionId",
+        element: <EvalDatasetVersionPage />
       },
       {
         path: "mappings",

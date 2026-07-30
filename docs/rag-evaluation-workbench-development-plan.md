@@ -2,10 +2,11 @@
 
 > 对应需求：[rag-evaluation-workbench-requirements.md](./rag-evaluation-workbench-requirements.md)  
 > 参考资料：`resources/docs/ragent-test/RAG 评测——从指标到实践/`、外部项目 `D:\code\ragenteval`  
-> 状态：Draft · 2026-07-30（阶段 0 完成；阶段 1 骨架与建表已落地）  
+> 状态：Draft · 2026-07-30（阶段 0–2 已落地）  
 > 决策摘要：MVP 沿用 `/rag/v3/chat` + `/rag/eval` 双路径采集并显式披露漂移风险；RAGAS 将 `ragenteval` 改造成独立 HTTP 评分服务。  
 > 阶段 0 产物：[docs/evaluation/](./evaluation/README.md) · [退出报告](./evaluation/phase-0-exit-report.md)  
-> 阶段 1 建表：[resources/database/evaluation/](../resources/database/evaluation/README.md)
+> 阶段 1 建表：[resources/database/evaluation/](../resources/database/evaluation/README.md)  
+> 阶段 2 评估集：[phase-2-exit-report.md](./evaluation/phase-2-exit-report.md)
 
 ## 目标架构与边界
 
@@ -85,6 +86,11 @@ MVP 累计约 **6–8** 个日历周；V1 累计约 **10–13** 个日历周（�
 - 前端新增 `frontend/src/pages/admin/evaluations/` 和 `evaluationService.ts`：数据集列表、版本详情、Case 表格、拖拽导入、逐行错误、发布确认；在 `AdminLayout.tsx` 和 `router.tsx` 注册菜单与路由。
 - 测试重点：150 条导入、坏 JSON/重复 queryId/无效业务码、发布并发、已发布版本不可写、ADMIN 隔离。
 - **退出条件**：管理员可完全通过 UI 创建、导入、修复、发布和导出评估集；满足需求 MVP 验收第 1–2 条。
+- **阶段 2 落地**：
+  - API：`/admin/evaluations/datasets*`、`dataset-versions*`、`cases*`（workbench-enabled + admin）
+  - 导入兼容 snake_case / camelCase；不可解析文档码与意图为警告
+  - 前端：评估集列表 / 详情 / 版本详情（导入、校验、发布、导出）
+  - 单测：`EvalCaseImportSupportTest`
 
 ## 阶段 3：Run 状态机与双路径录制 M2-A（2–3 周）
 
@@ -154,7 +160,7 @@ MVP 累计约 **6–8** 个日历周；V1 累计约 **10–13** 个日历周（�
 
 - [x] 阶段 0：契约与 ADR 冻结；离线 Schema 互转通过；SSE/Trace spike 脚本就绪（在线 dry-run 待本地服务）
 - [x] 阶段 1：8 张表与模块骨架就绪，feature flag 可控（`workbench-enabled=false` 无工作台任务 Bean）
-- [ ] 阶段 2：评估集可导入、发布、导出（M1）
+- [x] 阶段 2：评估集可导入、发布、导出（M1）
 - [ ] 阶段 3：双路径录制与 Run 状态机可用（M2-A）
 - [ ] 阶段 4：确定性指标与报告通过 MVP 验收（M2-B）
 - [ ] 阶段 5：RAGAS 服务化接入且失败可降级（M3）

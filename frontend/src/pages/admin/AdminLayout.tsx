@@ -23,7 +23,8 @@ import {
   Upload,
   Users,
   FolderKanban,
-  Workflow
+  Workflow,
+  FlaskConical
 } from "lucide-react";
 import { useAuthStore } from "@/stores/authStore";
 import { Button } from "@/components/ui/button";
@@ -140,6 +141,11 @@ const menuGroups: MenuGroup[] = [
         icon: Workflow
       },
       {
+        path: "/admin/evaluations/datasets",
+        label: "RAG 评测",
+        icon: FlaskConical
+      },
+      {
         path: "/admin/change-logs",
         label: "审计日志",
         icon: ShieldCheck
@@ -176,6 +182,9 @@ const breadcrumbMap: Record<string, string> = {
   "intent-list": "意图列表",
   ingestion: "数据通道",
   traces: "链路追踪",
+  evaluations: "RAG 评测",
+  datasets: "评估集",
+  "dataset-versions": "评估集版本",
   "change-logs": "审计日志",
   "sample-questions": "示例问题",
   mappings: "关键词映射",
