@@ -27,6 +27,7 @@ import { EvalDatasetDetailPage } from "@/pages/admin/evaluations/EvalDatasetDeta
 import { EvalDatasetVersionPage } from "@/pages/admin/evaluations/EvalDatasetVersionPage";
 import { EvalRunListPage } from "@/pages/admin/evaluations/EvalRunListPage";
 import { EvalRunDetailPage } from "@/pages/admin/evaluations/EvalRunDetailPage";
+import { EvalRunComparePage } from "@/pages/admin/evaluations/EvalRunComparePage";
 import { useAuthStore } from "@/stores/authStore";
 
 function RequireAuth({ children }: { children: JSX.Element }) {
@@ -193,6 +194,10 @@ export const router = createBrowserRouter([
       {
         path: "evaluations/runs",
         element: <EvalRunListPage />
+      },
+      {
+        path: "evaluations/runs/:runId/compare/:baselineRunId",
+        element: <EvalRunComparePage />
       },
       {
         path: "evaluations/runs/:runId",

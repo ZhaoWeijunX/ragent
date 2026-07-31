@@ -29,8 +29,10 @@ import com.nageoffer.ai.ragent.rag.evaluation.controller.request.EvalRunPageRequ
 import com.nageoffer.ai.ragent.rag.evaluation.controller.vo.EvalMetricReportVO;
 import com.nageoffer.ai.ragent.rag.evaluation.controller.vo.EvalRagasJudgeModelsVO;
 import com.nageoffer.ai.ragent.rag.evaluation.controller.vo.EvalRecordVO;
+import com.nageoffer.ai.ragent.rag.evaluation.controller.vo.EvalRunCompareVO;
 import com.nageoffer.ai.ragent.rag.evaluation.controller.vo.EvalRunVO;
 import com.nageoffer.ai.ragent.rag.evaluation.controller.vo.EvalScoreBatchVO;
+import com.nageoffer.ai.ragent.rag.evaluation.service.EvalCompareService;
 import com.nageoffer.ai.ragent.rag.evaluation.service.EvalRunService;
 import com.nageoffer.ai.ragent.rag.evaluation.service.EvalScoreService;
 import lombok.RequiredArgsConstructor;
@@ -48,7 +50,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 
 /**
- * 评测 Run API（阶段 3–4）。前缀 /admin/evaluations。
+ * 评测 Run API（阶段 3–6）。前缀 /admin/evaluations。
  */
 @RestController
 @RequiredArgsConstructor
@@ -57,6 +59,7 @@ public class EvalRunController {
 
     private final EvalRunService evalRunService;
     private final EvalScoreService evalScoreService;
+    private final EvalCompareService evalCompareService;
 
     @GetMapping(EvalWorkbenchConstants.API_PREFIX + "/runs")
     public Result<IPage<EvalRunVO>> pageRuns(EvalRunPageRequest request) {
@@ -128,6 +131,16 @@ public class EvalRunController {
                                               @RequestParam(required = false) String scoreType) {
         requireAdmin();
         return Results.success(evalScoreService.getReport(runId, batchId, scoreType));
+    }
+
+    /**
+     * 同数据集版本 Run 对比（自建 + RAGAS 同页）。跨版本拒绝。
+     */
+    @GetMapping(EvalWorkbenchConstants.API_PREFIX + "/runs/{runId}/compare/{baselineRunId}")
+    public Result<EvalRunCompareVO> compare(@PathVariable String runId,
+                                            @PathVariable String baselineRunId) {
+        requireAdmin();
+        return Results.success(evalCompareService.compare(runId, baselineRunId));
     }
 
     @GetMapping(EvalWorkbenchConstants.API_PREFIX + "/runs/{runId}/export")

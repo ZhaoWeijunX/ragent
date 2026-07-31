@@ -405,6 +405,8 @@ export interface EvalScoreBatch {
   errorMessage?: string | null;
   startedAt?: string | null;
   finishedAt?: string | null;
+  /** RAGAS：chat/embedding 模型与 endpoint（无 api key）；progress 可能嵌套在内 */
+  judgeConfigSnapshot?: Record<string, unknown> | null;
 }
 
 export async function listScoreBatches(runId: string) {
@@ -416,4 +418,95 @@ export async function exportRunReport(runId: string, format: "json" | "jsonl" | 
     params: { format, batchId: batchId || undefined },
     responseType: "blob"
   });
+}
+
+export interface EvalCompareValueDelta {
+  current?: number | null;
+  baseline?: number | null;
+  absoluteDelta?: number | null;
+  relativeDelta?: number | null;
+}
+
+export interface EvalCompareSliceDelta {
+  key: string;
+  current?: number | null;
+  baseline?: number | null;
+  absoluteDelta?: number | null;
+  relativeDelta?: number | null;
+}
+
+export interface EvalCompareMetricDelta {
+  name: string;
+  pct?: boolean | null;
+  current?: number | null;
+  baseline?: number | null;
+  absoluteDelta?: number | null;
+  relativeDelta?: number | null;
+  byIntentL2?: EvalCompareSliceDelta[];
+  byDifficulty?: EvalCompareSliceDelta[];
+}
+
+export interface EvalCompareConfigDiffItem {
+  path: string;
+  current?: unknown;
+  baseline?: unknown;
+}
+
+export interface EvalCompareFailureBrief {
+  recordId: string;
+  queryId?: string | null;
+  intentL2?: string | null;
+  failureReasons?: string[];
+  traceId?: string | null;
+}
+
+export interface EvalCompareScoreSide {
+  scoreType?: string | null;
+  currentBatchId?: string | null;
+  baselineBatchId?: string | null;
+  available?: boolean | null;
+  metrics: EvalCompareMetricDelta[];
+  ttft?: {
+    p50?: EvalCompareValueDelta | null;
+    mean?: EvalCompareValueDelta | null;
+  } | null;
+}
+
+export interface EvalRunCompare {
+  runId: string;
+  baselineRunId: string;
+  datasetVersionId?: string | null;
+  currentJudgeConfig?: Record<string, unknown> | null;
+  baselineJudgeConfig?: Record<string, unknown> | null;
+  judgeConfigDiff?: EvalCompareConfigDiffItem[];
+  current: {
+    runId: string;
+    name?: string | null;
+    datasetVersionId?: string | null;
+    datasetVersion?: string | null;
+    status?: string | null;
+    qualityVerdict?: string | null;
+    configSnapshot?: Record<string, unknown> | null;
+  };
+  baseline: {
+    runId: string;
+    name?: string | null;
+    datasetVersionId?: string | null;
+    datasetVersion?: string | null;
+    status?: string | null;
+    qualityVerdict?: string | null;
+    configSnapshot?: Record<string, unknown> | null;
+  };
+  deterministic: EvalCompareScoreSide;
+  ragas: EvalCompareScoreSide;
+  failures: {
+    newFailures: EvalCompareFailureBrief[];
+    fixedFailures: EvalCompareFailureBrief[];
+    persistentFailures: EvalCompareFailureBrief[];
+  };
+}
+
+/** 仅支持相同数据集版本；跨版本后端返回业务错误 */
+export async function compareRuns(runId: string, baselineRunId: string) {
+  return api.get<EvalRunCompare, EvalRunCompare>(`${BASE}/runs/${runId}/compare/${baselineRunId}`);
 }

@@ -10,6 +10,7 @@
 | [phase-3-exit-report.md](./phase-3-exit-report.md) | 阶段 3 Run 状态机与双路径录制退出对照 |
 | [phase-4-exit-report.md](./phase-4-exit-report.md) | 阶段 4 自建指标、报告与 MVP 退出对照 |
 | [phase-5-exit-report.md](./phase-5-exit-report.md) | 阶段 5 RAGAS 服务化与降级退出对照 |
+| [phase-5-handoff.md](./phase-5-handoff.md) | 阶段 5 交接（压缩上下文：分支/能力/缺口/联调） |
 | [phase-0-adr.md](./phase-0-adr.md) | 冻结口径：状态机、Thinking、业务码、恢复、双路径等 |
 | [field-mapping.md](./field-mapping.md) | Java/API camelCase ↔ Python snake_case 映射 |
 | [ragas-scoring-service-contract.md](./ragas-scoring-service-contract.md) | `ragenteval` HTTP 评分服务契约 |

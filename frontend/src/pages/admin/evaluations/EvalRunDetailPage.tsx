@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, Fragment } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, Ban, ChevronDown, ChevronRight, Download, ExternalLink, Loader2, RefreshCw, RotateCcw, Calculator } from "lucide-react";
+import { ArrowLeft, Ban, ChevronDown, ChevronRight, Download, ExternalLink, GitCompareArrows, Loader2, RefreshCw, RotateCcw, Calculator } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -30,8 +30,8 @@ import {
   listRagasJudgeModels,
   listScoreBatches,
   pageRecords,
+  pageRuns,
   ragasRescoreRun,
-  rescoreRun,
   resumeRun
 } from "@/services/evaluationService";
 import { getErrorMessage } from "@/utils/error";
@@ -88,6 +88,27 @@ function formatRagasCostHint(batch: EvalScoreBatch | null | undefined): string |
   const n = typeof batch.estimatedCost === "number" ? batch.estimatedCost : Number(batch.estimatedCost);
   if (Number.isNaN(n)) return null;
   return `约 $${n.toFixed(4)}`;
+}
+
+function formatRagasJudgeHint(batch: EvalScoreBatch | null | undefined): string | null {
+  const snap = batch?.judgeConfigSnapshot;
+  if (!snap) return null;
+  const chatProvider = typeof snap.chatProvider === "string" ? snap.chatProvider : "";
+  const chatModel = typeof snap.chatModel === "string" ? snap.chatModel : typeof snap.chatModelId === "string" ? snap.chatModelId : "";
+  const embProvider = typeof snap.embeddingProvider === "string" ? snap.embeddingProvider : "";
+  const embModel =
+    typeof snap.embeddingModel === "string"
+      ? snap.embeddingModel
+      : typeof snap.embeddingModelId === "string"
+        ? snap.embeddingModelId
+        : "";
+  const chat = [chatProvider, chatModel].filter(Boolean).join(" · ");
+  const emb = [embProvider, embModel].filter(Boolean).join(" · ");
+  if (!chat && !emb) return null;
+  const parts: string[] = [];
+  if (chat) parts.push(`Judge ${chat}`);
+  if (emb) parts.push(`Embedding ${emb}`);
+  return parts.join(" · ");
 }
 
 function describeRagasFailure(message?: string | null) {
@@ -160,6 +181,10 @@ export function EvalRunDetailPage() {
   const [selectedChatModelId, setSelectedChatModelId] = useState("");
   const [selectedEmbeddingModelId, setSelectedEmbeddingModelId] = useState("");
   const [expandedFailures, setExpandedFailures] = useState<Set<string>>(new Set());
+  const [compareDialogOpen, setCompareDialogOpen] = useState(false);
+  const [compareCandidates, setCompareCandidates] = useState<EvalRun[]>([]);
+  const [compareLoading, setCompareLoading] = useState(false);
+  const [selectedBaselineId, setSelectedBaselineId] = useState("");
   const ragasStatusRef = useRef<string | null>(null);
 
   const activeRagasBatch =
@@ -299,16 +324,6 @@ export function EvalRunDetailPage() {
     }
   };
 
-  const handleRescore = async () => {
-    try {
-      await rescoreRun(runId);
-      toast.success("已创建新的自建指标评分批次");
-      await loadMetrics();
-    } catch (error) {
-      toast.error(getErrorMessage(error, "自建指标计算失败"));
-    }
-  };
-
   const openRagasDialog = async () => {
     if (ragasBusy) return;
     setRagasDialogOpen(true);
@@ -332,6 +347,30 @@ export function EvalRunDetailPage() {
       setRagasDialogOpen(false);
     } finally {
       setRagasModelsLoading(false);
+    }
+  };
+
+  const openCompareDialog = async () => {
+    if (!run?.datasetVersionId) {
+      toast.error("当前 Run 缺少数据集版本，无法对比");
+      return;
+    }
+    setCompareDialogOpen(true);
+    setCompareLoading(true);
+    try {
+      const page = await pageRuns(1, 50, { datasetVersionId: run.datasetVersionId });
+      const candidates = (page.records || []).filter((r) => r.id !== runId);
+      setCompareCandidates(candidates);
+      const preferred =
+        (run.baselineRunId && candidates.find((c) => c.id === run.baselineRunId)?.id) ||
+        candidates[0]?.id ||
+        "";
+      setSelectedBaselineId(preferred);
+    } catch (error) {
+      toast.error(getErrorMessage(error, "加载同版本 Run 失败"));
+      setCompareDialogOpen(false);
+    } finally {
+      setCompareLoading(false);
     }
   };
 
@@ -449,12 +488,12 @@ export function EvalRunDetailPage() {
             <RefreshCw className="mr-1 h-4 w-4" />
             刷新
           </Button>
+          <Button variant="outline" size="sm" onClick={() => void openCompareDialog()}>
+            <GitCompareArrows className="mr-1 h-4 w-4" />
+            对比
+          </Button>
           {TERMINAL.has(run.status) && (
             <>
-              <Button variant="outline" size="sm" onClick={handleRescore}>
-                <Calculator className="mr-1 h-4 w-4" />
-                自建指标评分
-              </Button>
               <Button variant="outline" size="sm" onClick={openRagasDialog} disabled={ragasBusy}>
                 {ragasBusy ? (
                   <Loader2 className="mr-1 h-4 w-4 animate-spin" />
@@ -652,6 +691,12 @@ export function EvalRunDetailPage() {
                     return hint ? ` · ${hint}` : "";
                   })()}
                 </p>
+                {(() => {
+                  const judgeHint = formatRagasJudgeHint(activeRagasBatch || latestRagasBatch);
+                  return judgeHint ? (
+                    <p className="mt-1 text-xs text-slate-600">{judgeHint}</p>
+                  ) : null;
+                })()}
               </div>
               {activeRagasBatch ? (
                 <div className="rounded-md border border-violet-200 bg-violet-50/60 px-3 py-2 text-sm text-violet-900">
@@ -937,18 +982,11 @@ export function EvalRunDetailPage() {
       ) : TERMINAL.has(run.status) ? (
         <Card>
           <CardHeader>
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <div className="space-y-1.5">
-                <CardTitle>自建指标</CardTitle>
-                <CardDescription>
-                  录制已结束，尚未生成评分批次。
-                </CardDescription>
-              </div>
-              <Button variant="outline" size="sm" className="shrink-0" onClick={handleRescore}>
-                <Calculator className="mr-1 h-4 w-4" />
-                自建指标评分
-              </Button>
-            </div>
+            <CardTitle>自建指标</CardTitle>
+            <CardDescription>
+              录制结束后会自动计算。若此处仍为空，多为自动评分失败；可通过 API{" "}
+              <code className="text-xs">POST .../runs/{"{runId}"}/rescore</code> 补算。
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <p className="text-sm text-muted-foreground">暂无报告</p>
@@ -1102,8 +1140,7 @@ export function EvalRunDetailPage() {
                 </Select>
               </div>
               <p className="text-xs text-amber-700/90">
-                提示：将按所选模型对应的 Java provider endpoint / API Key 调用评分服务（chat 与 embedding
-                可走不同网关）。
+                提示：将按所选模型对应的 Java provider endpoint / API Key 调用评分服务。
               </p>
             </div>
           )}
@@ -1132,6 +1169,55 @@ export function EvalRunDetailPage() {
               ) : (
                 "开始评分"
               )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={compareDialogOpen} onOpenChange={setCompareDialogOpen}>
+        <DialogContent className="sm:max-w-[480px]">
+          <DialogHeader>
+            <DialogTitle>同版本 Run 对比</DialogTitle>
+            <DialogDescription>
+              仅可选择相同数据集版本的其它 Run 作为基线。跨版本对比暂不支持。
+            </DialogDescription>
+          </DialogHeader>
+          {compareLoading ? (
+            <div className="flex items-center gap-2 py-6 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              加载同版本 Run…
+            </div>
+          ) : compareCandidates.length === 0 ? (
+            <p className="py-4 text-sm text-muted-foreground">当前版本下没有其它可对比的 Run</p>
+          ) : (
+            <div className="space-y-2 py-1">
+              <Label>基线 Run</Label>
+              <Select value={selectedBaselineId} onValueChange={setSelectedBaselineId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="选择基线 Run" />
+                </SelectTrigger>
+                <SelectContent position="item-aligned">
+                  {compareCandidates.map((r) => (
+                    <SelectItem key={r.id} value={r.id}>
+                      {r.name} · {r.status}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCompareDialogOpen(false)}>
+              取消
+            </Button>
+            <Button
+              disabled={!selectedBaselineId || compareLoading}
+              onClick={() => {
+                setCompareDialogOpen(false);
+                navigate(`/admin/evaluations/runs/${runId}/compare/${selectedBaselineId}`);
+              }}
+            >
+              开始对比
             </Button>
           </DialogFooter>
         </DialogContent>

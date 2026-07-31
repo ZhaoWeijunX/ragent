@@ -2,7 +2,7 @@
 
 > 对应需求：[rag-evaluation-workbench-requirements.md](./rag-evaluation-workbench-requirements.md)  
 > 参考资料：`resources/docs/ragent-test/RAG 评测——从指标到实践/`、外部项目 `D:\code\ragenteval`  
-> 状态：Draft · 2026-07-31（阶段 0–5 已落地）  
+> 状态：Draft · 2026-07-31（阶段 0–5 已落地；阶段 6 本轮仅同版本 Run 对比）  
 > 决策摘要：MVP 沿用 `/rag/v3/chat` + `/rag/eval` 双路径采集并显式披露漂移风险；RAGAS 将 `ragenteval` 改造成独立 HTTP 评分服务。  
 > 阶段 0 产物：[docs/evaluation/](./evaluation/README.md) · [退出报告](./evaluation/phase-0-exit-report.md)  
 > 阶段 1 建表：[resources/database/evaluation/](../resources/database/evaluation/README.md)  
@@ -143,17 +143,20 @@ MVP 累计约 **6–8** 个日历周；V1 累计约 **10–13** 个日历周（�
   - API：`POST .../ragas-rescore`、`GET .../metrics?scoreType=RAGAS`
   - 前端：创建 Run 勾选 RAGAS、详情 RAGAS 表与口径提示
   - 退出报告：[phase-5-exit-report.md](./evaluation/phase-5-exit-report.md)
+  - 交接摘要：[phase-5-handoff.md](./evaluation/phase-5-handoff.md)
   - 已知薄项：`records_uri`/`callback_url`（延期，非 MVP）、每轮采样原始分落库、真实 Judge E2E CI；token/cost 已透传到管理台（数值依赖 Judge 侧是否回传）
   - 管理台可取消进行中 RAGAS：`POST .../ragas-batches/{batchId}/cancel`
 
 ## 阶段 6：人工复核、A/B 与质量门禁 M4（1.5–2 周）
 
-- 实现 manual override 的新增、修改、撤销、操作者、理由与审计；报告按「原始分 + 当前人工分 + 生效分」展示，重聚合不覆盖 Judge 原始结果。
-- 实现同版本 Run A/B：配置快照差异、指标 delta、intent/difficulty 切片、新增失败/修复/持续失败、TTFT 差异；不同版本仅允许探索性展示并给出不可作严格回归结论的警告。
-- 定义阈值策略版本与快照：overall、切片、关键样本、最大退化值；Run 增加独立 quality verdict（PASS/FAIL/WARN/NOT_EVALUATED），不要与执行状态混为一列。
-- 首次阈值由 20 条冒烟集跑通后，以 150 条 baseline 校准；自建指标可用于日常门禁，RAGAS 默认只用于改版/发布深评，差异小于约 3% 时提示可能处于 Judge 方差范围。
-- 提供只读 CI 查询接口和稳定机器可读结果，但自动阻断合入可作为下一阶段开启。
-- **退出条件**：满足需求 V1 验收；任意同版本两次 Run 可比较；人工覆盖可追溯；门禁结论可由快照完整复算。
+> **本轮范围（2026-07-31）**：仅实现 **同数据集版本 Run 结果对比**；跨版本直接拒绝，不提供探索性对比。其余条目暂不实现。
+
+- ~~实现 manual override 的新增、修改、撤销、操作者、理由与审计；报告按「原始分 + 当前人工分 + 生效分」展示，重聚合不覆盖 Judge 原始结果。~~ **暂不实现**
+- **本轮实现** 同版本 Run A/B：配置快照差异、指标 delta、intent/difficulty 切片、新增失败/修复/持续失败、TTFT 差异；**仅允许相同 `dataset_version_id`**，版本不一致返回业务错误。
+- ~~定义阈值策略版本与快照：overall、切片、关键样本、最大退化值；Run 增加独立 quality verdict（PASS/FAIL/WARN/NOT_EVALUATED），不要与执行状态混为一列。~~ **暂不实现**
+- ~~首次阈值由 20 条冒烟集跑通后，以 150 条 baseline 校准；自建指标可用于日常门禁，RAGAS 默认只用于改版/发布深评，差异小于约 3% 时提示可能处于 Judge 方差范围。~~ **暂不实现**
+- ~~提供只读 CI 查询接口和稳定机器可读结果，但自动阻断合入可作为下一阶段开启。~~ **暂不实现**
+- **本轮退出条件**：任意两次同数据集版本 Run 可比较（配置 diff + 指标/切片 delta + 失败回归 + TTFT + 样本交集）；跨版本不可比。完整 V1（人工覆盖、门禁、CI）延后。
 
 ## 阶段 7：持续评测与采集链路演进（V2，按价值拆分）
 
@@ -189,5 +192,5 @@ MVP 累计约 **6–8** 个日历周；V1 累计约 **10–13** 个日历周（�
 - [x] 阶段 3：双路径录制与 Run 状态机可用（M2-A）
 - [x] 阶段 4：自建指标与报告通过 MVP 验收（M2-B）
 - [x] 阶段 5：RAGAS 服务化接入且失败可降级（M3）
-- [ ] 阶段 6：人工复核、A/B、门禁通过 V1 验收（M4）
+- [ ] 阶段 6：同版本 Run A/B 对比（本轮）；人工复核 / 门禁 / CI 暂不实现（M4 部分）
 - [ ] 阶段 7：CI/趋势/单轨采集按价值推进（V2）
