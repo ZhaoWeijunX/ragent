@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://ragent.local/schemas/evaluation/metric-result.schema.json",
   "title": "MetricResult",
-  "description": "单指标输出。Java 确定性指标与 Python RAGAS 服务统一此形状。schemaVersion=1.0.0",
+  "description": "单指标输出。Java 自建指标与 Python RAGAS 服务统一此形状。schemaVersion=1.0.0",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "name", "algorithmVersion", "overall", "isPct"],

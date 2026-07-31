@@ -62,4 +62,25 @@ public class EvaluationWorkbenchConfiguration {
         executor.allowCoreThreadTimeOut(true);
         return TtlExecutors.getTtlExecutor(executor);
     }
+
+    /**
+     * RAGAS 异步评分线程池：与录制池隔离，避免 LLM-judge 长轮询占满录制并发。
+     */
+    @Bean(name = "evalRagasExecutor")
+    public Executor evalRagasExecutor() {
+        int size = Math.max(1, Math.min(4, evalProperties.getRagas().getConcurrency()));
+        ThreadPoolExecutor executor = new ThreadPoolExecutor(
+                size,
+                size,
+                60,
+                TimeUnit.SECONDS,
+                new LinkedBlockingQueue<>(50),
+                ThreadFactoryBuilder.create()
+                        .setNamePrefix("eval_ragas_executor_")
+                        .build(),
+                new ThreadPoolExecutor.AbortPolicy()
+        );
+        executor.allowCoreThreadTimeOut(true);
+        return TtlExecutors.getTtlExecutor(executor);
+    }
 }

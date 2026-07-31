@@ -7,10 +7,10 @@
 
 ## 1. 设计原则
 
-1. Java 负责录制与确定性指标；本服务主责 **RAGAS 五指标**（可选附带透传确定性结果校验，非必须）。
+1. Java 负责录制与自建指标；本服务主责 **RAGAS 五指标**（可选附带透传自建结果校验，非必须）。
 2. RAGAS 失败不得要求 Java 回滚 Record。
 3. 支持异步任务：提交 → 查询 → 取消。
-4. Judge 密钥只读部署环境变量，不接受请求体传明文 key。
+4. Judge 密钥：生产推荐仅用部署环境 Secret；阶段 5 Java→Python 内网可下发 `judge.*_api_key`（与 `ai.providers` 对齐），密钥不入 DB 快照。
 5. 幂等：同一 `idempotency_key` 重复提交返回同一 `job_id`。
 
 ## 2. 端点一览
@@ -41,7 +41,7 @@ Base URL 示例：`http://ragenteval:8089`
 }
 ```
 
-`judge_configured=false` 时 Java 应跳过 RAGAS 并标记 batch 失败/跳过，不影响确定性评分。
+`judge_configured=false` 时 Java 应跳过 RAGAS 并标记 batch 失败/跳过，不影响自建评分。
 
 ## 4. `POST /v1/evaluations/score`
 
@@ -72,7 +72,13 @@ Base URL 示例：`http://ragenteval:8089`
   "algorithm_version": "ragas-1.0.0",
   "judge": {
     "chat_model": null,
-    "embedding_model": null
+    "embedding_model": null,
+    "chat_base_url": null,
+    "embedding_base_url": null,
+    "chat_api_key": null,
+    "embedding_api_key": null,
+    "chat_provider": null,
+    "embedding_provider": null
   },
   "records": [],
   "records_uri": null,
@@ -86,9 +92,12 @@ Base URL 示例：`http://ragenteval:8089`
 | `skip_ragas` | bool | true 时立即返回空 metrics（用于连通性测试） |
 | `ragas_n` | 1..3 | 采样次数；>1 时对每条样本多次取均值 |
 | `ragas_limit` | int\|null | 最多评多少条；null=全部可评样本 |
+| `judge.chat_model` / `embedding_model` | string\|null | 模型名；可覆盖服务环境默认 |
+| `judge.chat_base_url` / `embedding_base_url` | string\|null | OpenAI-compatible base（如 `https://api.deepseek.com/v1`）；由 Java 按 `ai.providers` 解析下发 |
+| `judge.chat_api_key` / `embedding_api_key` | string\|null | 对应 provider 的 API Key（内网服务间传递；缺省回退服务环境 `AIHUBMIX_API_KEY`） |
 | `records` | EvalRecord[] | snake_case；与 `records_uri` 互斥，至少提供一个 |
-| `records_uri` | string\|null | 对象存储或内网 URL，指向 JSON/JSONL |
-| `callback_url` | string\|null | 可选；完成时 POST 结果摘要（阶段 5 可先不实现，保留字段） |
+| `records_uri` | string\|null | **延期**：对象存储/内网 URL（JSON/JSONL）；当前实现仅支持内联 `records` |
+| `callback_url` | string\|null | **延期**：完成时 POST 结果摘要；保留字段 |
 
 ### 202 响应（async）
 
@@ -131,7 +140,10 @@ Base URL 示例：`http://ragenteval:8089`
     "total": 20,
     "completed": 18,
     "failed": 2,
-    "skipped": 0
+    "skipped": 0,
+    "evaluable": 18,
+    "work_total": 90,
+    "work_completed": 90
   },
   "token_usage": {
     "prompt_tokens": 120000,
@@ -181,7 +193,7 @@ Base URL 示例：`http://ragenteval:8089`
 
 ## 6. `POST /v1/evaluations/score/{job_id}/cancel`
 
-协作式取消：停止调度新样本；已完成分片结果尽量保留并返回 `CANCELLED` 或 `PARTIAL_SUCCESS`。
+协作式取消：停止继续评分；已完成结果尽量保留并返回 `CANCELLED` 或 `PARTIAL_SUCCESS`。
 
 ```json
 { "schema_version": "1.0.0", "job_id": "job_01HZX...", "status": "CANCELLED" }
@@ -191,7 +203,7 @@ Base URL 示例：`http://ragenteval:8089`
 
 | 项 | 默认 |
 |----|------|
-| 单请求 records 上限 | 200（更大用 `records_uri`） |
+| 单请求 records 上限 | 200（更大场景走 `records_uri`，**延期未实现**） |
 | 全局并发 job | 2 |
 | 单 job 内 RAGAS 并发 | 2 |
 | 同步模式超时 | 120s |
@@ -209,9 +221,10 @@ Base URL 示例：`http://ragenteval:8089`
 
 1. 将 camelCase Record 转为 snake_case。
 2. `POST /v1/evaluations/score`，保存 `job_id` 到 score_batch。
-3. 轮询至终态（间隔 2s，退避至 10s）。
-4. 结果转 camelCase 写入 `t_eval_score`。
+3. 轮询至终态（固定间隔，默认 `app.eval.ragas.poll-interval-seconds`，通常 10s；无指数退避）。
+4. 结果转 camelCase 写入 `t_eval_score`；`token_usage` / `estimated_cost` 写入 score_batch 并暴露给管理台。
 5. 超时/5xx/NaN → batch `FAILED` 或 `PARTIAL_SUCCESS`，**不**修改 `t_eval_record`。
+6. 管理台可 `POST .../ragas-batches/{batchId}/cancel` → 调本服务 cancel。
 
 ## 10. 阶段 0 非目标
 

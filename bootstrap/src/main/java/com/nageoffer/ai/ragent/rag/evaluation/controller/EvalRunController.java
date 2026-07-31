@@ -22,10 +22,12 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.nageoffer.ai.ragent.framework.convention.Result;
 import com.nageoffer.ai.ragent.framework.web.Results;
 import com.nageoffer.ai.ragent.rag.evaluation.constant.EvalWorkbenchConstants;
+import com.nageoffer.ai.ragent.rag.evaluation.controller.request.EvalRagasRescoreRequest;
 import com.nageoffer.ai.ragent.rag.evaluation.controller.request.EvalRecordPageRequest;
 import com.nageoffer.ai.ragent.rag.evaluation.controller.request.EvalRunCreateRequest;
 import com.nageoffer.ai.ragent.rag.evaluation.controller.request.EvalRunPageRequest;
 import com.nageoffer.ai.ragent.rag.evaluation.controller.vo.EvalMetricReportVO;
+import com.nageoffer.ai.ragent.rag.evaluation.controller.vo.EvalRagasJudgeModelsVO;
 import com.nageoffer.ai.ragent.rag.evaluation.controller.vo.EvalRecordVO;
 import com.nageoffer.ai.ragent.rag.evaluation.controller.vo.EvalRunVO;
 import com.nageoffer.ai.ragent.rag.evaluation.controller.vo.EvalScoreBatchVO;
@@ -94,6 +96,26 @@ public class EvalRunController {
         return Results.success(evalScoreService.scoreDeterministic(runId));
     }
 
+    @PostMapping(EvalWorkbenchConstants.API_PREFIX + "/runs/{runId}/ragas-rescore")
+    public Result<String> ragasRescore(@PathVariable String runId,
+                                       @RequestBody(required = false) EvalRagasRescoreRequest request) {
+        requireAdmin();
+        return Results.success(evalScoreService.submitRagasAsync(runId, request));
+    }
+
+    @PostMapping(EvalWorkbenchConstants.API_PREFIX + "/runs/{runId}/ragas-batches/{batchId}/cancel")
+    public Result<Void> cancelRagasBatch(@PathVariable String runId, @PathVariable String batchId) {
+        requireAdmin();
+        evalScoreService.cancelRagasBatch(runId, batchId);
+        return Results.success();
+    }
+
+    @GetMapping(EvalWorkbenchConstants.API_PREFIX + "/ragas-judge-models")
+    public Result<EvalRagasJudgeModelsVO> ragasJudgeModels() {
+        requireAdmin();
+        return Results.success(evalScoreService.listRagasJudgeModels());
+    }
+
     @GetMapping(EvalWorkbenchConstants.API_PREFIX + "/runs/{runId}/score-batches")
     public Result<List<EvalScoreBatchVO>> listScoreBatches(@PathVariable String runId) {
         requireAdmin();
@@ -102,9 +124,10 @@ public class EvalRunController {
 
     @GetMapping(EvalWorkbenchConstants.API_PREFIX + "/runs/{runId}/metrics")
     public Result<EvalMetricReportVO> metrics(@PathVariable String runId,
-                                              @RequestParam(required = false) String batchId) {
+                                              @RequestParam(required = false) String batchId,
+                                              @RequestParam(required = false) String scoreType) {
         requireAdmin();
-        return Results.success(evalScoreService.getReport(runId, batchId));
+        return Results.success(evalScoreService.getReport(runId, batchId, scoreType));
     }
 
     @GetMapping(EvalWorkbenchConstants.API_PREFIX + "/runs/{runId}/export")

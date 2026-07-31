@@ -75,7 +75,7 @@ app:
 | A1 | 打开 `/admin/evaluations/runs` | 页顶有双路径漂移黄条；表格表头与数据列对齐；无数据时提示「暂无 Run」 |
 | A2 | 点「创建 Run」→ 选评估集与已发布版本 → 填写名称 →「开始」 | 立即返回详情 `/admin/evaluations/runs/{runId}`；状态很快变为 `RECORDING` |
 | A3 | 停留在详情页（约每 3s 自动刷新） | `progress`、`successCount`/`failedCount` 递增；样本表逐行出现 Record |
-| A4 | 全部样本录制结束 | 经过 `DETERMINISTIC_SCORING`（写入 score_batch）/ `REPORTING` 后进入终态：全部成功 → `COMPLETED`；有失败且 success≥1 → `PARTIAL_SUCCESS`；全失败 → `FAILED`；`progress=100`；详情可见确定性指标 |
+| A4 | 全部样本录制结束 | 经过 `DETERMINISTIC_SCORING`（写入 score_batch）/ `REPORTING` 后进入终态：全部成功 → `COMPLETED`；有失败且 success≥1 → `PARTIAL_SUCCESS`；全失败 → `FAILED`；`progress=100`；详情可见自建指标 |
 | A5 | 点某条 Record 的 Trace 链接 | 跳转 `/admin/traces/{traceId}`（若 trace 尚未落库则为 `-`） |
 | A6 | 回列表 | 对应 Run 状态/进度/成功失败列与详情一致；点击行进入详情 |
 
@@ -118,4 +118,4 @@ curl -X POST -H "Authorization: <token>" -H "Content-Type: application/json" \
 - RAGAS HTTP 接入
 - A/B 对比与质量门禁
 - 进度 SSE 推送（首期轮询）
-- 确定性指标细节见 [phase-4-exit-report.md](./phase-4-exit-report.md)
+- 自建指标细节见 [phase-4-exit-report.md](./phase-4-exit-report.md)

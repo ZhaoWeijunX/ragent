@@ -17,7 +17,9 @@
 
 package com.nageoffer.ai.ragent.rag.evaluation.service;
 
+import com.nageoffer.ai.ragent.rag.evaluation.controller.request.EvalRagasRescoreRequest;
 import com.nageoffer.ai.ragent.rag.evaluation.controller.vo.EvalMetricReportVO;
+import com.nageoffer.ai.ragent.rag.evaluation.controller.vo.EvalRagasJudgeModelsVO;
 import com.nageoffer.ai.ragent.rag.evaluation.controller.vo.EvalScoreBatchVO;
 
 import java.util.List;
@@ -25,17 +27,45 @@ import java.util.List;
 public interface EvalScoreService {
 
     /**
-     * 对 Run 执行一轮确定性评分，新建 score_batch。
+     * 对 Run 执行一轮自建指标评分，新建 score_batch。
      * @return batchId
      */
     String scoreDeterministic(String runId);
 
-    List<EvalScoreBatchVO> listBatches(String runId);
-
-    EvalMetricReportVO getReport(String runId, String batchId);
+    /**
+     * 同步执行一轮 RAGAS（供 Runner 流水线内调用）：提交外部服务并轮询至终态。
+     * 失败不回滚 Record / 自建分数。
+     * @return batchId；跳过时返回 null
+     */
+    String scoreRagas(String runId);
 
     /**
-     * 导出最新确定性批次：format=json|jsonl|csv
+     * 异步提交一轮 RAGAS（供管理台「RAGAS 评分」）：立即返回 batchId，后台轮询并落库。
+     * 若已有 PENDING/RUNNING 的 RAGAS 批次则复用其 id（防连点）。
+     * @param request Judge 模型候选 id；null/空字段时回退 judge-chat / ai.embedding 默认模型（含 endpoint/key）
+     * @return batchId；跳过时返回 null（仅同步 Runner 路径）；管理台异步路径遇未启用会抛错
+     */
+    String submitRagasAsync(String runId, EvalRagasRescoreRequest request);
+
+    /**
+     * 取消进行中的 RAGAS 批次：协作式 cancel 外部 job，并将 batch 标为 FAILED。
+     */
+    void cancelRagasBatch(String runId, String batchId);
+
+    /**
+     * RAGAS 弹窗可选模型：Judge chat（app.eval.ragas.judge-chat）+ embedding（ai.embedding）。
+     */
+    EvalRagasJudgeModelsVO listRagasJudgeModels();
+
+    List<EvalScoreBatchVO> listBatches(String runId);
+
+    /**
+     * @param scoreType DETERMINISTIC / RAGAS；空则按 batchId 或默认自建指标最新批次
+     */
+    EvalMetricReportVO getReport(String runId, String batchId, String scoreType);
+
+    /**
+     * 导出自建指标批次：format=json|jsonl|csv
      */
     byte[] exportReport(String runId, String batchId, String format);
 }

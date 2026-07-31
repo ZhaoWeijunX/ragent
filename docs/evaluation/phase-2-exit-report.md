@@ -57,7 +57,7 @@
 | 终态 | 含义 |
 |------|------|
 | `COMPLETED` | 该跑的都成功，报告完整 |
-| `PARTIAL_SUCCESS` | 有样本失败，但至少 1 条成功且有可用确定性报告 |
+| `PARTIAL_SUCCESS` | 有样本失败，但至少 1 条成功且有可用自建报告 |
 | `FAILED` | 任务级失败，或 0 成功且无可用报告 |
 | `CANCELLED` | 用户取消；已录制数据保留 |
 
@@ -68,7 +68,7 @@
 | 对象 | 作用 |
 |------|------|
 | Record 状态 | **样本级**录制结果；失败重试只重跑失败样本 |
-| Score batch 状态 | 确定性 / RAGAS 批次自身成败；RAGAS batch 失败不一定把整个 Run 打成 `FAILED` |
+| Score batch 状态 | 自建 / RAGAS 批次自身成败；RAGAS batch 失败不一定把整个 Run 打成 `FAILED` |
 | Override / verdict | 人工改分是否生效（`ACTIVE`/`REVOKED`）；阈值判定（`PASS`/`FAIL`/`WARN`/`NOT_EVALUATED`）——不是生命周期状态 |
 
 一眼区分：评估集归档 = 藏列表；版本归档 = 不能新建 Run；Run 状态 = 这次跑到哪；Record 状态 = 这一条成不成。

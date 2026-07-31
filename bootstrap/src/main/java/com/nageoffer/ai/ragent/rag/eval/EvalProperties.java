@@ -21,6 +21,9 @@ import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * 评测配置：旁路接口（/rag/eval）与评测工作台共用前缀 {@code app.eval}。
  */
@@ -113,5 +116,35 @@ public class EvalProperties {
          * ragas_n 上限（1–3）。
          */
         private int maxIndependentRuns = 3;
+
+        /**
+         * 轮询外部 RAGAS job 的固定间隔（秒），不做退避。
+         */
+        private int pollIntervalSeconds = 10;
+
+        /**
+         * RAGAS Judge 专用聊天模型候选（与业务 {@code ai.chat} 分离，仅评测选用）。
+         */
+        private JudgeChat judgeChat = new JudgeChat();
+    }
+
+    @Data
+    public static class JudgeChat {
+
+        private String defaultModel = "gpt-5.4-mini";
+
+        private List<JudgeModelCandidate> candidates = new ArrayList<>();
+    }
+
+    @Data
+    public static class JudgeModelCandidate {
+
+        private String id;
+
+        private String provider;
+
+        private String model;
+
+        private Boolean enabled = true;
     }
 }

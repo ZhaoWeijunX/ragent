@@ -1,28 +1,36 @@
-import { useEffect, useState, Fragment } from "react";
+import { useEffect, useRef, useState, Fragment } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, Ban, ChevronDown, ChevronRight, Download, ExternalLink, RefreshCw, RotateCcw, Calculator } from "lucide-react";
+import { ArrowLeft, Ban, ChevronDown, ChevronRight, Download, ExternalLink, Loader2, RefreshCw, RotateCcw, Calculator } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { RelativeTime } from "@/components/RelativeTime";
 import { EvalStatusBadge } from "@/pages/admin/evaluations/EvalStatusBadge";
 import type {
   EvalMetricReport,
+  EvalRagasJudgeModelCandidate,
   EvalRecord,
   EvalRun,
   EvalSampleFailure,
+  EvalScoreBatch,
   PageResult
 } from "@/services/evaluationService";
 import {
+  cancelRagasBatch,
   cancelRun,
   exportRunReport,
   getRun,
   getRunMetrics,
+  listRagasJudgeModels,
+  listScoreBatches,
   pageRecords,
+  ragasRescoreRun,
   rescoreRun,
   resumeRun
 } from "@/services/evaluationService";
@@ -32,6 +40,66 @@ const PAGE_SIZE = 20;
 const ACTIVE = new Set(["PENDING", "RECORDING", "DETERMINISTIC_SCORING", "RAGAS_SCORING", "REPORTING"]);
 const RESUMABLE = new Set(["FAILED", "PARTIAL_SUCCESS", "CANCELLED"]);
 const TERMINAL = new Set(["COMPLETED", "PARTIAL_SUCCESS", "FAILED", "CANCELLED"]);
+const RAGAS_BATCH_ACTIVE = new Set(["PENDING", "RUNNING"]);
+const RAGAS_BATCH_TERMINAL = new Set(["COMPLETED", "PARTIAL_SUCCESS", "FAILED"]);
+
+function enabledCandidates(list: EvalRagasJudgeModelCandidate[] | undefined | null): EvalRagasJudgeModelCandidate[] {
+  return (list || []).filter((c) => c?.id && c.enabled !== false);
+}
+
+function pickDefaultId(
+  defaultModel: string | null | undefined,
+  candidates: EvalRagasJudgeModelCandidate[]
+): string {
+  if (candidates.length === 0) return "";
+  if (defaultModel && candidates.some((c) => c.id === defaultModel)) {
+    return defaultModel;
+  }
+  return candidates[0].id;
+}
+
+function modelOptionLabel(m: EvalRagasJudgeModelCandidate): string {
+  if (m.provider && m.model) return `${m.provider} · ${m.model}`;
+  return m.model || m.id;
+}
+
+function isRagasServiceInterrupted(message?: string | null) {
+  const m = (message || "").toLowerCase();
+  return (
+    m.includes("中断") ||
+    m.includes("不可达") ||
+    m.includes("丢失") ||
+    m.includes("connection") ||
+    m.includes("refused") ||
+    m.includes("connect timed out") ||
+    m.includes("reset") ||
+    m.includes("404") ||
+    m.includes("not found") ||
+    m.includes("restart") ||
+    m.includes("超时") ||
+    m.includes("timeout")
+  );
+}
+
+function formatRagasCostHint(batch: EvalScoreBatch | null | undefined): string | null {
+  if (!batch) return null;
+  // token_usage 目前由评分服务占位回传（常为 0），暂不展示；仅在有真实估算费用时显示
+  if (batch.estimatedCost == null || batch.estimatedCost === "") return null;
+  const n = typeof batch.estimatedCost === "number" ? batch.estimatedCost : Number(batch.estimatedCost);
+  if (Number.isNaN(n)) return null;
+  return `约 $${n.toFixed(4)}`;
+}
+
+function describeRagasFailure(message?: string | null) {
+  if (isRagasServiceInterrupted(message)) {
+    return message
+      ? `RAGAS 评分服务运行中中断：${message}`
+      : "RAGAS 评分服务运行中中断或不可达";
+  }
+  return message
+    ? `RAGAS 评分失败（已降级）：${message}`
+    : "RAGAS 评分失败（已降级）";
+}
 
 /** 对齐 ragenteval report.md「自建指标」顺序与中文名 */
 const DETERMINISTIC_METRIC_ROWS: { key: string; label: string; pct: boolean }[] = [
@@ -52,6 +120,15 @@ const DETERMINISTIC_METRIC_ROWS: { key: string; label: string; pct: boolean }[] 
   { key: "total_mean_ms", label: "整流均值 (ms, 仅供参考)", pct: false }
 ];
 
+/** 对齐 ragenteval report.md「RAGAS LLM-as-judge」 */
+const RAGAS_METRIC_ROWS: { key: string; label: string; pct: boolean }[] = [
+  { key: "faithfulness", label: "Faithfulness", pct: true },
+  { key: "answer_relevancy", label: "Answer Relevancy", pct: true },
+  { key: "answer_correctness", label: "Answer Correctness", pct: true },
+  { key: "context_precision", label: "Context Precision", pct: true },
+  { key: "context_recall", label: "Context Recall", pct: true }
+];
+
 /** Intent L2 切片固定列（无数据时展示 "-"） */
 const INTENT_L2_SLICE_COLUMNS: { key: string; label: string; pct: boolean }[] = [
   { key: "hit@5", label: "Hit@5", pct: true },
@@ -67,12 +144,30 @@ export function EvalRunDetailPage() {
   const [run, setRun] = useState<EvalRun | null>(null);
   const [records, setRecords] = useState<PageResult<EvalRecord> | null>(null);
   const [report, setReport] = useState<EvalMetricReport | null>(null);
+  const [ragasReport, setRagasReport] = useState<EvalMetricReport | null>(null);
+  const [scoreBatches, setScoreBatches] = useState<EvalScoreBatch[]>([]);
   const [pageNo, setPageNo] = useState(1);
   const [statusFilter, setStatusFilter] = useState("all");
   const [keyword, setKeyword] = useState("");
   const [searchKeyword, setSearchKeyword] = useState("");
   const [loading, setLoading] = useState(true);
+  const [ragasSubmitting, setRagasSubmitting] = useState(false);
+  const [ragasDialogOpen, setRagasDialogOpen] = useState(false);
+  const [ragasModelsLoading, setRagasModelsLoading] = useState(false);
+  const [ragasCancelling, setRagasCancelling] = useState(false);
+  const [chatModels, setChatModels] = useState<EvalRagasJudgeModelCandidate[]>([]);
+  const [embeddingModels, setEmbeddingModels] = useState<EvalRagasJudgeModelCandidate[]>([]);
+  const [selectedChatModelId, setSelectedChatModelId] = useState("");
+  const [selectedEmbeddingModelId, setSelectedEmbeddingModelId] = useState("");
   const [expandedFailures, setExpandedFailures] = useState<Set<string>>(new Set());
+  const ragasStatusRef = useRef<string | null>(null);
+
+  const activeRagasBatch =
+    scoreBatches.find((b) => b.scoreType === "RAGAS" && RAGAS_BATCH_ACTIVE.has(b.status || "")) || null;
+  const latestRagasBatch = scoreBatches.find((b) => b.scoreType === "RAGAS") || null;
+  const failedRagasBatch =
+    latestRagasBatch && latestRagasBatch.status === "FAILED" ? latestRagasBatch : null;
+  const ragasBusy = ragasSubmitting || !!activeRagasBatch;
 
   const loadRun = async () => {
     if (!runId) return;
@@ -100,16 +195,30 @@ export function EvalRunDetailPage() {
   const loadMetrics = async () => {
     if (!runId) return;
     try {
-      setReport(await getRunMetrics(runId));
+      setReport(await getRunMetrics(runId, undefined, "DETERMINISTIC"));
     } catch {
       setReport(null);
+    }
+    try {
+      setRagasReport(await getRunMetrics(runId, undefined, "RAGAS"));
+    } catch {
+      setRagasReport(null);
+    }
+  };
+
+  const loadBatches = async () => {
+    if (!runId) return;
+    try {
+      setScoreBatches(await listScoreBatches(runId));
+    } catch {
+      /* ignore — 批次列表非关键路径 */
     }
   };
 
   const refresh = async () => {
     setLoading(true);
     try {
-      await Promise.all([loadRun(), loadRecords(), loadMetrics()]);
+      await Promise.all([loadRun(), loadRecords(), loadMetrics(), loadBatches()]);
     } finally {
       setLoading(false);
     }
@@ -128,15 +237,47 @@ export function EvalRunDetailPage() {
     const timer = setInterval(() => {
       loadRun();
       loadRecords();
+      loadBatches();
     }, 3000);
     return () => clearInterval(timer);
   }, [run?.status, runId, pageNo, statusFilter, keyword]);
 
   useEffect(() => {
-    if (run && TERMINAL.has(run.status)) {
+    if (!activeRagasBatch) return;
+    const timer = setInterval(() => {
+      loadBatches();
+    }, 10000);
+    return () => clearInterval(timer);
+  }, [activeRagasBatch?.id, runId]);
+
+  useEffect(() => {
+    if (run && TERMINAL.has(run.status) && !activeRagasBatch) {
       loadMetrics();
     }
-  }, [run?.status]);
+  }, [run?.status, activeRagasBatch?.id]);
+
+  useEffect(() => {
+    const batch = latestRagasBatch;
+    if (!batch) return;
+    const prev = ragasStatusRef.current;
+    const next = batch.status || null;
+    if (prev && RAGAS_BATCH_ACTIVE.has(prev) && next && RAGAS_BATCH_TERMINAL.has(next)) {
+      if (next === "FAILED") {
+        const text = describeRagasFailure(batch.errorMessage);
+        if (isRagasServiceInterrupted(batch.errorMessage)) {
+          toast.error(text);
+        } else {
+          toast.warning(text);
+        }
+      } else if (next === "PARTIAL_SUCCESS") {
+        toast.warning("RAGAS 评分部分成功，请查看下方指标");
+      } else {
+        toast.success("RAGAS 评分完成");
+      }
+      loadMetrics();
+    }
+    ragasStatusRef.current = next;
+  }, [latestRagasBatch?.id, latestRagasBatch?.status, latestRagasBatch?.errorMessage]);
 
   const handleCancel = async () => {
     try {
@@ -161,10 +302,94 @@ export function EvalRunDetailPage() {
   const handleRescore = async () => {
     try {
       await rescoreRun(runId);
-      toast.success("已创建新的确定性评分批次");
+      toast.success("已创建新的自建指标评分批次");
       await loadMetrics();
     } catch (error) {
-      toast.error(getErrorMessage(error, "重新评分失败"));
+      toast.error(getErrorMessage(error, "自建指标计算失败"));
+    }
+  };
+
+  const openRagasDialog = async () => {
+    if (ragasBusy) return;
+    setRagasDialogOpen(true);
+    setRagasModelsLoading(true);
+    try {
+      const models = await listRagasJudgeModels();
+      const chats = enabledCandidates(models.chat?.candidates);
+      const embs = enabledCandidates(models.embedding?.candidates);
+      setChatModels(chats);
+      setEmbeddingModels(embs);
+      setSelectedChatModelId((prev) =>
+        prev && chats.some((c) => c.id === prev) ? prev : pickDefaultId(models.chat?.defaultModel, chats)
+      );
+      setSelectedEmbeddingModelId((prev) =>
+        prev && embs.some((c) => c.id === prev)
+          ? prev
+          : pickDefaultId(models.embedding?.defaultModel, embs)
+      );
+    } catch (error) {
+      toast.error(getErrorMessage(error, "加载模型列表失败"));
+      setRagasDialogOpen(false);
+    } finally {
+      setRagasModelsLoading(false);
+    }
+  };
+
+  const handleRagasRescore = async () => {
+    if (ragasBusy) return;
+    if (!selectedChatModelId || !selectedEmbeddingModelId) {
+      toast.error("请选择语言模型与嵌入模型");
+      return;
+    }
+    setRagasDialogOpen(false);
+    setRagasSubmitting(true);
+    try {
+      const batchId = await ragasRescoreRun(runId, {
+        chatModelId: selectedChatModelId,
+        embeddingModelId: selectedEmbeddingModelId
+      });
+      const batches = await listScoreBatches(runId);
+      setScoreBatches(batches);
+      const batch = batches.find((b) => b.id === batchId);
+      const status = batch?.status || "";
+      if (status === "FAILED") {
+        const text = describeRagasFailure(batch?.errorMessage);
+        if (isRagasServiceInterrupted(batch?.errorMessage)) {
+          toast.error(text);
+        } else {
+          toast.warning(text);
+        }
+        ragasStatusRef.current = status;
+        return;
+      }
+      if (RAGAS_BATCH_TERMINAL.has(status)) {
+        toast.success(status === "PARTIAL_SUCCESS" ? "RAGAS 评分部分成功" : "RAGAS 评分完成");
+        ragasStatusRef.current = status;
+        await loadMetrics();
+        return;
+      }
+      toast.success("已提交 RAGAS 异步评分，下方可查看进度");
+      ragasStatusRef.current = status || "RUNNING";
+    } catch (error) {
+      toast.error(getErrorMessage(error, "RAGAS 评分失败"), { duration: 8000 });
+    } finally {
+      setRagasSubmitting(false);
+    }
+  };
+
+  const handleCancelRagas = async () => {
+    if (!activeRagasBatch || ragasCancelling) return;
+    setRagasCancelling(true);
+    try {
+      await cancelRagasBatch(runId, activeRagasBatch.id);
+      toast.success("已请求取消 RAGAS 评分");
+      const batches = await listScoreBatches(runId);
+      setScoreBatches(batches);
+      ragasStatusRef.current = "FAILED";
+    } catch (error) {
+      toast.error(getErrorMessage(error, "取消 RAGAS 失败"));
+    } finally {
+      setRagasCancelling(false);
     }
   };
 
@@ -228,7 +453,15 @@ export function EvalRunDetailPage() {
             <>
               <Button variant="outline" size="sm" onClick={handleRescore}>
                 <Calculator className="mr-1 h-4 w-4" />
-                重新评分
+                自建指标评分
+              </Button>
+              <Button variant="outline" size="sm" onClick={openRagasDialog} disabled={ragasBusy}>
+                {ragasBusy ? (
+                  <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                ) : (
+                  <Calculator className="mr-1 h-4 w-4" />
+                )}
+                {ragasBusy ? "RAGAS 评分中…" : "RAGAS 评分"}
               </Button>
               <Button variant="outline" size="sm" onClick={() => handleExport("json")}>
                 <Download className="mr-1 h-4 w-4" />
@@ -257,13 +490,13 @@ export function EvalRunDetailPage() {
 
       <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
         {run.dualPathDisclaimer ||
-          "双路径证据提示：旁路 /rag/eval 检索证据可能与真实 Chat 回答所用上下文不完全一致。"}
+          "双路径证据提示：旁路 (/rag/eval) 检索证据可能与真实 Chat 回答所用上下文不完全一致。"}
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">进度</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">运行进度</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="mb-2 text-2xl font-semibold">{run.progress ?? 0}%</div>
@@ -325,7 +558,7 @@ export function EvalRunDetailPage() {
       {report ? (
         <Card>
           <CardHeader>
-            <CardTitle>确定性指标</CardTitle>
+            <CardTitle>自建指标</CardTitle>
             <CardDescription>
               批次 {report.batchId} · {report.algorithmVersion}
             </CardDescription>
@@ -359,7 +592,9 @@ export function EvalRunDetailPage() {
               </div>
             </div>
             {(() => {
-              const metricByName = new Map((report.metrics || []).map((m) => [m.name, m]));
+              const metricByName = new Map<string, NonNullable<EvalMetricReport["metrics"]>[number]>();
+              for (const m of report.metrics || []) metricByName.set(m.name, m);
+              for (const m of ragasReport?.metrics || []) metricByName.set(m.name, m);
               const l2Keys = Array.from(
                 new Set(
                   INTENT_L2_SLICE_COLUMNS.flatMap((col) =>
@@ -370,7 +605,7 @@ export function EvalRunDetailPage() {
               if (l2Keys.length === 0) return null;
               return (
                 <div className="space-y-3 border-t border-slate-100 pt-4">
-                  <h3 className="text-base font-semibold text-slate-900">Intent L2 切片(核心指标)</h3>
+                  <h3 className="text-base font-semibold text-slate-900">Intent L2 核心指标</h3>
                   <Table className="min-w-[720px]">
                     <TableHeader>
                       <TableRow>
@@ -400,6 +635,139 @@ export function EvalRunDetailPage() {
                 </div>
               );
             })()}
+            <div className="space-y-3 border-t border-slate-100 pt-4">
+              <div>
+                <h3 className="text-base font-semibold text-slate-900">RAGAS LLM-as-judge</h3>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {/*ID-based Recall@K 与 RAGAS Context Recall 口径不同，不可直接替换。*/}
+                  {activeRagasBatch
+                    ? ` 批次 ${activeRagasBatch.id} · ${activeRagasBatch.status}${
+                        activeRagasBatch.externalJobId ? ` · job ${activeRagasBatch.externalJobId}` : ""
+                      }`
+                    : ragasReport
+                      ? ` 批次 ${ragasReport.batchId} · ${ragasReport.status} · ${ragasReport.algorithmVersion || "-"}`
+                      : " 暂无 RAGAS 批次（需 Run 开启 ragasEnabled，且 app.eval.ragas.enabled=true）"}
+                  {!activeRagasBatch && (() => {
+                    const hint = formatRagasCostHint(latestRagasBatch);
+                    return hint ? ` · ${hint}` : "";
+                  })()}
+                </p>
+              </div>
+              {activeRagasBatch ? (
+                <div className="rounded-md border border-violet-200 bg-violet-50/60 px-3 py-2 text-sm text-violet-900">
+                  {(() => {
+                    const total = activeRagasBatch.progressTotal ?? activeRagasBatch.sampleCount ?? 0;
+                    const skipped = activeRagasBatch.progressSkipped ?? 0;
+                    const evaluable =
+                      activeRagasBatch.progressEvaluable ??
+                      (total > 0 ? Math.max(0, total - skipped) : 0);
+                    const workTotal = activeRagasBatch.progressWorkTotal ?? 0;
+                    const workCompleted = workTotal > 0
+                      ? Math.min(workTotal, activeRagasBatch.progressWorkCompleted ?? 0)
+                      : (activeRagasBatch.progressWorkCompleted ?? 0);
+                    const useWork = workTotal > 0;
+                    const pct = useWork
+                      ? Math.min(100, Math.round((workCompleted * 100) / workTotal))
+                      : 0;
+                    const waiting = !useWork;
+                    const costHint = formatRagasCostHint(activeRagasBatch);
+                    return (
+                      <>
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="font-medium">评分进行中...</span>
+                          <span className="shrink-0 tabular-nums text-xs text-violet-700/80">
+                            {useWork
+                              ? `评分项 ${workCompleted} / ${workTotal}`
+                              : "等待外部服务…"}
+                          </span>
+                        </div>
+                        <div
+                          className={
+                            waiting
+                              ? "mt-2 h-1.5 overflow-hidden rounded-full bg-violet-100 animate-pulse"
+                              : "mt-2 h-1.5 overflow-hidden rounded-full bg-violet-100"
+                          }
+                        >
+                          <div
+                            className="h-full rounded-full bg-violet-500 transition-all duration-500"
+                            style={{ width: `${waiting ? 0 : pct}%` }}
+                          />
+                        </div>
+                        <div className="mt-1.5 flex items-center justify-between gap-3">
+                          <p className="min-w-0 text-xs text-violet-700/80">
+                            送评 {total} · 可评 {evaluable} · 跳过 {skipped}
+                            {activeRagasBatch.progressFailed
+                              ? ` · 失败 ${activeRagasBatch.progressFailed}`
+                              : ""}
+                            {costHint ? ` · ${costHint}` : ""}
+                          </p>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 shrink-0 rounded-md px-2 text-xs font-normal text-violet-800/60 hover:bg-rose-50 hover:text-rose-700"
+                            disabled={ragasCancelling}
+                            onClick={handleCancelRagas}
+                          >
+                            {ragasCancelling ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <Ban className="h-3 w-3" />
+                            )}
+                            {ragasCancelling ? "取消中" : "取消评分"}
+                          </Button>
+                        </div>
+                      </>
+                    );
+                  })()}
+                </div>
+              ) : null}
+              {failedRagasBatch ? (
+                <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
+                  <div className="font-medium">
+                    {(failedRagasBatch.errorMessage || "").includes("用户取消")
+                      ? "RAGAS 评分已取消"
+                      : isRagasServiceInterrupted(failedRagasBatch.errorMessage)
+                        ? "RAGAS 评分服务运行中中断"
+                        : "RAGAS 评分失败"}
+                  </div>
+                  <p className="mt-1 text-xs text-rose-700/90">
+                    {failedRagasBatch.errorMessage || "未知错误"}
+                    。修复服务后可再次点击「RAGAS 评分」。
+                  </p>
+                </div>
+              ) : null}
+              <div className="overflow-hidden rounded-md border border-slate-200">
+                <Table className="w-full table-fixed">
+                  <TableHeader>
+                    <TableRow className="hover:bg-transparent">
+                      <TableHead className="text-center">指标</TableHead>
+                      <TableHead className="text-center">数值</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {RAGAS_METRIC_ROWS.map((row) => {
+                      const metric = (ragasReport?.metrics || []).find((m) => m.name === row.key);
+                      const value = metric?.overall;
+                      return (
+                        <TableRow key={row.key}>
+                          <TableCell className="text-center text-sm">{row.label}</TableCell>
+                          <TableCell className="text-center font-medium tabular-nums">
+                            {value == null ? "-" : formatScore(value, row.pct)}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+              {ragasReport?.status === "FAILED" && !failedRagasBatch ? (
+                <p className="text-sm text-rose-600">
+                  RAGAS 批次失败不影响自建指标
+                  {ragasReport.status ? `（status=${ragasReport.status}）` : ""}
+                </p>
+              ) : null}
+            </div>
             {(report.failures || []).length > 0 ? (
               <div className="space-y-3 border-t border-slate-100 pt-4">
                 <h3 className="text-base font-semibold text-slate-900">
@@ -571,14 +939,14 @@ export function EvalRunDetailPage() {
           <CardHeader>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div className="space-y-1.5">
-                <CardTitle>确定性指标</CardTitle>
+                <CardTitle>自建指标</CardTitle>
                 <CardDescription>
-                  录制已结束，尚未生成评分批次。重新评分不重跑 Chat，只写入新的 score_batch。
+                  录制已结束，尚未生成评分批次。
                 </CardDescription>
               </div>
               <Button variant="outline" size="sm" className="shrink-0" onClick={handleRescore}>
                 <Calculator className="mr-1 h-4 w-4" />
-                重新评分
+                自建指标评分
               </Button>
             </div>
           </CardHeader>
@@ -687,6 +1055,87 @@ export function EvalRunDetailPage() {
           下一页
         </Button>
       </div>
+
+      <Dialog open={ragasDialogOpen} onOpenChange={(open) => !ragasSubmitting && setRagasDialogOpen(open)}>
+        <DialogContent className="sm:max-w-[440px]">
+          <DialogHeader>
+            <DialogTitle>RAGAS 评分</DialogTitle>
+            <DialogDescription>
+              选择 Judge 语言模型与嵌入模型。调用将产生 LLM / Embedding 费用，样本越多成本越高。
+            </DialogDescription>
+          </DialogHeader>
+          {ragasModelsLoading ? (
+            <div className="flex items-center gap-2 py-6 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              加载模型列表…
+            </div>
+          ) : (
+            <div className="space-y-4 py-1">
+              <div className="space-y-2">
+                <Label>语言模型</Label>
+                <Select value={selectedChatModelId} onValueChange={setSelectedChatModelId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="选择语言模型" />
+                  </SelectTrigger>
+                  <SelectContent position="item-aligned">
+                    {chatModels.map((m) => (
+                      <SelectItem key={m.id} value={m.id}>
+                        {modelOptionLabel(m)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>嵌入模型</Label>
+                <Select value={selectedEmbeddingModelId} onValueChange={setSelectedEmbeddingModelId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="选择嵌入模型" />
+                  </SelectTrigger>
+                  <SelectContent position="item-aligned">
+                    {embeddingModels.map((m) => (
+                      <SelectItem key={m.id} value={m.id}>
+                        {modelOptionLabel(m)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <p className="text-xs text-amber-700/90">
+                提示：将按所选模型对应的 Java provider endpoint / API Key 调用评分服务（chat 与 embedding
+                可走不同网关）。
+              </p>
+            </div>
+          )}
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setRagasDialogOpen(false)}
+              disabled={ragasSubmitting}
+            >
+              取消
+            </Button>
+            <Button
+              onClick={handleRagasRescore}
+              disabled={
+                ragasSubmitting ||
+                ragasModelsLoading ||
+                !selectedChatModelId ||
+                !selectedEmbeddingModelId
+              }
+            >
+              {ragasSubmitting ? (
+                <>
+                  <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                  提交中…
+                </>
+              ) : (
+                "开始评分"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

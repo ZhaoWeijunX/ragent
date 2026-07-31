@@ -1,7 +1,7 @@
 # 阶段 4 退出报告
 
 - 日期：2026-07-30
-- 范围：M2-B 确定性指标 + 报告/导出 + MVP 闭环
+- 范围：M2-B 自建指标 + 报告/导出 + MVP 闭环
 - 约束：未改 Chat Pipeline / EvalController / MetaPayload / Trace 写路径；RAGAS 仍为后续阶段
 
 ## 退出条件对照
@@ -17,7 +17,7 @@
 | overall / intentL1/L2 / difficulty / SAMPLE | 通过 | `DIM_*` 写入 `t_eval_score` |
 | 报告 + 失败多标签 + Trace 链接 | 通过 | `GET .../metrics` + Run 详情页 |
 | JSON / JSONL / CSV 导出 | 通过 | `GET .../export` |
-| 录制结束后自动确定性评分 | 通过 | `EvalRunWorker#finalizeRun` |
+| 录制结束后自动自建评分 | 通过 | `EvalRunWorker#finalizeRun` |
 | 可重复重评分 | 通过 | `POST .../rescore` |
 | RAGAS 未部署时 MVP 可用 | 通过 | 不依赖 Python 评分服务 |
 | 单测覆盖核心口径 | 通过 | `DeterministicMetricsTest` |
@@ -28,7 +28,7 @@
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| POST | `/runs/{runId}/rescore` | 新建确定性评分批次 |
+| POST | `/runs/{runId}/rescore` | 新建自建评分批次 |
 | GET | `/runs/{runId}/score-batches` | 批次列表 |
 | GET | `/runs/{runId}/metrics` | 报告（overall + 切片 + 失败样本） |
 | GET | `/runs/{runId}/export` | `format=json\|jsonl\|csv` |
@@ -46,13 +46,13 @@
 | # | 要求 | 状态 |
 |---|------|------|
 | 1–6、9–10、12 | 评估集 / Run 录制 / Trace / 取消 / 权限 | 阶段 2–3 已满足 |
-| 7 | 确定性指标与离线口径一致 | 本阶段：Java 对齐 ragenteval 公式；单测覆盖主路径（未引入完整 `_scores.json` golden 夹具） |
+| 7 | 自建指标与离线口径一致 | 本阶段：Java 对齐 ragenteval 公式；单测覆盖主路径（未引入完整 `_scores.json` golden 夹具） |
 | 8 | Overall / Intent L2 / Per Sample | 本阶段：报告 VO + 详情页卡片/切片表；SAMPLE 行落库 |
 | 11 | 运行记录与指标可导出 | 本阶段：指标报告 JSON/JSONL/CSV；完整 Record 明细仍以样本列表 API 为主 |
 
 ## 前端
 
-- Run 详情：确定性指标卡片、全量指标表、Intent L2 切片、失败样本表、重新评分、导出 JSON/CSV。
+- Run 详情：自建指标卡片、全量指标表、Intent L2 切片、失败样本表、重新评分、导出 JSON/CSV。
 - 终态 Run 才展示重评/导出；录制中继续轮询。
 
 ## 已知缺口（不阻塞 MVP 发布，可后续补强）
@@ -64,7 +64,7 @@
 
 ## 冒烟建议
 
-1. 对已完成录制的 Run：详情应自动出现确定性指标；或点「重新评分」生成新批次。
+1. 对已完成录制的 Run：详情应自动出现自建指标；或点「重新评分」生成新批次。
 2. 核对 `intent_top1` / `hit@5` / `mrr@10` 与样本表意图、召回是否同向。
 3. 导出 JSON，确认含 metrics + failures；CSV 含 metric 行。
 4. 关闭 `workbench-enabled` 时评分 Bean 不注册、API 不可达。

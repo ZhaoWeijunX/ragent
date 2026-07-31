@@ -342,14 +342,73 @@ export interface EvalMetricReport {
   failures: EvalSampleFailure[];
 }
 
-export async function getRunMetrics(runId: string, batchId?: string) {
+export async function getRunMetrics(runId: string, batchId?: string, scoreType?: string) {
   return api.get<EvalMetricReport, EvalMetricReport>(`${BASE}/runs/${runId}/metrics`, {
-    params: { batchId: batchId || undefined }
+    params: { batchId: batchId || undefined, scoreType: scoreType || undefined }
   });
 }
 
 export async function rescoreRun(runId: string) {
   return api.post<string, string>(`${BASE}/runs/${runId}/rescore`);
+}
+
+export async function ragasRescoreRun(
+  runId: string,
+  body?: { chatModelId?: string; embeddingModelId?: string }
+) {
+  return api.post<string, string>(`${BASE}/runs/${runId}/ragas-rescore`, body ?? {});
+}
+
+export async function cancelRagasBatch(runId: string, batchId: string) {
+  return api.post<void, void>(`${BASE}/runs/${runId}/ragas-batches/${batchId}/cancel`);
+}
+
+export interface EvalRagasJudgeModelCandidate {
+  id: string;
+  provider?: string | null;
+  model?: string | null;
+  enabled?: boolean | null;
+}
+
+export interface EvalRagasJudgeModels {
+  chat: {
+    defaultModel?: string | null;
+    candidates: EvalRagasJudgeModelCandidate[];
+  };
+  embedding: {
+    defaultModel?: string | null;
+    candidates: EvalRagasJudgeModelCandidate[];
+  };
+}
+
+export async function listRagasJudgeModels() {
+  return api.get<EvalRagasJudgeModels, EvalRagasJudgeModels>(`${BASE}/ragas-judge-models`);
+}
+
+export interface EvalScoreBatch {
+  id: string;
+  runId: string;
+  scoreType?: string | null;
+  status?: string | null;
+  algorithmVersion?: string | null;
+  sampleCount?: number | null;
+  externalJobId?: string | null;
+  progressTotal?: number | null;
+  progressCompleted?: number | null;
+  progressFailed?: number | null;
+  progressSkipped?: number | null;
+  progressEvaluable?: number | null;
+  progressWorkTotal?: number | null;
+  progressWorkCompleted?: number | null;
+  tokenUsage?: Record<string, unknown> | null;
+  estimatedCost?: number | string | null;
+  errorMessage?: string | null;
+  startedAt?: string | null;
+  finishedAt?: string | null;
+}
+
+export async function listScoreBatches(runId: string) {
+  return api.get<EvalScoreBatch[], EvalScoreBatch[]>(`${BASE}/runs/${runId}/score-batches`);
 }
 
 export async function exportRunReport(runId: string, format: "json" | "jsonl" | "csv" = "json", batchId?: string) {

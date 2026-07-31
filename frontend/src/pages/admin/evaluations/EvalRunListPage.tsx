@@ -38,7 +38,8 @@ export function EvalRunListPage() {
     name: "",
     datasetId: "",
     datasetVersionId: presetVersionId,
-    environment: "eval-local"
+    environment: "eval-local",
+    ragasEnabled: false
   });
 
   const load = async (current = pageNo, kw = keyword, status = statusFilter) => {
@@ -117,6 +118,7 @@ export function EvalRunListPage() {
       const id = await createRun({
         name: form.name.trim(),
         datasetVersionId: form.datasetVersionId,
+        ragasEnabled: form.ragasEnabled,
         tags: { environment: form.environment || "unknown" }
       });
       toast.success("Run 已创建并开始录制");
@@ -327,6 +329,14 @@ export function EvalRunListPage() {
                 onChange={(e) => setForm((p) => ({ ...p, environment: e.target.value }))}
               />
             </div>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={form.ragasEnabled}
+                onChange={(e) => setForm((p) => ({ ...p, ragasEnabled: e.target.checked }))}
+              />
+              启用 RAGAS（需 app.eval.ragas.enabled 与评分服务可用；失败不影响自建指标）
+            </label>
             <p className="text-xs text-amber-800">{DUAL_PATH_HINT}</p>
           </div>
           <DialogFooter>

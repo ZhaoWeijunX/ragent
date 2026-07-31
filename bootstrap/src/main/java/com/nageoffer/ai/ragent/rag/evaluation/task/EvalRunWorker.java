@@ -229,10 +229,24 @@ public class EvalRunWorker {
         try {
             evalScoreService.scoreDeterministic(runId);
         } catch (Exception ex) {
-            log.error("确定性评分失败，仍按录制结果结算终态 runId={}", runId, ex);
+            log.error("自建指标评分失败，仍按录制结果结算终态 runId={}", runId, ex);
             runMapper.update(null, Wrappers.lambdaUpdate(EvalRunDO.class)
                     .eq(EvalRunDO::getId, runId)
                     .set(EvalRunDO::getErrorMessage, "deterministic scoring failed: " + ex.getMessage()));
+        }
+
+        // 阶段 5：可选 RAGAS；失败不回滚 Record / 自建分数
+        EvalRunDO afterDet = runMapper.selectById(runId);
+        if (afterDet != null && Boolean.TRUE.equals(afterDet.getRagasEnabled())) {
+            runMapper.update(null, Wrappers.lambdaUpdate(EvalRunDO.class)
+                    .eq(EvalRunDO::getId, runId)
+                    .set(EvalRunDO::getStatus, EvalWorkbenchConstants.RUN_RAGAS_SCORING)
+                    .set(EvalRunDO::getCurrentPhase, EvalWorkbenchConstants.RUN_RAGAS_SCORING));
+            try {
+                evalScoreService.scoreRagas(runId);
+            } catch (Exception ex) {
+                log.error("RAGAS 评分失败（不影响自建指标报告） runId={}", runId, ex);
+            }
         }
 
         runMapper.update(null, Wrappers.lambdaUpdate(EvalRunDO.class)

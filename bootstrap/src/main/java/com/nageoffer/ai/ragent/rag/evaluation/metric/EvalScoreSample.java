@@ -44,6 +44,9 @@ public class EvalScoreSample {
     private String groundTruth;
     private String intentPred;
     private List<String> retrievedDocIds;
+    private List<String> retrievedChunkIds;
+    private List<String> retrievedContexts;
+    private List<String> retrievedContextDocIds;
     private Boolean hasKb;
     private Boolean retrievalSkipped;
     private Long ttftMs;
@@ -64,5 +67,17 @@ public class EvalScoreSample {
 
     public List<String> safeNice() {
         return referenceDocIdsNice == null ? Collections.emptyList() : referenceDocIdsNice;
+    }
+
+    public List<String> safeContexts() {
+        return retrievedContexts == null ? Collections.emptyList() : retrievedContexts;
+    }
+
+    public List<String> safeChunkIds() {
+        return retrievedChunkIds == null ? Collections.emptyList() : retrievedChunkIds;
+    }
+
+    public List<String> safeContextDocIds() {
+        return retrievedContextDocIds == null ? Collections.emptyList() : retrievedContextDocIds;
     }
 }

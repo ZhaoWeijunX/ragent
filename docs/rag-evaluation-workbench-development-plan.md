@@ -2,20 +2,21 @@
 
 > 对应需求：[rag-evaluation-workbench-requirements.md](./rag-evaluation-workbench-requirements.md)  
 > 参考资料：`resources/docs/ragent-test/RAG 评测——从指标到实践/`、外部项目 `D:\code\ragenteval`  
-> 状态：Draft · 2026-07-30（阶段 0–4 已落地）  
+> 状态：Draft · 2026-07-31（阶段 0–5 已落地）  
 > 决策摘要：MVP 沿用 `/rag/v3/chat` + `/rag/eval` 双路径采集并显式披露漂移风险；RAGAS 将 `ragenteval` 改造成独立 HTTP 评分服务。  
 > 阶段 0 产物：[docs/evaluation/](./evaluation/README.md) · [退出报告](./evaluation/phase-0-exit-report.md)  
 > 阶段 1 建表：[resources/database/evaluation/](../resources/database/evaluation/README.md)  
 > 阶段 2 评估集：[phase-2-exit-report.md](./evaluation/phase-2-exit-report.md)  
 > 阶段 3 Run 录制：[phase-3-exit-report.md](./evaluation/phase-3-exit-report.md)  
-> 阶段 4 确定性评分：[phase-4-exit-report.md](./evaluation/phase-4-exit-report.md)
+> 阶段 4 自建评分：[phase-4-exit-report.md](./evaluation/phase-4-exit-report.md)  
+> 阶段 5 RAGAS：[phase-5-exit-report.md](./evaluation/phase-5-exit-report.md)
 
 ## 目标架构与边界
 
-- Java 主应用负责评估集、版本、Run 状态机、双路径录制、确定性指标、报告聚合、权限和持久化；主入口放在 `bootstrap/.../rag/evaluation/`，与现有旁路包 `rag/eval` 分离。
+- Java 主应用负责评估集、版本、Run 状态机、双路径录制、自建指标、报告聚合、权限和持久化；主入口放在 `bootstrap/.../rag/evaluation/`，与现有旁路包 `rag/eval` 分离。
 - Python 侧复用 `ragenteval` 的 `EvalRecord`、RAGAS 和容错逻辑，改造成独立 HTTP 服务；Java 不嵌入 Python，也不通过同步子进程执行分钟级任务。
 - MVP 暂时通过 `/rag/v3/chat` 录制真实回答，通过 `/rag/eval` 获取旁路证据；Record、评分批次和报告解耦，满足「录制一次，评分 N 次，报告 M 次」。
-- 首期仅开放 ADMIN；RAGAS 失败不得回滚录制或确定性评分；严格 A/B 结论只允许相同数据集版本。
+- 首期仅开放 ADMIN；RAGAS 失败不得回滚录制或自建评分；严格 A/B 结论只允许相同数据集版本。
 
 ```mermaid
 flowchart LR
@@ -26,7 +27,7 @@ flowchart LR
   RunTask --> EvalBypass[Eval旁路]
   RunTask --> TraceAPI[Trace查询]
   RunTask --> RecordStore[不可变Record]
-  RecordStore --> Deterministic[Java确定性指标]
+  RecordStore --> Deterministic[Java自建指标]
   RecordStore --> RagasService[Python_RAGAS服务]
   Deterministic --> ScoreBatch[评分批次]
   RagasService --> ScoreBatch
@@ -41,7 +42,7 @@ flowchart LR
 | 1 | 骨架 | 1 周 | 8 张表、模块骨架、配置开关、权限审计 |
 | 2 | M1 | 1.5–2 周 | 评估集 CRUD、导入校验、版本发布、前端数据集页 |
 | 3 | M2-A | 2–3 周 | Run 状态机、双路径录制、Trace、取消/恢复 |
-| 4 | M2-B / MVP | 1.5–2 周 | 确定性指标、报告、导出、MVP 验收 |
+| 4 | M2-B / MVP | 1.5–2 周 | 自建指标、报告、导出、MVP 验收 |
 | 5 | M3 | 2–3 周 | ragenteval 服务化、RAGAS、容错与成本 |
 | 6 | M4 / V1 | 1.5–2 周 | 人工复核、A/B、阈值门禁 |
 | 7 | V2 | 按价值拆分 | CI/Webhook、趋势、Trace 单轨、数据治理 |
@@ -107,18 +108,18 @@ MVP 累计约 **6–8** 个日历周；V1 累计约 **10–13** 个日历周（�
   - API：`/admin/evaluations/runs*`、`/records*`（workbench-enabled + admin）
   - Runner：真实 Chat 管线 + 旁路证据同口径采集 + `taskId→traceId`；写入不可变 `t_eval_record`
   - 租约：`lease_owner` / `lease_expire_at` 心跳与 `EvalRunLeaseReclaimer` 恢复
-  - 终态：`COMPLETED` / `PARTIAL_SUCCESS` / `FAILED` / `CANCELLED`；录制后进入确定性评分（阶段 4）
+  - 终态：`COMPLETED` / `PARTIAL_SUCCESS` / `FAILED` / `CANCELLED`；录制后进入自建评分（阶段 4）
   - 前端：Run 列表 / 详情进度轮询 / 取消与失败重试 / 双路径漂移披露 / Trace 跳转
   - 退出报告：[phase-3-exit-report.md](./evaluation/phase-3-exit-report.md)
 
-## 阶段 4：确定性评分、报告与 MVP 验收 M2-B（1.5–2 周）
+## 阶段 4：自建评分、报告与 MVP 验收 M2-B（1.5–2 周）
 
 - 定义 `Metric` SPI 和统一 `MetricResult`，将 `ragenteval/eval/rag/metrics/` 作为黄金参考，在 Java 实现并单测：Intent Top-1；Hit/Recall@1/3/5/10；MRR@10；误拒/过召回；TTFT P50/均值与总耗时均值。
 - 明确过滤口径：检索指标只统计 `requiresRag=true` 且 gold 非空样本；文档级 ID 指标与 chunk/context 级语义指标分开；兜底/拒答优先读取结构化字段，避免绑定某句中文文案。
 - 每次评分生成新的 `t_eval_score_batch`，保存算法与阈值快照，不覆盖旧分数；保存 overall、intentL1/L2、difficulty 和 per-sample 结果。
 - 实现报告总览、切片、指标分子/分母、样本详情、失败原因多标签、Trace 链接和 JSONL/JSON/CSV 导出；低样本量性能报告只展示 P50/均值，不声称 P95/P99。
-- 以 Python 现有 score/report 结果建立 golden fixtures，要求 Java 在确定性指标上逐项一致；覆盖空 gold、重复召回、多个 gold、SYSTEM_ONLY、部分失败和零分母。
-- **退出条件**：完成需求文档全部 MVP 验收项；确定性指标可重复、可重评分；RAGAS 未部署时 MVP 仍完整可用。此节点作为首个可发布版本。
+- 以 Python 现有 score/report 结果建立 golden fixtures，要求 Java 在自建指标上逐项一致；覆盖空 gold、重复召回、多个 gold、SYSTEM_ONLY、部分失败和零分母。
+- **退出条件**：完成需求文档全部 MVP 验收项；自建指标可重复、可重评分；RAGAS 未部署时 MVP 仍完整可用。此节点作为首个可发布版本。
 - **阶段 4 落地**：
   - Metric SPI：`bootstrap/.../rag/evaluation/metric/`（Intent / Retrieval / Behavior / Latency）
   - 评分服务：`EvalScoreService` 写入 `t_eval_score_batch` / `t_eval_score`；Worker 录制后自动评分
@@ -131,24 +132,32 @@ MVP 累计约 **6–8** 个日历周；V1 累计约 **10–13** 个日历周（�
 
 - 在 `D:\code\ragenteval` 补齐 `pyproject.toml`/锁文件、明确许可证/代码权属、配置分层、结构化日志、健康检查和自动化测试；从 `score.py` 与 `ragas_judge.py` 抽出纯服务层，CLI 与 HTTP 共用实现。
 - HTTP 服务接收版本化 `EvalRecord[]` 或对象存储引用，返回 per-sample 与聚合 `MetricResult`；支持 faithfulness、answer relevancy/correctness、context precision/recall、1–3 次采样、限并发、超时、幂等、逐条重试和取消。
-- Java `SemanticEvaluationProvider` 异步提交任务、轮询/回调结果并写独立 RAGAS score batch；服务不可用、NaN 或部分失败时标记指标失败并保留确定性结果。
+- Java `SemanticEvaluationProvider` 异步提交任务、轮询/回调结果并写独立 RAGAS score batch；服务不可用、NaN 或部分失败时标记指标失败并保留自建结果。
 - 保存 Judge 模型/Embedding、参数、采样次数、prompt/算法版本、token、费用估算和失败原因；密钥不入 DB，发送外部 Judge 前执行字段白名单与必要脱敏。
 - 前端展示 RAGAS 独立进度、有效样本数、NaN/失败数、成本和不确定性提示；明确 ID Recall@K 与 RAGAS Context Recall 不可直接替换。
 - 测试包括跨语言契约、固定样例、服务超时/429/5xx、NaN、部分返回、重复回调、取消和 Judge 未配置降级。
-- **退出条件**：RAGAS 失败不影响 Run 录制和确定性报告；同一 Record 可创建多个 RAGAS 批次；采样三次时保留每轮结果与聚合值。
+- **退出条件**：RAGAS 失败不影响 Run 录制和自建报告；同一 Record 可创建多个 RAGAS 批次；采样三次时保留每轮结果与聚合值。
+- **阶段 5 落地**：
+  - 外部仓库分支：`D:\code\ragenteval` → `feat/ragas-http-service`（FastAPI + skip_ragas 契约测）
+  - Java：`SemanticEvaluationProvider` / `RagasHttpSemanticEvaluationProvider`；`scoreRagas`；Worker 可选 `RAGAS_SCORING`
+  - API：`POST .../ragas-rescore`、`GET .../metrics?scoreType=RAGAS`
+  - 前端：创建 Run 勾选 RAGAS、详情 RAGAS 表与口径提示
+  - 退出报告：[phase-5-exit-report.md](./evaluation/phase-5-exit-report.md)
+  - 已知薄项：`records_uri`/`callback_url`（延期，非 MVP）、每轮采样原始分落库、真实 Judge E2E CI；token/cost 已透传到管理台（数值依赖 Judge 侧是否回传）
+  - 管理台可取消进行中 RAGAS：`POST .../ragas-batches/{batchId}/cancel`
 
 ## 阶段 6：人工复核、A/B 与质量门禁 M4（1.5–2 周）
 
 - 实现 manual override 的新增、修改、撤销、操作者、理由与审计；报告按「原始分 + 当前人工分 + 生效分」展示，重聚合不覆盖 Judge 原始结果。
 - 实现同版本 Run A/B：配置快照差异、指标 delta、intent/difficulty 切片、新增失败/修复/持续失败、TTFT 差异；不同版本仅允许探索性展示并给出不可作严格回归结论的警告。
 - 定义阈值策略版本与快照：overall、切片、关键样本、最大退化值；Run 增加独立 quality verdict（PASS/FAIL/WARN/NOT_EVALUATED），不要与执行状态混为一列。
-- 首次阈值由 20 条冒烟集跑通后，以 150 条 baseline 校准；确定性指标可用于日常门禁，RAGAS 默认只用于改版/发布深评，差异小于约 3% 时提示可能处于 Judge 方差范围。
+- 首次阈值由 20 条冒烟集跑通后，以 150 条 baseline 校准；自建指标可用于日常门禁，RAGAS 默认只用于改版/发布深评，差异小于约 3% 时提示可能处于 Judge 方差范围。
 - 提供只读 CI 查询接口和稳定机器可读结果，但自动阻断合入可作为下一阶段开启。
 - **退出条件**：满足需求 V1 验收；任意同版本两次 Run 可比较；人工覆盖可追溯；门禁结论可由快照完整复算。
 
 ## 阶段 7：持续评测与采集链路演进（V2，按价值拆分）
 
-- CI/Webhook：提交或部署后触发确定性 Run，异步返回 verdict；增加配额、幂等、回调签名和失败通知。
+- CI/Webhook：提交或部署后触发自建指标 Run，异步返回 verdict；增加配额、幂等、回调签名和失败通知。
 - 定时计划与趋势：按数据集版本、应用版本和环境展示趋势；禁止把不同数据集版本直接连成质量趋势。
 - 双路径改进：优先在真实 Chat Trace 中持久化实际 intent、chunk/context 与检索分支，或让 SSE meta 返回可关联 traceId；经兼容期后 Runner 以单次真实请求证据为主，`/rag/eval` 仅作诊断旁路。迁移前后用同一评估集比较证据一致率。
 - 数据治理：从脱敏 Trace 提议候选 bad case，经人工确认后进入新草稿版本；补充 must/nice 标注、自然语言 ground truth、隐藏回归集和关键风险样本。
@@ -178,7 +187,7 @@ MVP 累计约 **6–8** 个日历周；V1 累计约 **10–13** 个日历周（�
 - [x] 阶段 1：8 张表与模块骨架就绪，feature flag 可控（`workbench-enabled=false` 无工作台任务 Bean）
 - [x] 阶段 2：评估集可导入、发布、导出（M1）
 - [x] 阶段 3：双路径录制与 Run 状态机可用（M2-A）
-- [x] 阶段 4：确定性指标与报告通过 MVP 验收（M2-B）
-- [ ] 阶段 5：RAGAS 服务化接入且失败可降级（M3）
+- [x] 阶段 4：自建指标与报告通过 MVP 验收（M2-B）
+- [x] 阶段 5：RAGAS 服务化接入且失败可降级（M3）
 - [ ] 阶段 6：人工复核、A/B、门禁通过 V1 验收（M4）
 - [ ] 阶段 7：CI/趋势/单轨采集按价值推进（V2）

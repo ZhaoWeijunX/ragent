@@ -32,7 +32,22 @@ public class EvalScoreBatchVO {
     private String status;
     private String algorithmVersion;
     private Integer sampleCount;
+    private String externalJobId;
     private Map<String, Object> thresholdSnapshot;
+    private Map<String, Object> judgeConfigSnapshot;
+    /** 外部 job 进度（来自 judge_config_snapshot.progress） */
+    private Integer progressTotal;
+    private Integer progressCompleted;
+    private Integer progressFailed;
+    private Integer progressSkipped;
+    private Integer progressEvaluable;
+    /** RAGAS Executor 工作单元进度（≈ evaluable × metrics × ragas_n） */
+    private Integer progressWorkTotal;
+    private Integer progressWorkCompleted;
+    /** 外部服务回传 token 用量（可为空占位） */
+    private Map<String, Object> tokenUsage;
+    /** 估算费用（USD），可空 */
+    private java.math.BigDecimal estimatedCost;
     private Date startedAt;
     private Date finishedAt;
     private String errorMessage;

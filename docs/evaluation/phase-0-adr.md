@@ -20,7 +20,7 @@
 |------|----------|
 | 数据集 vs 版本状态 | 版本持有 `DRAFT/PUBLISHED/ARCHIVED`；数据集 `status` 仅作展示汇总，不参与 Run 引用校验 |
 | Run 终态 | `COMPLETED` / `PARTIAL_SUCCESS` / `FAILED` / `CANCELLED` 互斥终态 |
-| `PARTIAL_SUCCESS` | 至少 1 条样本录制成功且已产出可用确定性报告，同时存在样本失败 |
+| `PARTIAL_SUCCESS` | 至少 1 条样本录制成功且已产出可用自建报告，同时存在样本失败 |
 | Thinking | MVP **默认不落库**（Record.thinking 持久化为 null）；内存可暂存用于调试开关 |
 | 文档业务码 | MVP 沿用 `doc_name` 去文件后缀；不新增知识库字段 |
 | 重试 / 取消 / 恢复 | 协作式取消 + 租约恢复 + 失败样本幂等重跑 |
@@ -71,20 +71,20 @@ status=PENDING, phase=PENDING
 
 | status | 条件 |
 |--------|------|
-| `COMPLETED` | 全部应执行样本录制成功，且确定性报告完成；若开启 RAGAS 则 RAGAS 批次成功或显式跳过 |
-| `PARTIAL_SUCCESS` | 存在样本录制/评分失败，但 `success_count >= 1` 且确定性报告已生成 |
+| `COMPLETED` | 全部应执行样本录制成功，且自建报告完成；若开启 RAGAS 则 RAGAS 批次成功或显式跳过 |
+| `PARTIAL_SUCCESS` | 存在样本录制/评分失败，但 `success_count >= 1` 且自建报告已生成 |
 | `FAILED` | 任务级不可恢复错误，或 `success_count == 0` 且无法生成可用报告 |
 | `CANCELLED` | 用户取消后不再调度新样本；已录制 Record **保留** |
 
 说明：
 
 - `COMPLETED` 与 `PARTIAL_SUCCESS` **互斥**，不是父子关系。
-- RAGAS 失败 **不得**单独把已成功的确定性结果打成 `FAILED`；若录制与确定性均成功仅 RAGAS 失败 → `PARTIAL_SUCCESS`（或 `COMPLETED` + RAGAS batch 自身 FAILED，见下节）。
+- RAGAS 失败 **不得**单独把已成功的自建结果打成 `FAILED`；若录制与自建均成功仅 RAGAS 失败 → `PARTIAL_SUCCESS`（或 `COMPLETED` + RAGAS batch 自身 FAILED，见下节）。
 
 ### 4.3 RAGAS 与 Run 状态（V1）
 
 - MVP（阶段 4）可不进入 `RAGAS_SCORING`。
-- V1：RAGAS 写独立 `t_eval_score_batch`；batch.status 可为 `FAILED`，Run 仍可为 `COMPLETED`（确定性完整）或 `PARTIAL_SUCCESS`（样本有失败）。
+- V1：RAGAS 写独立 `t_eval_score_batch`；batch.status 可为 `FAILED`，Run 仍可为 `COMPLETED`（自建完整）或 `PARTIAL_SUCCESS`（样本有失败）。
 - UI 需同时展示 Run.status 与最新 RAGAS batch.status。
 
 ## 5. 取消、重试、重启恢复

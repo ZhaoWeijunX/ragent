@@ -315,7 +315,7 @@ public class EvalDatasetServiceImpl implements EvalDatasetService {
     public EvalImportResultVO importCases(String versionId, MultipartFile file) {
         EvalDatasetVersionDO version = requireDraftVersion(versionId);
         Assert.notNull(file, () -> new ClientException("导入文件不能为空"));
-        Assert.isFalse(file.isEmpty(), () -> new ClientException("导入文件不能为空"));
+        Assert.isFalse(file.isEmpty(), () -> new ClientException("导入文件不能a为空"));
 
         String content;
         try {

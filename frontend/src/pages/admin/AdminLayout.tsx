@@ -139,11 +139,6 @@ const menuGroups: MenuGroup[] = [
         icon: KeyRound
       },
       {
-        path: "/admin/traces",
-        label: "链路追踪",
-        icon: Workflow
-      },
-      {
         id: "evaluations",
         path: "/admin/evaluations/datasets",
         label: "RAG 评测",
@@ -166,6 +161,11 @@ const menuGroups: MenuGroup[] = [
         path: "/admin/change-logs",
         label: "审计日志",
         icon: ShieldCheck
+      },
+      {
+        path: "/admin/traces",
+        label: "链路追踪",
+        icon: Workflow
       },
     ]
   },
