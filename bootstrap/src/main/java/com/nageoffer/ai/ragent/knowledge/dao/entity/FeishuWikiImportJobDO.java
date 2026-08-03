@@ -64,10 +64,8 @@ public class FeishuWikiImportJobDO {
 
     private String processMode;
 
-    private String chunkStrategy;
-
     @TableField(typeHandler = com.nageoffer.ai.ragent.knowledge.dao.handler.JsonbTypeHandler.class)
-    private String chunkConfig;
+    private String ingestionSpec;
 
     private String pipelineId;
 

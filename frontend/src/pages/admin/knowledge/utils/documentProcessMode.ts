@@ -1,4 +1,4 @@
-import type { ChunkStrategyOption } from "@/services/knowledgeService";
+import type { BudgetFieldSchema, IngestionSpecSchema } from "@/services/knowledgeService";
 
 export type ProcessMode = "chunk" | "pipeline";
 
@@ -10,115 +10,85 @@ export const PROCESS_MODE_OPTIONS: { value: ProcessMode; label: string }[] = [
 export const NO_CHUNK_VALUE = -1;
 
 export const DEFAULT_CONFIG_VALUES: Record<string, string> = {
-  chunkSize: "512",
-  overlapSize: "128",
-  targetChars: "1400",
-  maxChars: "1800",
-  minChars: "600",
-  overlapChars: "0",
+  maxChars: "1024",
+  overlapChars: "128",
   rowsPerChunk: "50",
-  excelParser: "poi"
+  toleranceFactor: "3"
 };
 
 export interface ProcessModeInput {
   processMode: ProcessMode;
-  chunkStrategy: string;
+  parseProfile: string;
   configValues: Record<string, string>;
   pipelineId: string;
+  noChunk?: boolean;
 }
 
-export function parseNumber(value?: string): number | null {
-  if (!value || !value.trim()) return null;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
+export function noChunkValueOf(schema: IngestionSpecSchema | null): number {
+  return schema?.wholeDocumentSentinel ?? NO_CHUNK_VALUE;
 }
 
-export function applyStrategyDefaults(
-  strategy: ChunkStrategyOption,
-  current: Record<string, string>
-): Record<string, string> {
-  const next = { ...current };
-  for (const key of Object.keys(strategy.defaultConfig)) {
-    if (strategy.defaultConfig[key] !== undefined) {
-      next[key] = String(strategy.defaultConfig[key]);
-    }
+export function budgetHintOf(field: BudgetFieldSchema): string {
+  return `${field.hint ?? ""}（${field.min} ~ ${field.max}）`;
+}
+
+export function budgetDefaultsOf(schema: IngestionSpecSchema | null): Record<string, string> {
+  const defaults = { ...DEFAULT_CONFIG_VALUES };
+  for (const field of schema?.budgetFields ?? []) {
+    defaults[field.key] = String(field.defaultValue);
   }
-  return next;
+  return defaults;
 }
 
-export function buildChunkConfig(
+export function buildIngestionSpec(
+  parseProfile: string,
+  values: Record<string, string>,
+  schema: IngestionSpecSchema | null,
+  wholeDocument = false
+): string {
+  const spec: Record<string, number | string> = { parseProfile };
+  for (const field of schema?.budgetFields ?? []) {
+    const raw = values[field.key];
+    const parsed = raw === undefined || raw.trim() === "" ? NaN : Number(raw);
+    spec[field.key] = Number.isFinite(parsed) ? parsed : field.defaultValue;
+  }
+  if (wholeDocument) {
+    spec.maxChars = noChunkValueOf(schema);
+  }
+  return JSON.stringify(spec);
+}
+
+export function validateProcessModeValues(
   input: ProcessModeInput,
-  chunkStrategies: ChunkStrategyOption[],
-  options?: { isTableType?: boolean; isCsv?: boolean }
-): string | undefined {
-  if (input.processMode !== "chunk") {
-    return undefined;
-  }
-
-  if (options?.isTableType) {
-    const config: Record<string, number | string> = {
-      chunkSize: parseNumber(input.configValues.chunkSize) ?? 512,
-      overlapSize: 0,
-      rowsPerChunk: parseNumber(input.configValues.rowsPerChunk) ?? 50
-    };
-    if (!options.isCsv) {
-      config.excelParser = input.configValues.excelParser || "poi";
-    }
-    return JSON.stringify(config);
-  }
-
-  const strategy = chunkStrategies.find((s) => s.value === input.chunkStrategy);
-  if (!strategy) {
-    return undefined;
-  }
-
-  const config: Record<string, number> = {};
-  for (const key of Object.keys(strategy.defaultConfig)) {
-    const val = parseNumber(input.configValues[key]);
-    if (val !== null) {
-      config[key] = val;
-    }
-  }
-  return JSON.stringify(config);
-}
-
-export function validateProcessModeValues(input: ProcessModeInput): string | null {
+  schema: IngestionSpecSchema | null
+): string | null {
   const isBlank = (value?: string) => !value || value.trim() === "";
-  const requireNumber = (value: string | undefined, label: string): string | null => {
-    if (isBlank(value)) {
-      return `请输入${label}`;
-    }
-    if (Number.isNaN(Number(value))) {
-      return `${label}必须是数字`;
-    }
-    return null;
-  };
 
   if (input.processMode === "chunk") {
-    if (!input.chunkStrategy) {
-      return "请选择分块策略";
+    if (!schema) {
+      return "摄取配置加载中，请稍后再试";
     }
-    if (input.chunkStrategy === "fixed_size") {
-      const chunkSizeError = requireNumber(input.configValues.chunkSize, "块大小");
-      if (chunkSizeError) {
-        return chunkSizeError;
+    for (const field of schema.budgetFields) {
+      if (input.noChunk && field.key === "maxChars") {
+        continue;
       }
-      const overlapError = requireNumber(input.configValues.overlapSize, "重叠大小");
-      if (overlapError) {
-        return overlapError;
+      const raw = input.configValues[field.key];
+      if (isBlank(raw)) {
+        return `请输入${field.label}`;
       }
-    } else {
-      for (const [key, label] of [
-        ["targetChars", "理想块大小"],
-        ["maxChars", "块上限"],
-        ["minChars", "块下限"],
-        ["overlapChars", "重叠大小"]
-      ] as const) {
-        const err = requireNumber(input.configValues[key], label);
-        if (err) {
-          return err;
-        }
+      const value = Number(raw);
+      if (!Number.isFinite(value)) {
+        return `${field.label}必须是数字`;
       }
+      if (value < field.min || value > field.max) {
+        return `${field.label}必须在 ${field.min} 到 ${field.max} 之间`;
+      }
+    }
+    const maxChars = Number(input.configValues.maxChars);
+    const overlapChars = Number(input.configValues.overlapChars);
+    if (!input.noChunk && Number.isFinite(maxChars) && Number.isFinite(overlapChars)
+        && maxChars > 0 && overlapChars >= maxChars) {
+      return "块重叠必须小于块大小";
     }
   } else if (input.processMode === "pipeline") {
     if (isBlank(input.pipelineId)) {
@@ -131,20 +101,17 @@ export function validateProcessModeValues(input: ProcessModeInput): string | nul
 
 export function buildProcessModePayload(
   input: ProcessModeInput,
-  chunkStrategies: ChunkStrategyOption[],
-  options?: { isTableType?: boolean; isCsv?: boolean }
+  schema: IngestionSpecSchema | null
 ): {
   processMode: ProcessMode;
-  chunkStrategy?: string;
-  chunkConfig?: string | null;
+  ingestionSpec?: string | null;
   pipelineId?: string | null;
 } {
   return {
     processMode: input.processMode,
-    chunkStrategy: input.processMode === "chunk" ? input.chunkStrategy : undefined,
-    chunkConfig:
+    ingestionSpec:
       input.processMode === "chunk"
-        ? (buildChunkConfig(input, chunkStrategies, options) ?? null)
+        ? buildIngestionSpec(input.parseProfile || "fast", input.configValues, schema, input.noChunk)
         : null,
     pipelineId: input.processMode === "pipeline" ? input.pipelineId : null
   };

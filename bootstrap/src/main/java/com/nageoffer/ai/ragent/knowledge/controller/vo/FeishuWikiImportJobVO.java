@@ -49,6 +49,12 @@ public class FeishuWikiImportJobVO {
 
     private Boolean autoChunk;
 
+    private String processMode;
+
+    private String ingestionSpec;
+
+    private String pipelineId;
+
     private String errorMessage;
 
     private String createdBy;

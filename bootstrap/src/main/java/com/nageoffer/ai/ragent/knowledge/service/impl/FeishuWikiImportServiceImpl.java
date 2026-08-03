@@ -54,6 +54,7 @@ import com.nageoffer.ai.ragent.knowledge.mq.event.FeishuWikiImportEvent;
 import com.nageoffer.ai.ragent.knowledge.service.FeishuWikiImportService;
 import com.nageoffer.ai.ragent.knowledge.service.FeishuWikiPageImportResult;
 import com.nageoffer.ai.ragent.knowledge.service.KnowledgeDocumentService;
+import com.nageoffer.ai.ragent.knowledge.support.IngestionSpecCodec;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -76,6 +77,7 @@ public class FeishuWikiImportServiceImpl implements FeishuWikiImportService {
     private final FeishuAuthService feishuAuthService;
     private final FeishuWikiTreeWalker treeWalker;
     private final KnowledgeDocumentService documentService;
+    private final IngestionSpecCodec ingestionSpecCodec;
     private final MessageQueueProducer messageQueueProducer;
 
     @Value("feishu-wiki-import_topic${unique-name:}")
@@ -120,8 +122,7 @@ public class FeishuWikiImportServiceImpl implements FeishuWikiImportService {
                 .skippedCount(discovery.skipped().size())
                 .autoChunk(Boolean.TRUE.equals(request.getAutoChunk()) ? 1 : 0)
                 .processMode(StringUtils.hasText(request.getProcessMode()) ? request.getProcessMode() : "chunk")
-                .chunkStrategy(StringUtils.hasText(request.getChunkStrategy()) ? request.getChunkStrategy() : "fixed_size")
-                .chunkConfig(request.getChunkConfig())
+                .ingestionSpec(ingestionSpecCodec.normalize(request.getIngestionSpec()))
                 .pipelineId(request.getPipelineId())
                 .scheduleEnabled(Boolean.TRUE.equals(request.getScheduleEnabled()) ? 1 : 0)
                 .scheduleCron(StrUtil.trimToNull(request.getScheduleCron()))
@@ -302,8 +303,7 @@ public class FeishuWikiImportServiceImpl implements FeishuWikiImportService {
         request.setSourceType("url");
         String processMode = StringUtils.hasText(job.getProcessMode()) ? job.getProcessMode() : "chunk";
         request.setProcessMode(processMode);
-        request.setChunkStrategy(StringUtils.hasText(job.getChunkStrategy()) ? job.getChunkStrategy() : "fixed_size");
-        request.setChunkConfig(job.getChunkConfig());
+        request.setIngestionSpec(job.getIngestionSpec());
         request.setPipelineId(job.getPipelineId());
         request.setScheduleEnabled(job.getScheduleEnabled() != null && job.getScheduleEnabled() == 1);
         request.setScheduleCron(job.getScheduleCron());

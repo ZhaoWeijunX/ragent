@@ -19,6 +19,8 @@ CREATE TABLE IF NOT EXISTS t_feishu_wiki_import_job (
     skipped_count    INTEGER       NOT NULL DEFAULT 0,
     auto_chunk       SMALLINT      NOT NULL DEFAULT 0,
     process_mode     VARCHAR(16),
+    ingestion_spec   JSONB,
+    -- 旧列仅为兼容历史任务保留，新代码不再写入
     chunk_strategy   VARCHAR(32),
     chunk_config     JSONB,
     pipeline_id      VARCHAR(20),
@@ -29,6 +31,7 @@ CREATE TABLE IF NOT EXISTS t_feishu_wiki_import_job (
     create_time      TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     update_time      TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+ALTER TABLE t_feishu_wiki_import_job ADD COLUMN IF NOT EXISTS ingestion_spec JSONB;
 CREATE INDEX IF NOT EXISTS idx_feishu_wiki_job_kb ON t_feishu_wiki_import_job (kb_id);
 
 CREATE TABLE IF NOT EXISTS t_feishu_wiki_import_item (
