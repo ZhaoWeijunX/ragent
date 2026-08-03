@@ -207,7 +207,7 @@ export function EvalRunListPage() {
                   <TableHead>评估集版本</TableHead>
                   <TableHead>状态</TableHead>
                   <TableHead>阶段</TableHead>
-                  <TableHead>进度</TableHead>
+                  <TableHead>样例进度</TableHead>
                   <TableHead>成功/失败</TableHead>
                   <TableHead>更新时间</TableHead>
                 </TableRow>
@@ -234,7 +234,7 @@ export function EvalRunListPage() {
                       </TableCell>
                       <TableCell className="font-mono text-xs">{item.currentPhase || "-"}</TableCell>
                       <TableCell>
-                        {item.progress ?? 0}% ({success + failed}/{total})
+                        {item.progress ?? 0}% · 样例 {success + failed}/{total}
                       </TableCell>
                       <TableCell>
                         {success}/{failed}

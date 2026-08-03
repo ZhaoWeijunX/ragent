@@ -353,12 +353,12 @@ public class EvalRunWorker {
         int cancelledCount = cancelled == null ? 0 : cancelled.intValue();
         int total = run.getTotalCount() == null ? 0 : run.getTotalCount();
         int done = Math.min(total, successCount + failedCount + cancelledCount);
-        int progress = total <= 0 ? 0 : (int) Math.round(done * 100.0 / total);
+        int progress = total <= 0 ? 0 : (int) Math.min(100, Math.round(done * 100.0 / total));
         runMapper.update(null, Wrappers.lambdaUpdate(EvalRunDO.class)
                 .eq(EvalRunDO::getId, runId)
                 .set(EvalRunDO::getSuccessCount, successCount)
                 .set(EvalRunDO::getFailedCount, failedCount)
-                .set(EvalRunDO::getProgress, Math.min(99, progress)));
+                .set(EvalRunDO::getProgress, progress));
     }
 
     public boolean tryClaimLease(String runId) {

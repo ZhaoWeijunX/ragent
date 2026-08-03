@@ -535,7 +535,7 @@ export function EvalRunDetailPage() {
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">运行进度</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">录制进度</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="mb-2 text-2xl font-semibold">{run.progress ?? 0}%</div>
@@ -546,7 +546,8 @@ export function EvalRunDetailPage() {
               />
             </div>
             <p className="mt-2 text-xs text-muted-foreground">
-              {run.successCount + run.failedCount}/{run.totalCount} · 阶段 {run.currentPhase}
+              样例 {(run.successCount ?? 0) + (run.failedCount ?? 0)}/{run.totalCount ?? 0}
+              {run.currentPhase ? ` · 阶段 ${run.currentPhase}` : ""}
             </p>
           </CardContent>
         </Card>
