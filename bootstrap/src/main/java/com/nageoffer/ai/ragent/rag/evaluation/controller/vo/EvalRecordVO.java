@@ -35,6 +35,18 @@ public class EvalRecordVO {
     private String status;
     private String question;
     private String response;
+
+    /** Case 标注（来自评估集，便于样本详情对照） */
+    private String intentL1;
+    private String intentL2;
+    private String difficulty;
+    private Boolean requiresRag;
+    private String expectedAnswerType;
+    private List<String> expectedDocIds;
+    private List<String> niceToHaveDocIds;
+    private String groundTruth;
+    private String trapType;
+
     private List<String> retrievedDocIds;
     private List<String> retrievedChunkIds;
     private List<String> retrievedContexts;

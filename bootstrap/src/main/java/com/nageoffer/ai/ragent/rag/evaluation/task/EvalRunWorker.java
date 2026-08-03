@@ -32,6 +32,7 @@ import com.nageoffer.ai.ragent.rag.evaluation.dao.mapper.EvalRecordMapper;
 import com.nageoffer.ai.ragent.rag.evaluation.dao.mapper.EvalRunMapper;
 import com.nageoffer.ai.ragent.rag.evaluation.runner.EvalDualPathSampleRecorder;
 import com.nageoffer.ai.ragent.rag.evaluation.service.EvalScoreService;
+import com.nageoffer.ai.ragent.rag.evaluation.support.EvalJsonSupport;
 import com.nageoffer.ai.ragent.rag.evaluation.support.EvalRunTerminalStatus;
 import com.nageoffer.ai.ragent.user.dao.entity.UserDO;
 import com.nageoffer.ai.ragent.user.dao.mapper.UserMapper;
@@ -43,7 +44,9 @@ import org.springframework.stereotype.Component;
 import java.net.InetAddress;
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -78,6 +81,8 @@ public class EvalRunWorker {
     private final EvalScoreService evalScoreService;
     private final Executor evalRecordExecutor;
     private final String leaseOwnerId = resolveLeaseOwner();
+    /** 单样本重跑目标：runId → caseId（submit 时写入，execute 开头取出）。 */
+    private final ConcurrentHashMap<String, String> singleCaseTargets = new ConcurrentHashMap<>();
 
     public EvalRunWorker(EvalRunMapper runMapper,
                          EvalCaseMapper caseMapper,
@@ -98,11 +103,32 @@ public class EvalRunWorker {
     }
 
     public void submit(String runId) {
+        // 全量/失败 resume 不得误用残留的单样本目标
+        singleCaseTargets.remove(runId);
         evalRecordExecutor.execute(() -> {
             try {
                 execute(runId);
             } catch (Exception ex) {
                 log.error("EvalRunWorker 执行失败 runId={}", runId, ex);
+                markFailed(runId, ex.getMessage());
+            }
+        });
+    }
+
+    /**
+     * 终态 Run 单 Case 强制重录（不跳过已成功 Record），收尾时重算自建指标且不自动 RAGAS。
+     */
+    public void submitSingleCaseRerun(String runId, String caseId) {
+        if (StrUtil.isBlank(runId) || StrUtil.isBlank(caseId)) {
+            throw new IllegalArgumentException("runId/caseId 不能为空");
+        }
+        singleCaseTargets.put(runId, caseId);
+        evalRecordExecutor.execute(() -> {
+            try {
+                execute(runId);
+            } catch (Exception ex) {
+                log.error("EvalRunWorker 单样本重跑失败 runId={} caseId={}", runId, caseId, ex);
+                singleCaseTargets.remove(runId);
                 markFailed(runId, ex.getMessage());
             }
         });
@@ -143,8 +169,19 @@ public class EvalRunWorker {
                     .eq(EvalCaseDO::getDatasetVersionId, run.getDatasetVersionId())
                     .orderByAsc(EvalCaseDO::getQueryId));
 
-            // 已有成功 Record 时视为 resume：跳过成功样本
-            boolean skipSuccess = hasSuccessfulRecord(runId);
+            String onlyCaseId = singleCaseTargets.remove(runId);
+            boolean singleCaseRerun = StrUtil.isNotBlank(onlyCaseId);
+            if (singleCaseRerun) {
+                cases = cases.stream().filter(c -> onlyCaseId.equals(c.getId())).toList();
+                if (cases.isEmpty()) {
+                    markFailed(runId, "单样本重跑失败：Case 不在当前数据集版本中 caseId=" + onlyCaseId);
+                    return;
+                }
+                log.info("单样本重跑 runId={} caseId={}", runId, onlyCaseId);
+            }
+
+            // 全量/失败 resume：已有成功 Record 时跳过成功样本；单样本重跑强制覆盖
+            boolean skipSuccess = !singleCaseRerun && hasSuccessfulRecord(runId);
 
             for (EvalCaseDO evalCase : cases) {
                 if (isCancelRequested(runId)) {
@@ -196,7 +233,7 @@ public class EvalRunWorker {
                 markUnstartedCasesCancelled(runId, cases);
             }
 
-            finalizeRun(runId);
+            finalizeRun(runId, singleCaseRerun);
         } finally {
             heartbeatStop.set(true);
             heartbeat.interrupt();
@@ -205,7 +242,7 @@ public class EvalRunWorker {
         }
     }
 
-    private void finalizeRun(String runId) {
+    private void finalizeRun(String runId, boolean singleCaseRerun) {
         EvalRunDO run = runMapper.selectById(runId);
         if (run == null) {
             return;
@@ -235,9 +272,9 @@ public class EvalRunWorker {
                     .set(EvalRunDO::getErrorMessage, "deterministic scoring failed: " + ex.getMessage()));
         }
 
-        // 阶段 5：可选 RAGAS；失败不回滚 Record / 自建分数
+        // 阶段 5：可选自动 RAGAS（单样本重跑跳过，由用户手动触发）
         EvalRunDO afterDet = runMapper.selectById(runId);
-        if (afterDet != null && Boolean.TRUE.equals(afterDet.getRagasEnabled())) {
+        if (!singleCaseRerun && afterDet != null && shouldAutoStartRagas(afterDet)) {
             runMapper.update(null, Wrappers.lambdaUpdate(EvalRunDO.class)
                     .eq(EvalRunDO::getId, runId)
                     .set(EvalRunDO::getStatus, EvalWorkbenchConstants.RUN_RAGAS_SCORING)
@@ -456,5 +493,28 @@ public class EvalRunWorker {
         } catch (Exception e) {
             return IdUtil.getSnowflakeNextIdStr() + "@unknown";
         }
+    }
+
+    /**
+     * 自动 RAGAS：需 Run.ragasEnabled，且 configSnapshot.ragas.autoStart=true。
+     * 兼容旧快照：仅有 ragasEnabled、无 autoStart 字段时视为自动开始（与拆分前行为一致）。
+     */
+    private static boolean shouldAutoStartRagas(EvalRunDO run) {
+        if (!Boolean.TRUE.equals(run.getRagasEnabled())) {
+            return false;
+        }
+        Map<String, Object> snap = EvalJsonSupport.toMap(run.getConfigSnapshot());
+        Object ragasObj = snap.get("ragas");
+        if (!(ragasObj instanceof Map<?, ?> raw)) {
+            return true;
+        }
+        Object autoStart = raw.get("autoStart");
+        if (autoStart == null) {
+            return true;
+        }
+        if (autoStart instanceof Boolean b) {
+            return b;
+        }
+        return Boolean.parseBoolean(String.valueOf(autoStart));
     }
 }

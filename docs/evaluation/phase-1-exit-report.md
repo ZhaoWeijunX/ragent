@@ -7,7 +7,7 @@
 
 | 退出条件 | 状态 | 证据 |
 |----------|------|------|
-| 8 张 `t_eval_*` 建表 | 通过 | [`resources/database/evaluation/schema_eval_workbench.sql`](../../resources/database/evaluation/schema_eval_workbench.sql) |
+| 7 张 `t_eval_*` 建表 | 通过 | [`resources/database/evaluation/schema_eval_workbench.sql`](../../resources/database/evaluation/schema_eval_workbench.sql)（`t_eval_manual_override` 已取消，见 `260803_drop_eval_manual_override.sql`） |
 | 已有库升级入口 | 通过 | `resources/database/upgrades/v1.1.0/260730_eval_workbench.sql` |
 | 全量 schema 同步 | 通过 | `resources/database/schema_pg.sql` 追加评测表段落 |
 | 工作台包骨架 | 通过 | `bootstrap/.../rag/evaluation/**` |

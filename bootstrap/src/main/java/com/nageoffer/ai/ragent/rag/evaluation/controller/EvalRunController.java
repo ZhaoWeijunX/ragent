@@ -93,6 +93,16 @@ public class EvalRunController {
         return Results.success();
     }
 
+    /**
+     * 终态 Run 单样本重跑：重录后自动自建评分，不自动 RAGAS。
+     */
+    @PostMapping(EvalWorkbenchConstants.API_PREFIX + "/runs/{runId}/records/{recordId}/rerun")
+    public Result<Void> rerunRecord(@PathVariable String runId, @PathVariable String recordId) {
+        requireAdmin();
+        evalRunService.rerunRecord(runId, recordId);
+        return Results.success();
+    }
+
     @PostMapping(EvalWorkbenchConstants.API_PREFIX + "/runs/{runId}/rescore")
     public Result<String> rescore(@PathVariable String runId) {
         requireAdmin();

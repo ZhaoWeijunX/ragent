@@ -4,7 +4,7 @@ RAG 评测工作台数据库脚本目录（与通用 `schema_pg.sql` / `upgrades
 
 | 文件 | 说明 |
 |------|------|
-| [`schema_eval_workbench.sql`](schema_eval_workbench.sql) | **权威建表脚本**：8 张 `t_eval_*` 表（IF NOT EXISTS + 部分唯一索引） |
+| [`schema_eval_workbench.sql`](schema_eval_workbench.sql) | **权威建表脚本**：7 张 `t_eval_*` 表（IF NOT EXISTS + 部分唯一索引） |
 
 ## 表清单
 
@@ -15,7 +15,6 @@ RAG 评测工作台数据库脚本目录（与通用 `schema_pg.sql` / `upgrades
 5. `t_eval_record` — 录制
 6. `t_eval_score_batch` — 评分批次
 7. `t_eval_score` — 指标分数
-8. `t_eval_manual_override` — 人工覆盖
 
 口径见 [`docs/evaluation/phase-0-adr.md`](../../../docs/evaluation/phase-0-adr.md)。
 
@@ -29,10 +28,10 @@ psql -U postgres -d ragent -f resources/database/schema_pg.sql
 psql -U postgres -d ragent -f resources/database/evaluation/schema_eval_workbench.sql
 ```
 
-**已有环境升级**：按 `upgrades/v1.1.0/` 顺序执行，其中 `260730_eval_workbench.sql` 与本权威脚本内容同步。
+**已有环境升级**：按 `upgrades/v1.1.0/` 顺序执行。若历史库已建过已取消的 `t_eval_manual_override`，执行：
 
 ```bash
-psql -U postgres -d ragent -f resources/database/upgrades/v1.1.0/260730_eval_workbench.sql
+psql -U postgres -d ragent -f resources/database/upgrades/v1.1.0/260803_drop_eval_manual_override.sql
 ```
 
 ## 维护约定

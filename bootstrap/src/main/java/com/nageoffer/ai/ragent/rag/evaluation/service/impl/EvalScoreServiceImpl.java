@@ -238,7 +238,7 @@ public class EvalScoreServiceImpl implements EvalScoreService {
             return active.getId();
         }
 
-        ResolvedJudgeModels judgeModels = resolveJudgeModels(request);
+        ResolvedJudgeModels judgeModels = resolveJudgeModels(mergeRagasRequestWithRunPref(run, request));
 
         if (!semanticEvaluationProvider.isAvailable()) {
             String batchId = createRagasBatchSkeleton(runId, 0, "RAGAS service unavailable", judgeModels);
@@ -713,6 +713,38 @@ public class EvalScoreServiceImpl implements EvalScoreService {
         if (StrUtil.isNotBlank(value)) {
             snap.put(key, value);
         }
+    }
+
+    /**
+     * 弹窗显式选择优先；否则回退创建 Run 时写入 configSnapshot.ragas 的模型偏好。
+     */
+    private EvalRagasRescoreRequest mergeRagasRequestWithRunPref(EvalRunDO run, EvalRagasRescoreRequest request) {
+        String chatId = request == null ? null : StrUtil.trimToNull(request.getChatModelId());
+        String embId = request == null ? null : StrUtil.trimToNull(request.getEmbeddingModelId());
+        if (chatId != null && embId != null) {
+            return request;
+        }
+        Map<String, Object> snap = EvalJsonSupport.toMap(run.getConfigSnapshot());
+        Object ragasObj = snap.get("ragas");
+        if (!(ragasObj instanceof Map<?, ?> raw)) {
+            return request;
+        }
+        @SuppressWarnings("unchecked")
+        Map<String, Object> ragas = (Map<String, Object>) raw;
+        EvalRagasRescoreRequest merged = request == null ? new EvalRagasRescoreRequest() : request;
+        if (chatId == null) {
+            Object v = ragas.get("chatModelId");
+            if (v != null && StrUtil.isNotBlank(String.valueOf(v))) {
+                merged.setChatModelId(String.valueOf(v).trim());
+            }
+        }
+        if (embId == null) {
+            Object v = ragas.get("embeddingModelId");
+            if (v != null && StrUtil.isNotBlank(String.valueOf(v))) {
+                merged.setEmbeddingModelId(String.valueOf(v).trim());
+            }
+        }
+        return merged;
     }
 
     /**

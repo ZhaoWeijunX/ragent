@@ -39,12 +39,12 @@ flowchart LR
 | 阶段 | 对应里程碑 | 周期 | 交付重点 |
 |------|------------|------|----------|
 | 0 | 前置确认 | 3–5 天 | 契约、ADR、SSE/Trace spike、RAGAS 服务契约 |
-| 1 | 骨架 | 1 周 | 8 张表、模块骨架、配置开关、权限审计 |
+| 1 | 骨架 | 1 周 | 7 张表、模块骨架、配置开关、权限审计 |
 | 2 | M1 | 1.5–2 周 | 评估集 CRUD、导入校验、版本发布、前端数据集页 |
 | 3 | M2-A | 2–3 周 | Run 状态机、双路径录制、Trace、取消/恢复 |
 | 4 | M2-B / MVP | 1.5–2 周 | 自建指标、报告、导出、MVP 验收 |
 | 5 | M3 | 2–3 周 | ragenteval 服务化、RAGAS、容错与成本 |
-| 6 | M4 / V1 | 1.5–2 周 | 人工复核、A/B、阈值门禁 |
+| 6 | M4 / V1 | 1.5–2 周 | A/B 对比、阈值门禁（人工覆盖已取消） |
 | 7 | V2 | 按价值拆分 | CI/Webhook、趋势、Trace 单轨、数据治理 |
 
 MVP 累计约 **6–8** 个日历周；V1 累计约 **10–13** 个日历周（假设 2 后端、1 前端、1 测试并行）。
@@ -67,19 +67,20 @@ MVP 累计约 **6–8** 个日历周；V1 累计约 **10–13** 个日历周（�
 
 ## 阶段 1：持久化与工作台骨架（1 周）
 
-- 在 `resources/database/upgrades/v1.1.0/` 新增增量迁移，并同步 `resources/database/schema_pg.sql`：先建 `t_eval_dataset`、`t_eval_dataset_version`、`t_eval_case`，再建 `t_eval_run`、`t_eval_record`、`t_eval_score_batch`、`t_eval_score`、`t_eval_manual_override`；为状态、外键、`dataset_id+version`、`version_id+query_id`、`run_id+case_id`、分页筛选字段建约束和索引。
+- 在 `resources/database/upgrades/v1.1.0/` 新增增量迁移，并同步 `resources/database/schema_pg.sql`：先建 `t_eval_dataset`、`t_eval_dataset_version`、`t_eval_case`，再建 `t_eval_run`、`t_eval_record`、`t_eval_score_batch`、`t_eval_score`；为状态、外键、`dataset_id+version`、`version_id+query_id`、`run_id+case_id`、分页筛选字段建约束和索引。
 - 建立 `controller/service/runner/metric/judge/report/dao/task` 包结构、DO/Mapper/DTO/VO、统一错误码和分页响应；工作台 API 统一前缀 `/admin/evaluations`。
 - 扩展 `EvalProperties` 与 `application.yaml`：增加 `workbench-enabled`、活动 Run 上限、录制并发、超时、重试和 RAGAS 服务配置；生产默认关闭旁路与工作台。
 - 新增专用评测线程池，不复用聊天生成线程池；控制 `max-active-runs=1` 和低默认并发，避免批测挤占在线聊天资源。
 - 扩展审计业务类型；所有 Controller 后端执行 `admin` 角色校验，不能只依赖前端路由守卫。
-- **退出条件**：迁移可在空库和升级库执行；8 张表约束测试通过；关闭 feature flag 时无工作台入口和后台任务。
+- **退出条件**：迁移可在空库和升级库执行；7 张表约束测试通过；关闭 feature flag 时无工作台入口和后台任务。
 - **阶段 1 落地**：
   - 权威建表：[`resources/database/evaluation/schema_eval_workbench.sql`](../resources/database/evaluation/schema_eval_workbench.sql)
   - 升级入口：`resources/database/upgrades/v1.1.0/260730_eval_workbench.sql`（与权威脚本同步）
   - 全量 schema 已追加评测表段落：`resources/database/schema_pg.sql`
   - Java 包骨架：`bootstrap/.../rag/evaluation/`（entity/mapper/config/constant + 后续分层 package-info）
   - 配置：`app.eval.workbench-enabled` 默认 false；`evalRecordExecutor` 仅在开关开启时注册
-  - 审计类型：`EVAL_DATASET` / `EVAL_DATASET_VERSION` / `EVAL_RUN` / `EVAL_MANUAL_OVERRIDE`
+  - 审计类型：`EVAL_DATASET` / `EVAL_DATASET_VERSION` / `EVAL_RUN`
+  - 已取消：`t_eval_manual_override`（见 `260803_drop_eval_manual_override.sql`）
 
 ## 阶段 2：评估集资产化 M1（1.5–2 周）
 
@@ -147,16 +148,16 @@ MVP 累计约 **6–8** 个日历周；V1 累计约 **10–13** 个日历周（�
   - 已知薄项：`records_uri`/`callback_url`（延期，非 MVP）、每轮采样原始分落库、真实 Judge E2E CI；token/cost 已透传到管理台（数值依赖 Judge 侧是否回传）
   - 管理台可取消进行中 RAGAS：`POST .../ragas-batches/{batchId}/cancel`
 
-## 阶段 6：人工复核、A/B 与质量门禁 M4（1.5–2 周）
+## 阶段 6：A/B 与质量门禁 M4（1.5–2 周）
 
-> **本轮范围（2026-07-31）**：仅实现 **同数据集版本 Run 结果对比**；跨版本直接拒绝，不提供探索性对比。其余条目暂不实现。
+> **本轮范围（2026-07-31）**：仅实现 **同数据集版本 Run 结果对比**；跨版本直接拒绝，不提供探索性对比。其余条目暂不实现。  
+> **已取消**：人工覆盖（`t_eval_manual_override` / override API）；不再实现。
 
-- ~~实现 manual override 的新增、修改、撤销、操作者、理由与审计；报告按「原始分 + 当前人工分 + 生效分」展示，重聚合不覆盖 Judge 原始结果。~~ **暂不实现**
 - **本轮实现** 同版本 Run A/B：配置快照差异、指标 delta、intent/difficulty 切片、新增失败/修复/持续失败、TTFT 差异；**仅允许相同 `dataset_version_id`**，版本不一致返回业务错误。
 - ~~定义阈值策略版本与快照：overall、切片、关键样本、最大退化值；Run 增加独立 quality verdict（PASS/FAIL/WARN/NOT_EVALUATED），不要与执行状态混为一列。~~ **暂不实现**
 - ~~首次阈值由 20 条冒烟集跑通后，以 150 条 baseline 校准；自建指标可用于日常门禁，RAGAS 默认只用于改版/发布深评，差异小于约 3% 时提示可能处于 Judge 方差范围。~~ **暂不实现**
 - ~~提供只读 CI 查询接口和稳定机器可读结果，但自动阻断合入可作为下一阶段开启。~~ **暂不实现**
-- **本轮退出条件**：任意两次同数据集版本 Run 可比较（配置 diff + 指标/切片 delta + 失败回归 + TTFT + 样本交集）；跨版本不可比。完整 V1（人工覆盖、门禁、CI）延后。
+- **本轮退出条件**：任意两次同数据集版本 Run 可比较（配置 diff + 指标/切片 delta + 失败回归 + TTFT + 样本交集）；跨版本不可比。完整 V1（门禁、CI）延后。
 
 ## 阶段 7：持续评测与采集链路演进（V2，按价值拆分）
 
@@ -181,16 +182,16 @@ MVP 累计约 **6–8** 个日历周；V1 累计约 **10–13** 个日历周（�
 - **双路径漂移**：Record 保存两路时间与来源，UI 固定披露；阶段 7 以 Trace 单轨演进，MVP 不宣称证据完全等同于 Chat 实际上下文。
 - **可复现性不足**：对无法真正版本化的知识库/索引只保存快照指纹与时间，不夸大为可重现；严格对比要求数据集版本和环境快照兼容。
 - **资源竞争**：独立线程池、活动 Run 上限、低并发、专用环境优先、支持取消和退避。
-- **Judge 方差/成本/隐私**：固定 Judge、可选三次采样、逐条容错、预算上限、脱敏和人工复核；CI 默认不跑 RAGAS。
+- **Judge 方差/成本/隐私**：固定 Judge、可选三次采样、逐条容错、预算上限与脱敏；CI 默认不跑 RAGAS。
 - **外部 Python 项目治理**：服务化前必须补依赖锁、测试、许可证/权属确认和部署可观测性，否则只作为参考实现，不直接进入生产链路。
 
 ## 阶段检查清单
 
 - [x] 阶段 0：契约与 ADR 冻结；离线 Schema 互转通过；SSE/Trace spike 脚本就绪（在线 dry-run 待本地服务）
-- [x] 阶段 1：8 张表与模块骨架就绪，feature flag 可控（`workbench-enabled=false` 无工作台任务 Bean）
+- [x] 阶段 1：7 张表与模块骨架就绪，feature flag 可控（`workbench-enabled=false` 无工作台任务 Bean）
 - [x] 阶段 2：评估集可导入、发布、导出（M1）
 - [x] 阶段 3：双路径录制与 Run 状态机可用（M2-A）
 - [x] 阶段 4：自建指标与报告通过 MVP 验收（M2-B）
 - [x] 阶段 5：RAGAS 服务化接入且失败可降级（M3）
-- [ ] 阶段 6：同版本 Run A/B 对比（本轮）；人工复核 / 门禁 / CI 暂不实现（M4 部分）
+- [ ] 阶段 6：同版本 Run A/B 对比（本轮）；门禁 / CI 暂不实现；人工覆盖已取消（M4 部分）
 - [ ] 阶段 7：CI/趋势/单轨采集按价值推进（V2）

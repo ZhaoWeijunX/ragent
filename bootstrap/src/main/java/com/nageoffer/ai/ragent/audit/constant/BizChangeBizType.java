@@ -31,7 +31,6 @@ public final class BizChangeBizType {
     public static final String EVAL_DATASET = "EVAL_DATASET";
     public static final String EVAL_DATASET_VERSION = "EVAL_DATASET_VERSION";
     public static final String EVAL_RUN = "EVAL_RUN";
-    public static final String EVAL_MANUAL_OVERRIDE = "EVAL_MANUAL_OVERRIDE";
 
     private BizChangeBizType() {
     }

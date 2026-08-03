@@ -222,6 +222,44 @@ export function EvalRunComparePage() {
         </Card>
       </div>
 
+      {(data.configDiff || []).length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>配置快照差异</CardTitle>
+            <CardDescription>
+              创建 Run 时冻结的模型 / Embedding / 检索 / 知识指纹等；共 {(data.configDiff || []).length} 项不同
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>路径</TableHead>
+                  <TableHead>当前</TableHead>
+                  <TableHead>基线</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {(data.configDiff || []).slice(0, 80).map((d) => (
+                  <TableRow key={d.path}>
+                    <TableCell className="font-mono text-xs">{d.path}</TableCell>
+                    <TableCell className="max-w-[280px] truncate text-xs" title={stringify(d.current)}>
+                      {stringify(d.current)}
+                    </TableCell>
+                    <TableCell className="max-w-[280px] truncate text-xs" title={stringify(d.baseline)}>
+                      {stringify(d.baseline)}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+            {(data.configDiff || []).length > 80 ? (
+              <p className="mt-2 text-xs text-muted-foreground">仅展示前 80 项差异</p>
+            ) : null}
+          </CardContent>
+        </Card>
+      )}
+
       {hasJudge && (
         <Card>
           <CardHeader>

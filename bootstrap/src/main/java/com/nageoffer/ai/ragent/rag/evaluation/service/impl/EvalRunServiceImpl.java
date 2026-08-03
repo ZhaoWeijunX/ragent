@@ -48,6 +48,7 @@ import com.nageoffer.ai.ragent.rag.evaluation.dao.mapper.EvalDatasetVersionMappe
 import com.nageoffer.ai.ragent.rag.evaluation.dao.mapper.EvalRecordMapper;
 import com.nageoffer.ai.ragent.rag.evaluation.dao.mapper.EvalRunMapper;
 import com.nageoffer.ai.ragent.rag.evaluation.service.EvalRunService;
+import com.nageoffer.ai.ragent.rag.evaluation.support.EvalConfigSnapshotSupport;
 import com.nageoffer.ai.ragent.rag.evaluation.support.EvalJsonSupport;
 import com.nageoffer.ai.ragent.rag.evaluation.task.EvalRunWorker;
 import lombok.RequiredArgsConstructor;
@@ -55,7 +56,6 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.Date;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -91,6 +91,7 @@ public class EvalRunServiceImpl implements EvalRunService {
     private final EvalDatasetVersionMapper versionMapper;
     private final EvalDatasetMapper datasetMapper;
     private final EvalProperties evalProperties;
+    private final EvalConfigSnapshotSupport configSnapshotSupport;
     private final EvalRunWorker runWorker;
     private final BizChangeLogContext bizChangeLogContext;
 
@@ -157,7 +158,21 @@ public class EvalRunServiceImpl implements EvalRunService {
             Assert.notNull(baseline, () -> new ClientException("基线 Run 不存在"));
         }
 
-        Map<String, Object> configSnapshot = buildConfigSnapshot(version, sampleCount.intValue());
+        Map<String, Object> configSnapshot = configSnapshotSupport.build(version, sampleCount.intValue());
+        boolean ragasEnabled = Boolean.TRUE.equals(request.getRagasEnabled());
+        // 未启用 RAGAS 时忽略 autoStart，避免脏配置
+        boolean ragasAutoStart = ragasEnabled && Boolean.TRUE.equals(request.getRagasAutoStart());
+        Map<String, Object> ragasPref = new LinkedHashMap<>();
+        ragasPref.put("enabled", ragasEnabled);
+        ragasPref.put("autoStart", ragasAutoStart);
+        if (ragasEnabled && StrUtil.isNotBlank(request.getRagasChatModelId())) {
+            ragasPref.put("chatModelId", StrUtil.trim(request.getRagasChatModelId()));
+        }
+        if (ragasEnabled && StrUtil.isNotBlank(request.getRagasEmbeddingModelId())) {
+            ragasPref.put("embeddingModelId", StrUtil.trim(request.getRagasEmbeddingModelId()));
+        }
+        configSnapshot.put("ragas", ragasPref);
+
         Map<String, Object> thresholdSnapshot = new LinkedHashMap<>();
         thresholdSnapshot.put("schemaVersion", "1.0.0");
         thresholdSnapshot.put("policyId", null);
@@ -187,7 +202,7 @@ public class EvalRunServiceImpl implements EvalRunService {
                 .successCount(0)
                 .failedCount(0)
                 .progress(0)
-                .ragasEnabled(Boolean.TRUE.equals(request.getRagasEnabled()))
+                .ragasEnabled(ragasEnabled)
                 .createdBy(UserContext.getUserId())
                 .build();
         runMapper.insert(run);
@@ -236,6 +251,39 @@ public class EvalRunServiceImpl implements EvalRunService {
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void rerunRecord(String runId, String recordId) {
+        EvalRunDO run = requireRun(runId);
+        Assert.isTrue(TERMINAL.contains(run.getStatus()),
+                () -> new ClientException("仅终态 Run 可单样本重跑"));
+
+        EvalRecordDO record = recordMapper.selectById(recordId);
+        Assert.notNull(record, () -> new ClientException("录制记录不存在"));
+        Assert.isTrue(runId.equals(record.getRunId()), () -> new ClientException("记录不属于该 Run"));
+        Assert.notBlank(record.getCaseId(), () -> new ClientException("记录缺少 caseId"));
+
+        EvalCaseDO evalCase = caseMapper.selectById(record.getCaseId());
+        Assert.notNull(evalCase, () -> new ClientException("对应 Case 不存在"));
+        Assert.isTrue(Objects.equals(run.getDatasetVersionId(), evalCase.getDatasetVersionId()),
+                () -> new ClientException("Case 与 Run 数据集版本不一致"));
+
+        long active = countActiveRuns();
+        Assert.isTrue(active < Math.max(1, evalProperties.getMaxActiveRuns()),
+                () -> new ClientException("活动 Run 已达上限"));
+
+        runMapper.update(null, Wrappers.lambdaUpdate(EvalRunDO.class)
+                .eq(EvalRunDO::getId, runId)
+                .set(EvalRunDO::getStatus, EvalWorkbenchConstants.RUN_PENDING)
+                .set(EvalRunDO::getCurrentPhase, EvalWorkbenchConstants.RUN_PENDING)
+                .set(EvalRunDO::getCancelRequested, 0)
+                .set(EvalRunDO::getFinishedAt, null)
+                .set(EvalRunDO::getErrorMessage, null)
+                .set(EvalRunDO::getLeaseOwner, null)
+                .set(EvalRunDO::getLeaseExpireAt, null));
+        runWorker.submitSingleCaseRerun(runId, record.getCaseId());
+    }
+
+    @Override
     public IPage<EvalRecordVO> pageRecords(String runId, EvalRecordPageRequest request) {
         requireRun(runId);
         Page<EvalRecordDO> page = new Page<>(request.getCurrent(), request.getSize());
@@ -244,8 +292,8 @@ public class EvalRunServiceImpl implements EvalRunService {
                 .eq(StrUtil.isNotBlank(request.getStatus()), EvalRecordDO::getStatus, request.getStatus())
                 .like(StrUtil.isNotBlank(request.getKeyword()), EvalRecordDO::getQuestion, request.getKeyword())
                 .orderByAsc(EvalRecordDO::getCreateTime));
-        Map<String, String> queryIdMap = loadQueryIds(result.getRecords());
-        return result.convert(r -> toRecordVO(r, queryIdMap.get(r.getCaseId())));
+        Map<String, EvalCaseDO> caseMap = loadCases(result.getRecords());
+        return result.convert(r -> toRecordVO(r, caseMap.get(r.getCaseId())));
     }
 
     @Override
@@ -253,28 +301,7 @@ public class EvalRunServiceImpl implements EvalRunService {
         EvalRecordDO record = recordMapper.selectById(recordId);
         Assert.notNull(record, () -> new ClientException("录制记录不存在"));
         EvalCaseDO evalCase = caseMapper.selectById(record.getCaseId());
-        return toRecordVO(record, evalCase == null ? null : evalCase.getQueryId());
-    }
-
-    private Map<String, Object> buildConfigSnapshot(EvalDatasetVersionDO version, int sampleCount) {
-        Map<String, Object> snapshot = new LinkedHashMap<>();
-        snapshot.put("schemaVersion", "1.0.0");
-        snapshot.put("datasetVersionId", version.getId());
-        snapshot.put("datasetVersion", version.getVersion());
-        snapshot.put("sampleCount", sampleCount);
-        snapshot.put("recordConcurrency", evalProperties.getRecordConcurrency());
-        snapshot.put("sampleTimeoutSeconds", evalProperties.getSampleTimeoutSeconds());
-        snapshot.put("sampleRetryTimes", evalProperties.getSampleRetryTimes());
-        snapshot.put("recordThinking", evalProperties.isRecordThinking());
-        snapshot.put("evidenceSource", EvalWorkbenchConstants.EVIDENCE_DUAL_PATH);
-        snapshot.put("algorithmVersion", "dual-path-recording-1.0.0");
-        snapshot.put("model", "unknown");
-        snapshot.put("embedding", "unknown");
-        snapshot.put("rerank", "unknown");
-        snapshot.put("prompt", "unknown");
-        snapshot.put("knowledgeSnapshot", "unknown");
-        snapshot.put("frozenAt", new Date().toInstant().toString());
-        return snapshot;
+        return toRecordVO(record, evalCase);
     }
 
     private long countActiveRuns() {
@@ -317,13 +344,13 @@ public class EvalRunServiceImpl implements EvalRunService {
                 .collect(Collectors.toMap(EvalDatasetDO::getId, d -> d, (a, b) -> a));
     }
 
-    private Map<String, String> loadQueryIds(List<EvalRecordDO> records) {
+    private Map<String, EvalCaseDO> loadCases(List<EvalRecordDO> records) {
         Set<String> caseIds = records.stream().map(EvalRecordDO::getCaseId).filter(Objects::nonNull).collect(Collectors.toSet());
         if (caseIds.isEmpty()) {
             return Map.of();
         }
         return caseMapper.selectBatchIds(caseIds).stream()
-                .collect(Collectors.toMap(EvalCaseDO::getId, EvalCaseDO::getQueryId, (a, b) -> a));
+                .collect(Collectors.toMap(EvalCaseDO::getId, c -> c, (a, b) -> a));
     }
 
     private EvalRunVO toRunVO(EvalRunDO run,
@@ -361,15 +388,24 @@ public class EvalRunServiceImpl implements EvalRunService {
                 .build();
     }
 
-    private EvalRecordVO toRecordVO(EvalRecordDO record, String queryId) {
+    private EvalRecordVO toRecordVO(EvalRecordDO record, EvalCaseDO evalCase) {
         return EvalRecordVO.builder()
                 .id(record.getId())
                 .runId(record.getRunId())
                 .caseId(record.getCaseId())
-                .queryId(queryId)
+                .queryId(evalCase == null ? null : evalCase.getQueryId())
                 .status(record.getStatus())
                 .question(record.getQuestion())
                 .response(record.getResponse())
+                .intentL1(evalCase == null ? null : evalCase.getIntentL1())
+                .intentL2(evalCase == null ? null : evalCase.getIntentL2())
+                .difficulty(evalCase == null ? null : evalCase.getDifficulty())
+                .requiresRag(evalCase == null ? null : evalCase.getRequiresRag())
+                .expectedAnswerType(evalCase == null ? null : evalCase.getExpectedAnswerType())
+                .expectedDocIds(evalCase == null ? List.of() : EvalJsonSupport.toStringList(evalCase.getExpectedDocIds()))
+                .niceToHaveDocIds(evalCase == null ? List.of() : EvalJsonSupport.toStringList(evalCase.getNiceToHaveDocIds()))
+                .groundTruth(evalCase == null ? null : evalCase.getGroundTruth())
+                .trapType(evalCase == null ? null : evalCase.getTrapType())
                 .retrievedDocIds(EvalJsonSupport.toStringList(record.getRetrievedDocIds()))
                 .retrievedChunkIds(EvalJsonSupport.toStringList(record.getRetrievedChunkIds()))
                 .retrievedContexts(EvalJsonSupport.toStringList(

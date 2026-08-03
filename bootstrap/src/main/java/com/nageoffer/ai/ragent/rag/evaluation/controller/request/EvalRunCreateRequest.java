@@ -31,9 +31,25 @@ public class EvalRunCreateRequest {
     private String baselineRunId;
 
     /**
-     * 是否启用 RAGAS（阶段 3 忽略执行，仅快照）。
+     * 是否启用 RAGAS（允许详情页手动评分；与是否自动开始无关）。
      */
     private Boolean ragasEnabled;
+
+    /**
+     * 是否在录制并完成自建评分后自动开始 RAGAS。
+     * 仅当 {@link #ragasEnabled} 为 true 时生效。
+     */
+    private Boolean ragasAutoStart;
+
+    /**
+     * 可选：RAGAS Judge 聊天模型候选 id（写入 configSnapshot；自动/手动评分均可回退使用）。
+     */
+    private String ragasChatModelId;
+
+    /**
+     * 可选：RAGAS 嵌入模型候选 id。
+     */
+    private String ragasEmbeddingModelId;
 
     /**
      * 可选标签：gitBranch / gitCommit / environment / appVersion / extra。

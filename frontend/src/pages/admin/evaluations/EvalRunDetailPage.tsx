@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, Fragment } from "react";
+import { useEffect, useRef, useState, Fragment, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, Ban, ChevronDown, ChevronRight, Download, ExternalLink, GitCompareArrows, Loader2, RefreshCw, RotateCcw, Calculator } from "lucide-react";
 import { toast } from "sonner";
@@ -25,6 +25,7 @@ import {
   cancelRagasBatch,
   cancelRun,
   exportRunReport,
+  getRecord,
   getRun,
   getRunMetrics,
   listRagasJudgeModels,
@@ -32,7 +33,8 @@ import {
   pageRecords,
   pageRuns,
   ragasRescoreRun,
-  resumeRun
+  resumeRun,
+  rerunRecord
 } from "@/services/evaluationService";
 import { getErrorMessage } from "@/utils/error";
 
@@ -150,14 +152,54 @@ const RAGAS_METRIC_ROWS: { key: string; label: string; pct: boolean }[] = [
   { key: "context_recall", label: "Context Recall", pct: true }
 ];
 
-/** Intent L2 切片固定列（无数据时展示 "-"） */
-const INTENT_L2_SLICE_COLUMNS: { key: string; label: string; pct: boolean }[] = [
+/** Intent L2 / 难度切片固定列（无数据时展示 "-"） */
+const SLICE_METRIC_COLUMNS: { key: string; label: string; pct: boolean }[] = [
   { key: "hit@5", label: "Hit@5", pct: true },
   { key: "recall@5", label: "Recall@5", pct: true },
   { key: "mrr@10", label: "MRR@10", pct: true },
+  { key: "intent_top1", label: "Intent Top-1", pct: true },
   { key: "faithfulness", label: "Faithfulness", pct: true },
   { key: "answer_correctness", label: "Answer Correctness", pct: true }
 ];
+
+const DIFFICULTY_ORDER = ["easy", "medium", "hard"];
+
+function sortDifficultyKeys(keys: string[]) {
+  return [...keys].sort((a, b) => {
+    const ia = DIFFICULTY_ORDER.indexOf(a);
+    const ib = DIFFICULTY_ORDER.indexOf(b);
+    if (ia >= 0 && ib >= 0) return ia - ib;
+    if (ia >= 0) return -1;
+    if (ib >= 0) return 1;
+    return a.localeCompare(b);
+  });
+}
+
+function collectSliceKeys(
+  metricByName: Map<string, NonNullable<EvalMetricReport["metrics"]>[number]>,
+  dim: "byIntentL2" | "byDifficulty"
+) {
+  return Array.from(
+    new Set(
+      SLICE_METRIC_COLUMNS.flatMap((col) => Object.keys(metricByName.get(col.key)?.[dim] || {}))
+    )
+  );
+}
+
+function buildMetricByName(report: EvalMetricReport | null, ragas: EvalMetricReport | null) {
+  const metricByName = new Map<string, NonNullable<EvalMetricReport["metrics"]>[number]>();
+  for (const m of report?.metrics || []) metricByName.set(m.name, m);
+  for (const m of ragas?.metrics || []) metricByName.set(m.name, m);
+  return metricByName;
+}
+
+function docDiff(expected: string[] | undefined, retrieved: string[] | undefined) {
+  const exp = new Set(expected || []);
+  const ret = new Set(retrieved || []);
+  const missed = [...exp].filter((id) => !ret.has(id));
+  const extra = [...ret].filter((id) => !exp.has(id));
+  return { missed, extra };
+}
 
 export function EvalRunDetailPage() {
   const { runId = "" } = useParams();
@@ -185,6 +227,10 @@ export function EvalRunDetailPage() {
   const [compareCandidates, setCompareCandidates] = useState<EvalRun[]>([]);
   const [compareLoading, setCompareLoading] = useState(false);
   const [selectedBaselineId, setSelectedBaselineId] = useState("");
+  const [recordSheetOpen, setRecordSheetOpen] = useState(false);
+  const [recordDetail, setRecordDetail] = useState<EvalRecord | null>(null);
+  const [recordDetailLoading, setRecordDetailLoading] = useState(false);
+  const [recordRerunning, setRecordRerunning] = useState(false);
   const ragasStatusRef = useRef<string | null>(null);
 
   const activeRagasBatch =
@@ -324,6 +370,69 @@ export function EvalRunDetailPage() {
     }
   };
 
+  const openRecordDetail = async (recordId: string, fallback?: EvalRecord | null) => {
+    if (!recordId) return;
+    const fromList = fallback || records?.records?.find((r) => r.id === recordId) || null;
+    setRecordSheetOpen(true);
+    setRecordDetail(fromList);
+    setRecordDetailLoading(true);
+    try {
+      setRecordDetail(await getRecord(recordId));
+    } catch (error) {
+      if (!fromList) {
+        toast.error(getErrorMessage(error, "加载样本详情失败"));
+        setRecordSheetOpen(false);
+      } else {
+        toast.warning(getErrorMessage(error, "刷新样本详情失败，已展示列表缓存"));
+      }
+    } finally {
+      setRecordDetailLoading(false);
+    }
+  };
+
+  const handleRerunRecord = async () => {
+    if (!runId || !recordDetail?.id || !run || recordRerunning) return;
+    if (!TERMINAL.has(run.status)) {
+      toast.error("仅终态 Run 可单样本重跑");
+      return;
+    }
+    const recordId = recordDetail.id;
+    setRecordRerunning(true);
+    try {
+      await rerunRecord(runId, recordId);
+      toast.success("已提交单样本重跑，可关闭本窗；完成后将自动更新自建指标");
+      const deadline = Date.now() + 15 * 60 * 1000;
+      let sawActive = false;
+      while (Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 1500));
+        const latest = await getRun(runId);
+        setRun(latest);
+        if (ACTIVE.has(latest.status || "")) {
+          sawActive = true;
+        }
+        if (sawActive && TERMINAL.has(latest.status || "")) {
+          await refresh();
+          try {
+            const detail = await getRecord(recordId);
+            setRecordDetail((prev) => (prev?.id === recordId ? detail : prev));
+          } catch {
+            /* 列表刷新已覆盖主要状态 */
+          }
+          toast.warning(
+            "单样本重跑完成，自建指标已更新。录制结果已变化，请自行点击「RAGAS 评分」重新计算",
+            { duration: 12000 }
+          );
+          return;
+        }
+      }
+      toast.warning("单样本重跑仍在进行，请稍后刷新页面查看结果");
+    } catch (error) {
+      toast.error(getErrorMessage(error, "单样本重跑失败"));
+    } finally {
+      setRecordRerunning(false);
+    }
+  };
+
   const openRagasDialog = async () => {
     if (ragasBusy) return;
     setRagasDialogOpen(true);
@@ -334,14 +443,24 @@ export function EvalRunDetailPage() {
       const embs = enabledCandidates(models.embedding?.candidates);
       setChatModels(chats);
       setEmbeddingModels(embs);
-      setSelectedChatModelId((prev) =>
-        prev && chats.some((c) => c.id === prev) ? prev : pickDefaultId(models.chat?.defaultModel, chats)
-      );
-      setSelectedEmbeddingModelId((prev) =>
-        prev && embs.some((c) => c.id === prev)
-          ? prev
-          : pickDefaultId(models.embedding?.defaultModel, embs)
-      );
+      const ragasPref =
+        run?.configSnapshot?.ragas && typeof run.configSnapshot.ragas === "object"
+          ? (run.configSnapshot.ragas as Record<string, unknown>)
+          : null;
+      const prefChat =
+        typeof ragasPref?.chatModelId === "string" ? ragasPref.chatModelId : null;
+      const prefEmb =
+        typeof ragasPref?.embeddingModelId === "string" ? ragasPref.embeddingModelId : null;
+      setSelectedChatModelId((prev) => {
+        if (prev && chats.some((c) => c.id === prev)) return prev;
+        if (prefChat && chats.some((c) => c.id === prefChat)) return prefChat;
+        return pickDefaultId(models.chat?.defaultModel, chats);
+      });
+      setSelectedEmbeddingModelId((prev) => {
+        if (prev && embs.some((c) => c.id === prev)) return prev;
+        if (prefEmb && embs.some((c) => c.id === prefEmb)) return prefEmb;
+        return pickDefaultId(models.embedding?.defaultModel, embs);
+      });
     } catch (error) {
       toast.error(getErrorMessage(error, "加载模型列表失败"));
       setRagasDialogOpen(false);
@@ -494,7 +613,17 @@ export function EvalRunDetailPage() {
           </Button>
           {TERMINAL.has(run.status) && (
             <>
-              <Button variant="outline" size="sm" onClick={openRagasDialog} disabled={ragasBusy}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={openRagasDialog}
+                disabled={ragasBusy || !run.ragasEnabled}
+                title={
+                  run.ragasEnabled
+                    ? undefined
+                    : "创建 Run 时未启用 RAGAS，无法在此评分"
+                }
+              >
                 {ragasBusy ? (
                   <Loader2 className="mr-1 h-4 w-4 animate-spin" />
                 ) : (
@@ -595,6 +724,71 @@ export function EvalRunDetailPage() {
         </Card>
       </div>
 
+      {run.configSnapshot && Object.keys(run.configSnapshot).length > 0 ? (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium">配置快照</CardTitle>
+            <CardDescription>
+              创建时冻结 · schema {String(run.configSnapshot.schemaVersion || "-")} ·{" "}
+              {String(run.configSnapshot.frozenAt || "-")}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-4">
+            <div>
+              <div className="text-xs text-muted-foreground">Chat 档位</div>
+              <div className="font-mono text-xs">
+                {String(
+                  (run.configSnapshot.model as Record<string, unknown> | undefined)?.resolvedTier ?? "-"
+                )}
+              </div>
+            </div>
+            <div>
+              <div className="text-xs text-muted-foreground">Embedding</div>
+              <div className="font-mono text-xs">
+                {String(
+                  (run.configSnapshot.embedding as Record<string, unknown> | undefined)?.defaultModelId ??
+                    "-"
+                )}
+              </div>
+            </div>
+            <div>
+              <div className="text-xs text-muted-foreground">检索 TopK / RRF-k</div>
+              <div className="font-mono text-xs">
+                {String(
+                  (run.configSnapshot.retrieval as Record<string, unknown> | undefined)?.defaultTopK ?? "-"
+                )}{" "}
+                /{" "}
+                {String(
+                  (
+                    (run.configSnapshot.retrieval as Record<string, unknown> | undefined)?.fusion as
+                      | Record<string, unknown>
+                      | undefined
+                  )?.rrfK ?? "-"
+                )}
+              </div>
+            </div>
+            <div>
+              <div className="text-xs text-muted-foreground">知识库存指纹</div>
+              <div
+                className="truncate font-mono text-xs"
+                title={String(
+                  (run.configSnapshot.knowledgeSnapshot as Record<string, unknown> | undefined)
+                    ?.fingerprint ?? "-"
+                )}
+              >
+                {(() => {
+                  const fp = String(
+                    (run.configSnapshot.knowledgeSnapshot as Record<string, unknown> | undefined)
+                      ?.fingerprint ?? "-"
+                  );
+                  return fp === "-" ? "-" : `${fp.slice(0, 16)}…`;
+                })()}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
+
       {report ? (
         <Card>
           <CardHeader>
@@ -632,25 +826,17 @@ export function EvalRunDetailPage() {
               </div>
             </div>
             {(() => {
-              const metricByName = new Map<string, NonNullable<EvalMetricReport["metrics"]>[number]>();
-              for (const m of report.metrics || []) metricByName.set(m.name, m);
-              for (const m of ragasReport?.metrics || []) metricByName.set(m.name, m);
-              const l2Keys = Array.from(
-                new Set(
-                  INTENT_L2_SLICE_COLUMNS.flatMap((col) =>
-                    Object.keys(metricByName.get(col.key)?.byIntentL2 || {})
-                  )
-                )
-              ).sort();
+              const metricByName = buildMetricByName(report, ragasReport);
+              const l2Keys = collectSliceKeys(metricByName, "byIntentL2").sort();
               if (l2Keys.length === 0) return null;
               return (
                 <div className="space-y-3 border-t border-slate-100 pt-4">
-                  <h3 className="text-base font-semibold text-slate-900">Intent L2 核心指标</h3>
+                  <h3 className="text-base font-semibold text-slate-900">Intent L2 切片</h3>
                   <Table className="min-w-[720px]">
                     <TableHeader>
                       <TableRow>
                         <TableHead>Intent L2</TableHead>
-                        {INTENT_L2_SLICE_COLUMNS.map((col) => (
+                        {SLICE_METRIC_COLUMNS.map((col) => (
                           <TableHead key={col.key}>{col.label}</TableHead>
                         ))}
                       </TableRow>
@@ -659,9 +845,45 @@ export function EvalRunDetailPage() {
                       {l2Keys.map((key) => (
                         <TableRow key={key}>
                           <TableCell className="font-mono text-xs">{key}</TableCell>
-                          {INTENT_L2_SLICE_COLUMNS.map((col) => {
+                          {SLICE_METRIC_COLUMNS.map((col) => {
                             const metric = metricByName.get(col.key);
                             const value = metric?.byIntentL2?.[key];
+                            return (
+                              <TableCell key={col.key}>
+                                {value == null ? "-" : formatScore(value, col.pct)}
+                              </TableCell>
+                            );
+                          })}
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              );
+            })()}
+            {(() => {
+              const metricByName = buildMetricByName(report, ragasReport);
+              const diffKeys = sortDifficultyKeys(collectSliceKeys(metricByName, "byDifficulty"));
+              if (diffKeys.length === 0) return null;
+              return (
+                <div className="space-y-3 border-t border-slate-100 pt-4">
+                  <h3 className="text-base font-semibold text-slate-900">难度切片</h3>
+                  <Table className="min-w-[720px]">
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Difficulty</TableHead>
+                        {SLICE_METRIC_COLUMNS.map((col) => (
+                          <TableHead key={col.key}>{col.label}</TableHead>
+                        ))}
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {diffKeys.map((key) => (
+                        <TableRow key={key}>
+                          <TableCell className="font-mono text-xs">{key}</TableCell>
+                          {SLICE_METRIC_COLUMNS.map((col) => {
+                            const metric = metricByName.get(col.key);
+                            const value = metric?.byDifficulty?.[key];
                             return (
                               <TableCell key={col.key}>
                                 {value == null ? "-" : formatScore(value, col.pct)}
@@ -686,7 +908,7 @@ export function EvalRunDetailPage() {
                       }`
                     : ragasReport
                       ? ` 批次 ${ragasReport.batchId} · ${ragasReport.status} · ${ragasReport.algorithmVersion || "-"}`
-                      : " 暂无 RAGAS 批次（需 Run 开启 ragasEnabled，且 app.eval.ragas.enabled=true）"}
+                      : " 暂无 RAGAS 批次（需创建时勾选「启用 RAGAS」，且 app.eval.ragas.enabled=true）"}
                   {!activeRagasBatch && (() => {
                     const hint = formatRagasCostHint(latestRagasBatch);
                     return hint ? ` · ${hint}` : "";
@@ -829,6 +1051,7 @@ export function EvalRunDetailPage() {
                       <TableHead>queryId</TableHead>
                       <TableHead>失败原因</TableHead>
                       <TableHead>Trace</TableHead>
+                      <TableHead className="w-[72px]" />
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -861,10 +1084,20 @@ export function EvalRunDetailPage() {
                                 "-"
                               )}
                             </TableCell>
+                            <TableCell onClick={(e) => e.stopPropagation()}>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 px-2 text-xs"
+                                onClick={() => void openRecordDetail(f.recordId)}
+                              >
+                                详情
+                              </Button>
+                            </TableCell>
                           </TableRow>
                           {open ? (
                             <TableRow className="bg-slate-50/80 hover:bg-slate-50/80">
-                              <TableCell colSpan={4} className="px-4 py-3">
+                              <TableCell colSpan={5} className="px-4 py-3">
                                 <dl className="grid gap-3 md:grid-cols-2">
                                   <div className="rounded-md border border-slate-200/80 bg-white px-3 py-2.5">
                                     <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
@@ -1038,27 +1271,36 @@ export function EvalRunDetailPage() {
                 <TableRow>
                   <TableHead>queryId</TableHead>
                   <TableHead>状态</TableHead>
+                  <TableHead>难度</TableHead>
                   <TableHead>问题</TableHead>
                   <TableHead>TTFT</TableHead>
                   <TableHead>耗时</TableHead>
-                  <TableHead>意图</TableHead>
+                  <TableHead>期望/预测意图</TableHead>
                   <TableHead>Trace</TableHead>
+                  <TableHead className="w-[72px]" />
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {(records?.records || []).map((item) => (
-                  <TableRow key={item.id}>
+                  <TableRow
+                    key={item.id}
+                    className="cursor-pointer"
+                    onClick={() => void openRecordDetail(item.id, item)}
+                  >
                     <TableCell className="font-mono text-xs">{item.queryId || "-"}</TableCell>
                     <TableCell>
                       <EvalStatusBadge kind="record" status={item.status} />
                     </TableCell>
+                    <TableCell className="font-mono text-xs">{item.difficulty || "-"}</TableCell>
                     <TableCell className="max-w-[250px] truncate" title={item.question}>
                       {item.question}
                     </TableCell>
                     <TableCell>{item.ttftMs ?? "-"} ms</TableCell>
                     <TableCell>{item.totalLatencyMs ?? "-"} ms</TableCell>
-                    <TableCell className="font-mono text-xs">{item.intentPred || "-"}</TableCell>
-                    <TableCell>
+                    <TableCell className="font-mono text-xs">
+                      {item.intentL2 || "-"} / {item.intentPred || "-"}
+                    </TableCell>
+                    <TableCell onClick={(e) => e.stopPropagation()}>
                       {item.traceId ? (
                         <Link
                           className="inline-flex items-center text-sky-700 hover:underline"
@@ -1070,6 +1312,16 @@ export function EvalRunDetailPage() {
                       ) : (
                         "-"
                       )}
+                    </TableCell>
+                    <TableCell onClick={(e) => e.stopPropagation()}>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2 text-xs"
+                        onClick={() => void openRecordDetail(item.id, item)}
+                      >
+                        详情
+                      </Button>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -1223,6 +1475,192 @@ export function EvalRunDetailPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={recordSheetOpen} onOpenChange={setRecordSheetOpen}>
+        <DialogContent className="flex max-h-[85vh] w-full max-w-3xl flex-col gap-0 overflow-hidden p-0 sm:rounded-2xl">
+          <DialogHeader className="shrink-0 border-b px-6 py-4 pr-12">
+            <DialogTitle>样本详情</DialogTitle>
+            <DialogDescription>
+              {recordDetail?.queryId
+                ? `queryId ${recordDetail.queryId}`
+                : recordDetailLoading
+                  ? "加载中…"
+                  : "录制结果与 Case 标注对照"}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
+            {recordDetailLoading && !recordDetail ? (
+              <div className="flex items-center gap-2 py-10 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                加载样本…
+              </div>
+            ) : recordDetail ? (
+              <RecordDetailBody record={recordDetail} />
+            ) : (
+              <p className="py-8 text-sm text-muted-foreground">暂无数据</p>
+            )}
+          </div>
+          {recordDetail?.id && run && (TERMINAL.has(run.status) || recordRerunning) ? (
+            <DialogFooter className="shrink-0 border-t px-6 py-3 sm:justify-between">
+              <p className="max-w-[28rem] text-left text-xs text-muted-foreground">
+                {recordRerunning
+                  ? "正在重跑本条样本，可关闭本窗；完成后页面会刷新自建指标。"
+                  : "重跑将重新录制本条样本并自动重算自建指标；RAGAS 需完成后手动触发。"}
+              </p>
+              <Button
+                size="sm"
+                onClick={() => void handleRerunRecord()}
+                disabled={recordRerunning || recordDetailLoading || ragasBusy || !TERMINAL.has(run.status)}
+              >
+                {recordRerunning ? (
+                  <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                ) : (
+                  <RotateCcw className="mr-1 h-4 w-4" />
+                )}
+                {recordRerunning ? "重跑中…" : "重跑本条"}
+              </Button>
+            </DialogFooter>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+function RecordDetailBody({ record }: { record: EvalRecord }) {
+  const { missed, extra } = docDiff(record.expectedDocIds, record.retrievedDocIds);
+  return (
+    <div className="mt-4 space-y-4 text-sm">
+      <div className="flex flex-wrap items-center gap-2">
+        <EvalStatusBadge kind="record" status={record.status} />
+        {record.difficulty ? (
+          <span className="rounded border px-1.5 py-0.5 font-mono text-xs text-muted-foreground">
+            {record.difficulty}
+          </span>
+        ) : null}
+        {record.requiresRag != null ? (
+          <span className="rounded border px-1.5 py-0.5 font-mono text-xs text-muted-foreground">
+            requiresRag={String(record.requiresRag)}
+          </span>
+        ) : null}
+        {record.traceId ? (
+          <Link
+            className="inline-flex items-center text-xs text-sky-700 hover:underline"
+            to={`/admin/traces/${encodeURIComponent(record.traceId)}`}
+          >
+            Trace {record.traceId.slice(0, 12)}…
+            <ExternalLink className="ml-1 h-3 w-3" />
+          </Link>
+        ) : null}
+      </div>
+
+      <DetailBlock title="问题">{record.question || "-"}</DetailBlock>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <DetailBlock title="期望意图">
+          <span className="font-mono text-xs">
+            {record.intentL1 || "-"} / {record.intentL2 || "-"}
+          </span>
+        </DetailBlock>
+        <DetailBlock title="预测意图">
+          <span className="font-mono text-xs">
+            {record.intentPred || "-"}
+            {(record.predictedIntents || []).length > 1
+              ? ` · [${(record.predictedIntents || []).join(", ")}]`
+              : ""}
+          </span>
+        </DetailBlock>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <DetailBlock title="期望文档">
+          <span className="break-all font-mono text-xs">
+            {(record.expectedDocIds || []).join(", ") || "-"}
+          </span>
+        </DetailBlock>
+        <DetailBlock title="召回文档">
+          <span className="break-all font-mono text-xs">
+            {(record.retrievedDocIds || []).join(", ") || "-"}
+          </span>
+        </DetailBlock>
+        <DetailBlock title="未召回 (miss)">
+          <span className="break-all font-mono text-xs text-rose-800">{missed.join(", ") || "-"}</span>
+        </DetailBlock>
+        <DetailBlock title="多召回 (extra)">
+          <span className="break-all font-mono text-xs text-amber-900">{extra.join(", ") || "-"}</span>
+        </DetailBlock>
+      </div>
+      {(record.niceToHaveDocIds || []).length > 0 ? (
+        <DetailBlock title="nice 文档">
+          <span className="break-all font-mono text-xs">
+            {(record.niceToHaveDocIds || []).join(", ")}
+          </span>
+        </DetailBlock>
+      ) : null}
+      <DetailBlock title="系统回答" pre>
+        {record.response || "-"}
+      </DetailBlock>
+      {record.groundTruth ? (
+        <DetailBlock title="标准答案" pre>
+          {record.groundTruth}
+        </DetailBlock>
+      ) : null}
+      {(record.retrievedContexts || []).length > 0 ? (
+        <DetailBlock title={`召回上下文 (${record.retrievedContexts!.length})`}>
+          <div className="max-h-64 space-y-2 overflow-y-auto">
+            {record.retrievedContexts!.map((ctx, i) => (
+              <pre
+                key={`${record.id}-ctx-${i}`}
+                className="whitespace-pre-wrap rounded border bg-slate-50 px-2 py-1.5 font-mono text-[11px] leading-relaxed text-slate-800"
+              >
+                [{i + 1}] {record.retrievedContextDocIds?.[i] || "?"}
+                {"\n"}
+                {ctx}
+              </pre>
+            ))}
+          </div>
+        </DetailBlock>
+      ) : null}
+      <div className="grid gap-3 sm:grid-cols-2">
+        <DetailBlock title="性能">
+          TTFT {record.ttftMs ?? "-"} ms · 总耗时 {record.totalLatencyMs ?? "-"} ms · 旁路{" "}
+          {record.evalLatencyMs ?? "-"} ms
+        </DetailBlock>
+        <DetailBlock title="分流">
+          hasKb={String(record.hasKb ?? "-")} · hasMcp={String(record.hasMcp ?? "-")} · skipped=
+          {String(record.retrievalSkipped ?? "-")}
+          {record.skipReason ? ` · ${record.skipReason}` : ""}
+        </DetailBlock>
+      </div>
+      {(record.errorCode || record.errorMessage) && (
+        <DetailBlock title="错误">
+          <span className="text-rose-700">
+            {[record.errorCode, record.errorMessage].filter(Boolean).join(" · ")}
+          </span>
+        </DetailBlock>
+      )}
+      <div className="grid gap-2 font-mono text-[11px] text-muted-foreground">
+        <div>conversationId: {record.conversationId || "-"}</div>
+        <div>taskId: {record.taskId || "-"}</div>
+        <div>evidence: {record.evidenceSource || "-"}</div>
+      </div>
+    </div>
+  );
+}
+
+function DetailBlock({
+  title,
+  children,
+  pre
+}: {
+  title: string;
+  children: ReactNode;
+  pre?: boolean;
+}) {
+  return (
+    <div className="rounded-md border px-3 py-2.5">
+      <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{title}</div>
+      <div className={`mt-1.5 text-slate-900 ${pre ? "whitespace-pre-wrap leading-relaxed" : ""}`}>
+        {children}
+      </div>
     </div>
   );
 }

@@ -1028,22 +1028,3 @@ CREATE INDEX idx_eval_score_run_dim ON t_eval_score (run_id, dimension_type, dim
 CREATE INDEX idx_eval_score_record ON t_eval_score (record_id) WHERE deleted = 0 AND record_id IS NOT NULL;
 COMMENT ON TABLE t_eval_score IS '聚合或样本级指标；dimension_type=OVERALL/INTENT_L1/INTENT_L2/DIFFICULTY/SAMPLE';
 COMMENT ON COLUMN t_eval_score.record_id IS '聚合指标为空；SAMPLE维度指向t_eval_record.id';
-
-CREATE TABLE t_eval_manual_override (
-    id                VARCHAR(20)     NOT NULL PRIMARY KEY,
-    run_id            VARCHAR(20)     NOT NULL,
-    record_id         VARCHAR(20)     NOT NULL,
-    metric_name       VARCHAR(64)     NOT NULL,
-    automatic_score   NUMERIC(12, 6),
-    manual_score      NUMERIC(12, 6)  NOT NULL,
-    reason            TEXT,
-    status            VARCHAR(16)     NOT NULL DEFAULT 'ACTIVE',
-    operator_id       VARCHAR(20),
-    create_time       TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    update_time       TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    deleted           SMALLINT        NOT NULL DEFAULT 0
-);
-CREATE UNIQUE INDEX uk_eval_manual_override_active ON t_eval_manual_override (run_id, record_id, metric_name) WHERE deleted = 0 AND status = 'ACTIVE';
-CREATE INDEX idx_eval_manual_override_run ON t_eval_manual_override (run_id) WHERE deleted = 0;
-COMMENT ON TABLE t_eval_manual_override IS '人工覆盖指标分；ACTIVE/REVOKED';
-COMMENT ON COLUMN t_eval_manual_override.status IS 'ACTIVE / REVOKED';

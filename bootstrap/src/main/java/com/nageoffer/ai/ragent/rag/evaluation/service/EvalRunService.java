@@ -39,6 +39,11 @@ public interface EvalRunService {
      */
     void resumeRun(String runId);
 
+    /**
+     * 终态 Run 下单样本重录：强制重跑指定 Record 对应 Case，随后自动重算自建指标（不自动 RAGAS）。
+     */
+    void rerunRecord(String runId, String recordId);
+
     IPage<EvalRecordVO> pageRecords(String runId, EvalRecordPageRequest request);
 
     EvalRecordVO getRecord(String recordId);

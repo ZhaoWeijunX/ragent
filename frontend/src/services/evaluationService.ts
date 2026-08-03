@@ -220,6 +220,15 @@ export interface EvalRecord {
   status: string;
   question: string;
   response?: string | null;
+  intentL1?: string | null;
+  intentL2?: string | null;
+  difficulty?: string | null;
+  requiresRag?: boolean | null;
+  expectedAnswerType?: string | null;
+  expectedDocIds?: string[];
+  niceToHaveDocIds?: string[];
+  groundTruth?: string | null;
+  trapType?: string | null;
   retrievedDocIds?: string[];
   retrievedChunkIds?: string[];
   retrievedContexts?: string[];
@@ -260,6 +269,9 @@ export async function createRun(payload: {
   datasetVersionId: string;
   baselineRunId?: string;
   ragasEnabled?: boolean;
+  ragasAutoStart?: boolean;
+  ragasChatModelId?: string;
+  ragasEmbeddingModelId?: string;
   tags?: Record<string, unknown>;
 }) {
   return api.post<string, string>(`${BASE}/runs`, payload);
@@ -275,6 +287,11 @@ export async function cancelRun(runId: string) {
 
 export async function resumeRun(runId: string) {
   await api.post(`${BASE}/runs/${runId}/resume`);
+}
+
+/** 终态 Run 单样本重跑（异步：重录后自动自建评分，不自动 RAGAS）。 */
+export async function rerunRecord(runId: string, recordId: string) {
+  await api.post(`${BASE}/runs/${runId}/records/${recordId}/rerun`);
 }
 
 export async function pageRecords(
@@ -479,6 +496,8 @@ export interface EvalRunCompare {
   currentJudgeConfig?: Record<string, unknown> | null;
   baselineJudgeConfig?: Record<string, unknown> | null;
   judgeConfigDiff?: EvalCompareConfigDiffItem[];
+  /** Run configSnapshot 扁平 diff（模型 / 检索 / 知识指纹等） */
+  configDiff?: EvalCompareConfigDiffItem[];
   current: {
     runId: string;
     name?: string | null;

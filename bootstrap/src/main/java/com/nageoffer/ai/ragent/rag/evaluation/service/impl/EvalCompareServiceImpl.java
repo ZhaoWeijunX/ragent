@@ -108,6 +108,9 @@ public class EvalCompareServiceImpl implements EvalCompareService {
                 .currentJudgeConfig(currentJudge.isEmpty() ? null : currentJudge)
                 .baselineJudgeConfig(baselineJudge.isEmpty() ? null : baselineJudge)
                 .judgeConfigDiff(EvalRunCompareSupport.configDiff(currentJudge, baselineJudge))
+                .configDiff(EvalRunCompareSupport.configDiff(
+                        current.getConfigSnapshot() == null ? Map.of() : current.getConfigSnapshot(),
+                        baseline.getConfigSnapshot() == null ? Map.of() : baseline.getConfigSnapshot()))
                 .failures(EvalRunCompareSupport.failureRegression(detCurrent.getFailures(), detBaseline.getFailures()))
                 .build();
     }

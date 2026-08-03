@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Plus, RefreshCw, Play } from "lucide-react";
+import { Loader2, Plus, RefreshCw, Play } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -12,13 +12,46 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { RelativeTime } from "@/components/RelativeTime";
 import { EvalStatusBadge } from "@/pages/admin/evaluations/EvalStatusBadge";
-import type { EvalDataset, EvalDatasetVersion, EvalRun, PageResult } from "@/services/evaluationService";
-import { createRun, getDataset, listVersions, pageDatasets, pageRuns } from "@/services/evaluationService";
+import type {
+  EvalDataset,
+  EvalDatasetVersion,
+  EvalRagasJudgeModelCandidate,
+  EvalRun,
+  PageResult
+} from "@/services/evaluationService";
+import {
+  createRun,
+  getDataset,
+  listRagasJudgeModels,
+  listVersions,
+  pageDatasets,
+  pageRuns
+} from "@/services/evaluationService";
 import { getErrorMessage } from "@/utils/error";
 
 const PAGE_SIZE = 10;
 const DUAL_PATH_HINT =
   "双路径证据提示：旁路 (/rag/eval) 检索证据可能与真实 Chat 回答所用上下文不完全一致，请勿将两者视为严格等价。";
+
+function enabledCandidates(list: EvalRagasJudgeModelCandidate[] | undefined | null): EvalRagasJudgeModelCandidate[] {
+  return (list || []).filter((c) => c?.id && c.enabled !== false);
+}
+
+function pickDefaultId(
+  defaultModel: string | null | undefined,
+  candidates: EvalRagasJudgeModelCandidate[]
+): string {
+  if (candidates.length === 0) return "";
+  if (defaultModel && candidates.some((c) => c.id === defaultModel)) {
+    return defaultModel;
+  }
+  return candidates[0].id;
+}
+
+function modelOptionLabel(m: EvalRagasJudgeModelCandidate): string {
+  if (m.provider && m.model) return `${m.provider} · ${m.model}`;
+  return m.model || m.id;
+}
 
 export function EvalRunListPage() {
   const navigate = useNavigate();
@@ -32,14 +65,21 @@ export function EvalRunListPage() {
   const [keyword, setKeyword] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
   const [datasets, setDatasets] = useState<EvalDataset[]>([]);
   const [versions, setVersions] = useState<EvalDatasetVersion[]>([]);
+  const [judgeModelsLoading, setJudgeModelsLoading] = useState(false);
+  const [chatModels, setChatModels] = useState<EvalRagasJudgeModelCandidate[]>([]);
+  const [embeddingModels, setEmbeddingModels] = useState<EvalRagasJudgeModelCandidate[]>([]);
   const [form, setForm] = useState({
     name: "",
     datasetId: "",
     datasetVersionId: presetVersionId,
     environment: "eval-local",
-    ragasEnabled: false
+    ragasEnabled: false,
+    ragasAutoStart: false,
+    ragasChatModelId: "",
+    ragasEmbeddingModelId: ""
   });
 
   const load = async (current = pageNo, kw = keyword, status = statusFilter) => {
@@ -91,6 +131,33 @@ export function EvalRunListPage() {
     })();
   }, [dialogOpen, presetVersionId]);
 
+  const loadJudgeModels = async () => {
+    setJudgeModelsLoading(true);
+    try {
+      const models = await listRagasJudgeModels();
+      const chats = enabledCandidates(models.chat?.candidates);
+      const embs = enabledCandidates(models.embedding?.candidates);
+      setChatModels(chats);
+      setEmbeddingModels(embs);
+      setForm((prev) => ({
+        ...prev,
+        ragasChatModelId:
+          prev.ragasChatModelId && chats.some((c) => c.id === prev.ragasChatModelId)
+            ? prev.ragasChatModelId
+            : pickDefaultId(models.chat?.defaultModel, chats),
+        ragasEmbeddingModelId:
+          prev.ragasEmbeddingModelId && embs.some((c) => c.id === prev.ragasEmbeddingModelId)
+            ? prev.ragasEmbeddingModelId
+            : pickDefaultId(models.embedding?.defaultModel, embs)
+      }));
+    } catch (error) {
+      toast.error(getErrorMessage(error, "加载 Judge 模型失败"));
+      setForm((prev) => ({ ...prev, ragasEnabled: false, ragasAutoStart: false }));
+    } finally {
+      setJudgeModelsLoading(false);
+    }
+  };
+
   const publishedVersions = useMemo(() => versions.filter((v) => v.status === "PUBLISHED"), [versions]);
 
   const handleSelectDataset = async (datasetId: string) => {
@@ -109,23 +176,50 @@ export function EvalRunListPage() {
     }
   };
 
+  const handleToggleRagas = async (checked: boolean) => {
+    setForm((prev) => ({
+      ...prev,
+      ragasEnabled: checked,
+      ragasAutoStart: checked ? prev.ragasAutoStart : false
+    }));
+    if (checked && chatModels.length === 0 && embeddingModels.length === 0) {
+      await loadJudgeModels();
+    }
+  };
+
   const handleCreate = async () => {
     if (!form.name.trim() || !form.datasetVersionId) {
       toast.error("请填写名称并选择已发布版本");
       return;
     }
+    if (form.ragasEnabled && (!form.ragasChatModelId || !form.ragasEmbeddingModelId)) {
+      toast.error("启用 RAGAS 需选择 Judge 语言模型与嵌入模型");
+      return;
+    }
+    setCreating(true);
     try {
       const id = await createRun({
         name: form.name.trim(),
         datasetVersionId: form.datasetVersionId,
         ragasEnabled: form.ragasEnabled,
+        ragasAutoStart: form.ragasEnabled ? form.ragasAutoStart : false,
+        ragasChatModelId: form.ragasEnabled ? form.ragasChatModelId || undefined : undefined,
+        ragasEmbeddingModelId: form.ragasEnabled ? form.ragasEmbeddingModelId || undefined : undefined,
         tags: { environment: form.environment || "unknown" }
       });
-      toast.success("Run 已创建并开始录制");
+      toast.success(
+        form.ragasEnabled
+          ? form.ragasAutoStart
+            ? "Run 已创建：录制完成后将自动 RAGAS 评分"
+            : "Run 已创建：可在详情页手动开始 RAGAS"
+          : "Run 已创建并开始录制"
+      );
       setDialogOpen(false);
       navigate(`/admin/evaluations/runs/${id}`);
     } catch (error) {
       toast.error(getErrorMessage(error, "创建 Run 失败"));
+    } finally {
+      setCreating(false);
     }
   };
 
@@ -278,8 +372,8 @@ export function EvalRunListPage() {
         </div>
       ) : null}
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent>
+      <Dialog open={dialogOpen} onOpenChange={(open) => !creating && setDialogOpen(open)}>
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>创建评测 Run</DialogTitle>
             <DialogDescription>仅可引用 PUBLISHED 版本。创建后立即异步录制。</DialogDescription>
@@ -329,23 +423,97 @@ export function EvalRunListPage() {
                 onChange={(e) => setForm((p) => ({ ...p, environment: e.target.value }))}
               />
             </div>
-            <label className="flex items-center gap-2 text-sm">
+            <label className="flex items-start gap-2 text-sm">
               <input
                 type="checkbox"
+                className="mt-1"
                 checked={form.ragasEnabled}
-                onChange={(e) => setForm((p) => ({ ...p, ragasEnabled: e.target.checked }))}
+                onChange={(e) => void handleToggleRagas(e.target.checked)}
               />
-              启用 RAGAS（需 app.eval.ragas.enabled 与评分服务可用；失败不影响自建指标）
+              <span>
+                启用 RAGAS
+                <span className="mt-0.5 block text-xs text-muted-foreground">
+                  允许在详情页手动评分；需 app.eval.ragas.enabled 与评分服务可用。
+                </span>
+              </span>
             </label>
+            {form.ragasEnabled ? (
+              <>
+                <label className="flex items-start gap-2 text-sm pl-6">
+                  <input
+                    type="checkbox"
+                    className="mt-1"
+                    checked={form.ragasAutoStart}
+                    onChange={(e) => setForm((p) => ({ ...p, ragasAutoStart: e.target.checked }))}
+                  />
+                  <span>
+                    录制完成后自动开始 RAGAS 评分
+                    <span className="mt-0.5 block text-xs text-muted-foreground">
+                      失败不影响自建指标；不勾选时可稍后在详情页手动开始。
+                    </span>
+                  </span>
+                </label>
+                <div className="space-y-3 rounded-md border border-violet-200 bg-violet-50/50 px-3 py-3">
+                  {judgeModelsLoading ? (
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      加载 Judge 模型…
+                    </div>
+                  ) : (
+                    <>
+                      <div className="space-y-1.5">
+                        <Label>Judge 语言模型</Label>
+                        <Select
+                          value={form.ragasChatModelId}
+                          onValueChange={(v) => setForm((p) => ({ ...p, ragasChatModelId: v }))}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="选择语言模型" />
+                          </SelectTrigger>
+                          <SelectContent position="item-aligned">
+                            {chatModels.map((m) => (
+                              <SelectItem key={m.id} value={m.id}>
+                                {modelOptionLabel(m)}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>嵌入模型</Label>
+                        <Select
+                          value={form.ragasEmbeddingModelId}
+                          onValueChange={(v) => setForm((p) => ({ ...p, ragasEmbeddingModelId: v }))}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="选择嵌入模型" />
+                          </SelectTrigger>
+                          <SelectContent position="item-aligned">
+                            {embeddingModels.map((m) => (
+                              <SelectItem key={m.id} value={m.id}>
+                                {modelOptionLabel(m)}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <p className="text-xs text-violet-900/80">
+                        所选模型写入 Run 配置快照，自动评分与详情页手动评分均可回退使用。
+                      </p>
+                    </>
+                  )}
+                </div>
+              </>
+            ) : null}
             <p className="text-xs text-amber-800">{DUAL_PATH_HINT}</p>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>
+            <Button variant="outline" disabled={creating} onClick={() => setDialogOpen(false)}>
               取消
             </Button>
-            <Button onClick={handleCreate}>
-              <Play className="mr-2 h-4 w-4" />
-              开始
+            <Button onClick={() => void handleCreate()} disabled={creating || judgeModelsLoading}>
+              {creating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Play className="mr-2 h-4 w-4" />}
+              {creating ? "创建中…" : "开始"}
             </Button>
           </DialogFooter>
         </DialogContent>

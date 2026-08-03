@@ -47,6 +47,9 @@ public class EvalRunCompareVO {
     private Map<String, Object> baselineJudgeConfig;
     private List<ConfigDiffItemVO> judgeConfigDiff;
 
+    /** Run 创建时冻结的 configSnapshot 扁平 diff（模型 / 检索 / 知识指纹等） */
+    private List<ConfigDiffItemVO> configDiff;
+
     /** 失败回归来自自建报告口径 */
     private FailureRegressionVO failures;
 
