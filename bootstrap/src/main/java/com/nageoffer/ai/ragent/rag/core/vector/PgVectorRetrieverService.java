@@ -39,15 +39,23 @@ public class PgVectorRetrieverService implements VectorRetrieverService {
 
     @Override
     public List<RetrievedChunk> retrieve(RetrieveRequest request) {
-        List<Float> embedding = embeddingService.embed(request.getQuery());
-        float[] vector = normalize(toArray(embedding));
+        float[] vector = embedAndNormalize(request.getQuery());
         return retrieveByVector(vector, request);
     }
 
     @Override
     public List<RetrievedChunk> retrieveByVector(float[] vector, RetrieveRequest request) {
-        // 单库检索：按 collection_name 列过滤，走 btree 索引
-        return queryByCollections(vector, List.of(request.getCollectionName()), request.getTopK());
+        List<String> collectionNames = request.getEffectiveCollectionNames();
+        if (collectionNames.isEmpty()) {
+            return List.of();
+        }
+        // 单个或多个逻辑库都通过一条 SQL 过滤，LIMIT 是整个范围的总 TopK
+        return queryByCollections(vector, collectionNames, request.getTopK());
+    }
+
+    @Override
+    public float[] embedAndNormalize(String query) {
+        return normalize(toArray(embeddingService.embed(query)));
     }
 
     @Override
@@ -60,8 +68,7 @@ public class PgVectorRetrieverService implements VectorRetrieverService {
         if (collectionNames == null || collectionNames.isEmpty()) {
             return List.of();
         }
-        List<Float> embedding = embeddingService.embed(query);
-        float[] vector = normalize(toArray(embedding));
+        float[] vector = embedAndNormalize(query);
         // 全局检索：单条 SQL 在多库范围内做带总预算的 TopN 召回，替代逐库 fan-out
         return queryByCollections(vector, collectionNames, candidateBudget);
     }

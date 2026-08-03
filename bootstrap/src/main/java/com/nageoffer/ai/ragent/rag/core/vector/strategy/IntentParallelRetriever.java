@@ -22,7 +22,6 @@ import com.nageoffer.ai.ragent.rag.core.intent.IntentNode;
 import com.nageoffer.ai.ragent.rag.core.intent.NodeScore;
 import com.nageoffer.ai.ragent.rag.core.retrieval.RetrieveRequest;
 import com.nageoffer.ai.ragent.rag.core.vector.VectorRetrieverService;
-import com.nageoffer.ai.ragent.rag.core.vector.strategy.AbstractParallelRetriever;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.List;
@@ -35,15 +34,12 @@ import java.util.concurrent.Executor;
 @Slf4j
 public class IntentParallelRetriever extends AbstractParallelRetriever<IntentParallelRetriever.IntentTask> {
 
-    private final VectorRetrieverService retrieverService;
-
     public record IntentTask(NodeScore nodeScore, int intentTopK) {
     }
 
     public IntentParallelRetriever(VectorRetrieverService retrieverService,
                                    Executor executor) {
-        super(executor);
-        this.retrieverService = retrieverService;
+        super(retrieverService, executor);
     }
 
     /**
@@ -63,20 +59,25 @@ public class IntentParallelRetriever extends AbstractParallelRetriever<IntentPar
     }
 
     @Override
-    protected List<RetrievedChunk> createRetrievalTask(String question, IntentTask task, int ignoredTopK) {
+    protected List<RetrievedChunk> createRetrievalTask(String question, IntentTask task, float[] queryVector, int ignoredTopK) {
         NodeScore nodeScore = task.nodeScore();
         IntentNode node = nodeScore.getNode();
+        List<String> collectionNames = node.getEffectiveCollectionNames();
+        if (collectionNames.isEmpty()) {
+            return List.of();
+        }
         try {
-            return retrieverService.retrieve(
+            return retrieverService.retrieveByVector(
+                    queryVector,
                     RetrieveRequest.builder()
-                            .collectionName(node.getCollectionName())
+                            .collectionNames(collectionNames)
                             .query(question)
                             .topK(task.intentTopK())
                             .build()
             );
         } catch (Exception e) {
-            log.error("意图检索失败 - 意图ID: {}, 意图名称: {}, Collection: {}, 错误: {}",
-                    node.getId(), node.getName(), node.getCollectionName(), e.getMessage(), e);
+            log.error("意图检索失败 - 意图ID: {}, 意图名称: {}, Collections: {}, 错误: {}",
+                    node.getId(), node.getName(), collectionNames, e.getMessage(), e);
             return List.of();
         }
     }

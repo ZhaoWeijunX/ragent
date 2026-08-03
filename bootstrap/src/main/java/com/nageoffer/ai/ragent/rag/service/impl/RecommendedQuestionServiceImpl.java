@@ -23,6 +23,7 @@ import com.nageoffer.ai.ragent.framework.convention.ChatMessage;
 import com.nageoffer.ai.ragent.framework.exception.ClientException;
 import com.nageoffer.ai.ragent.rag.dao.entity.ConversationMessageDO;
 import com.nageoffer.ai.ragent.rag.dao.mapper.ConversationMessageMapper;
+import com.nageoffer.ai.ragent.rag.core.source.CitationMarkup;
 import com.nageoffer.ai.ragent.rag.dto.RecommendedQuestionsPayload;
 import com.nageoffer.ai.ragent.rag.service.RecommendedQuestionService;
 import lombok.RequiredArgsConstructor;
@@ -48,19 +49,6 @@ public class RecommendedQuestionServiceImpl implements RecommendedQuestionServic
     private final RecommendedQuestionGenerator generator;
 
     @Override
-    public RecommendedQuestionsPayload getCached(String messageId, String userId) {
-        ConversationMessageDO message = loadAssistantMessage(messageId, userId);
-        if (isRecommendationDisabled(message)) {
-            return RecommendedQuestionsPayload.empty();
-        }
-        List<String> cached = message.getRecommendedQuestions();
-        if (cached == null) {
-            throw new ClientException("推荐问题尚未生成");
-        }
-        return RecommendedQuestionsPayload.success(cached);
-    }
-
-    @Override
     public RecommendedQuestionsPayload generate(String messageId, String userId) {
         ConversationMessageDO message = loadAssistantMessage(messageId, userId);
         if (isRecommendationDisabled(message)) {
@@ -74,7 +62,7 @@ public class RecommendedQuestionServiceImpl implements RecommendedQuestionServic
 
         String question = loadQuestion(message);
         RecommendedQuestionsPayload generated =
-                generator.generate(question, message.getContent(), message.getRetrievedChunks());
+                generator.generate(question, CitationMarkup.strip(message.getContent()), message.getRetrievedChunks());
         if (generated.status() == RecommendedQuestionsPayload.Status.FAILED) {
             return generated;
         }
