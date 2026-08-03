@@ -36,9 +36,10 @@ public class FeishuWikiImportRequest {
 
     private String processMode;
 
-    private String chunkStrategy;
-
-    private String chunkConfig;
+    /**
+     * 文档级摄取配置 JSON，仅在 processMode=chunk 时有效
+     */
+    private String ingestionSpec;
 
     private String pipelineId;
 
