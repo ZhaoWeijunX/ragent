@@ -137,7 +137,8 @@ public class IngestionSpecCodec {
         int budget = maxChars != null && maxChars > 0 ? maxChars : defaults.maxChars();
         return new ChunkBudget(
                 budget,
-                overlap != null && overlap >= 0 ? overlap : Math.min(defaults.overlapChars(), budget - 1),
+                // 缺省重叠按块大小等比给：默认预算里那个数是配 1024 的，照搬到小块上会被压到 budget-1，切一片只前进一个字
+                overlap != null && overlap >= 0 ? overlap : ChunkBudget.defaultOverlapFor(budget),
                 rows != null && rows > 0 ? rows : defaults.rowsPerChunk(),
                 tolerance != null && tolerance > 0 ? tolerance : defaults.toleranceFactor());
     }

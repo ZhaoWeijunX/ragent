@@ -94,9 +94,10 @@ public class ChunkerNode implements IngestionNode {
         }
         ChunkBudget defaults = ChunkBudget.defaults();
         int maxChars = chunkSize != null && chunkSize > 0 ? chunkSize : defaults.maxChars();
+        // 重叠缺省按块大小等比给，而不是照搬默认预算里那个配 1024 的数
         int overlap = settings.getOverlapSize() != null && settings.getOverlapSize() >= 0
                 ? settings.getOverlapSize()
-                : defaults.overlapChars();
+                : ChunkBudget.defaultOverlapFor(maxChars);
         // 重叠必须小于块大小，否则切分无法推进
         if (overlap >= maxChars) {
             overlap = Math.max(0, maxChars - 1);

@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
-import { BookOpen, Check, ChevronDown, ChevronRight, FileUp, FileImage, PlayCircle, RefreshCw, Trash2, Pencil, FileBarChart, X, Eye, MoreHorizontal, FileText, FileSpreadsheet, Link as LinkIcon, Download } from "lucide-react";
+import { BookOpen, Check, ChevronDown, ChevronRight, FileUp, FileImage, Info, PlayCircle, RefreshCw, Trash2, Pencil, FileBarChart, X, Eye, MoreHorizontal, FileText, FileSpreadsheet, Link as LinkIcon, Download } from "lucide-react";
 import { toast } from "sonner";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
@@ -21,7 +21,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { RelativeTime } from "@/components/RelativeTime";
 import { formatFullDateTime } from "@/utils/time";
 
-import type { KnowledgeBase, KnowledgeDocument, KnowledgeDocumentUploadPayload, KnowledgeDocumentChunkLog, PageResult, IngestionSpecSchema } from "@/services/knowledgeService";
+import type { BudgetFieldSchema, KnowledgeBase, KnowledgeDocument, KnowledgeDocumentUploadPayload, KnowledgeDocumentChunkLog, PageResult, IngestionSpecSchema } from "@/services/knowledgeService";
 import {
   deleteDocument,
   enableDocument,
@@ -41,7 +41,6 @@ import { DocumentPreview, isDocxType, isImageType, isPreviewableType, isSpreadsh
 import { getErrorMessage } from "@/utils/error";
 import { FeishuWikiImportDialog } from "@/pages/admin/knowledge/components/FeishuWikiImportDialog";
 import {
-  budgetHintOf,
   buildIngestionSpec,
   DEFAULT_CONFIG_VALUES as FALLBACK_BUDGET,
   noChunkValueOf,
@@ -61,6 +60,49 @@ const SOURCE_OPTIONS = [
   { value: "file", label: "Local File" },
   { value: "url", label: "Remote URL" }
 ];
+
+/**
+ * 预算字段的网格列数：字段数能被 3 整除就三列，否则两列
+ *
+ * 非表格文档是三个字段、恰好铺满一行；表格多一个「每块行数」，四个排三列就剩一个孤零零挂在第二行
+ */
+const budgetGridCols = (count: number) => (count % 3 === 0 ? "md:grid-cols-3" : "md:grid-cols-2");
+
+/**
+ * 预算字段的标签行：字段名 + 悬浮详解 + 建议区间
+ *
+ * 四个字段并排，长说明各占三行就是一堵墙，"调大调小会怎样"因此收进悬浮层；区间不另写一句话，
+ * 直接排在标签右侧。展示的是建议值而非合法值——1 或 8192 合法但没人该这么填，摆出来只会误导，
+ * 真正越界仍由后端 ChunkBudget 构造期拦下。标签本体由调用方传入：上传弹窗要 FormLabel
+ * 关联输入框与错误态，详情弹窗只需一段静态文字
+ */
+const BudgetLabelRow = ({ field, children }: { field: BudgetFieldSchema; children: ReactNode }) => (
+  <div className="flex items-center gap-1">
+    {children}
+    {field.detail ? (
+      <TooltipProvider delayDuration={200}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              tabIndex={-1}
+              aria-label={`${field.label}说明`}
+              className="text-muted-foreground/50 transition-colors hover:text-foreground"
+            >
+              <Info className="h-3.5 w-3.5" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="top" className="max-w-64">
+            <p className="leading-relaxed">{field.detail}</p>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    ) : null}
+    <span className="ml-auto whitespace-nowrap text-xs tabular-nums text-muted-foreground/60">
+      建议 {field.recommendedMin} ~ {field.recommendedMax}
+    </span>
+  </div>
+);
 
 /**
  * 「高级设置」折叠头：块预算三个数字对绝大多数上传者是噪音，默认收起来
@@ -508,6 +550,22 @@ export function KnowledgeDocumentsPage() {
     if (!nextName) {
       toast.error("文档名称不能为空");
       return;
+    }
+    if (detailProcessMode === "chunk" && !detailNoChunk) {
+      for (const field of specSchema?.budgetFields ?? []) {
+        const value = Number(detailConfigValues[field.key] ?? field.defaultValue);
+        if (!Number.isFinite(value) || value < field.min || value > field.max) {
+          toast.error(`${field.label}需落在 ${field.min} ~ ${field.max}`);
+          return;
+        }
+      }
+      const budgetMaxChars = Number(detailConfigValues["maxChars"]);
+      const budgetOverlap = Number(detailConfigValues["overlapChars"]);
+      if (Number.isFinite(budgetMaxChars) && Number.isFinite(budgetOverlap)
+          && budgetMaxChars > 0 && budgetOverlap >= budgetMaxChars) {
+        toast.error("块重叠必须小于块大小");
+        return;
+      }
     }
     setDetailSaving(true);
     try {
@@ -1077,8 +1135,7 @@ export function KnowledgeDocumentsPage() {
               {detailProcessMode === "chunk" ? (
                 <div className="space-y-3 rounded-lg border p-3">
                   <p className="text-sm text-muted-foreground leading-relaxed">
-                    切法由文档结构决定：标题、表格、代码、列表各按自身边界切分，每块自动带上所属章节。
-                    块大小等预算已有默认值，通常不必调整
+                    切法由文档结构决定：标题、表格、代码、列表各按自身边界切分，每块自动带上所属章节
                   </p>
                   {showDetailParseProfile ? (
                     <div>
@@ -1122,10 +1179,12 @@ export function KnowledgeDocumentsPage() {
                   <div>
                     <AdvancedToggle open={detailShowAdvanced} onToggle={() => setDetailShowAdvanced(v => !v)} />
                     {detailShowAdvanced ? (
-                      <div className="mt-3 grid gap-4 md:grid-cols-3">
+                      <div className={cn("mt-3 grid gap-4", budgetGridCols(detailBudgetFields.length))}>
                         {detailBudgetFields.map(field => (
-                          <div key={field.key}>
-                            <div className="text-sm font-medium mb-2">{field.label}</div>
+                          <div key={field.key} className="space-y-2">
+                            <BudgetLabelRow field={field}>
+                              <span className="text-xs font-medium">{field.label}</span>
+                            </BudgetLabelRow>
                             <Input
                               type="number"
                               min={field.min}
@@ -1134,7 +1193,7 @@ export function KnowledgeDocumentsPage() {
                               disabled={detailNoChunk}
                               onChange={e => handleDetailBudgetChange(field.key, e.target.value)}
                             />
-                            <div className="text-sm text-muted-foreground mt-1">{budgetHintOf(field)}</div>
+                            <div className="text-xs text-muted-foreground">{field.hint}</div>
                           </div>
                         ))}
                       </div>
@@ -1772,8 +1831,7 @@ function UploadDialog({ open, onOpenChange, onSubmit }: UploadDialogProps) {
               {isChunkMode ? (
                 <div className="space-y-3">
                   <p className="text-xs text-muted-foreground leading-relaxed">
-                    切法由文档结构决定：标题、表格、代码、列表各按自身边界切分，每块自动带上所属章节。
-                    块大小等预算已有默认值，通常不必调整
+                    切法由文档结构决定：标题、表格、代码、列表各按自身边界切分，每块自动带上所属章节
                   </p>
                   {showParseProfile ? (
                   <FormField
@@ -1832,7 +1890,7 @@ function UploadDialog({ open, onOpenChange, onSubmit }: UploadDialogProps) {
                   <div>
                     <AdvancedToggle open={showAdvanced} onToggle={() => setShowAdvanced(v => !v)} />
                     {showAdvanced ? (
-                      <div className="mt-3 grid gap-4 md:grid-cols-3">
+                      <div className={cn("mt-3 grid gap-4", budgetGridCols(budgetFields.length))}>
                         {budgetFields.map((budgetField) => (
                           <FormField
                             key={budgetField.key}
@@ -1840,9 +1898,11 @@ function UploadDialog({ open, onOpenChange, onSubmit }: UploadDialogProps) {
                             name={budgetField.key as BudgetFieldName}
                             render={({ field }) => (
                               <FormItem>
-                                <FormLabel className="text-xs text-muted-foreground font-normal">
-                                  {budgetField.label}
-                                </FormLabel>
+                                <BudgetLabelRow field={budgetField}>
+                                  <FormLabel className="text-xs text-muted-foreground font-normal">
+                                    {budgetField.label}
+                                  </FormLabel>
+                                </BudgetLabelRow>
                                 <FormControl>
                                   <Input
                                     type="number"
@@ -1852,7 +1912,7 @@ function UploadDialog({ open, onOpenChange, onSubmit }: UploadDialogProps) {
                                     disabled={noChunk}
                                   />
                                 </FormControl>
-                                <FormDescription>{budgetHintOf(budgetField)}</FormDescription>
+                                <FormDescription className="text-xs">{budgetField.hint}</FormDescription>
                                 <FormMessage />
                               </FormItem>
                             )}
