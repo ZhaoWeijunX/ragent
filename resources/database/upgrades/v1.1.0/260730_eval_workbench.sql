@@ -6,7 +6,7 @@
 -- RAG 评测工作台表结构（权威脚本）
 -- 目录：resources/database/evaluation/
 -- 适用：新环境可单独执行；已有环境也可执行（IF NOT EXISTS）
--- 对齐：docs/rag-evaluation-workbench-requirements.md §16、docs/evaluation/phase-0-adr.md
+-- 对齐：docs/evaluation/planning/requirements.md §16、docs/evaluation/design/phase-0-adr.md
 -- schemaVersion: 1.0.0
 -- =============================================================================
 

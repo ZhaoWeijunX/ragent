@@ -1,5 +1,5 @@
 -- 飞书 PDF 摄取流水线（默认 content-format=pdf）
--- 对应 docs/examples/pdf-pipeline-request.json / pdf-ingestion-example.md
+-- 飞书接入与使用说明见 docs/integrations/feishu/wiki.md
 -- 节点链: fetcher → parser(PDF/MinerU) → enhancer → chunker → indexer
 --
 -- 执行示例:

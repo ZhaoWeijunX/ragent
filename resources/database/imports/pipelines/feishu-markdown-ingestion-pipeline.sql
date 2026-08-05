@@ -1,5 +1,5 @@
 -- 飞书 Markdown 摄取流水线（content-format=markdown）
--- 对应 docs/examples/feishu-pipeline-request.json / feishu-wiki-ingestion-example.md
+-- 飞书接入与使用说明见 docs/integrations/feishu/wiki.md
 -- 节点链: fetcher → parser(MARKDOWN/TEXT) → chunker → indexer
 --
 -- 执行示例:

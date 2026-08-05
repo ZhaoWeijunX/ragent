@@ -10,6 +10,7 @@
 ## 模块脚本
 
 - `evaluation/`：RAG 评测工作台建表权威脚本（`schema_eval_workbench.sql`），与 `schema_pg.sql` 中评测表段落保持同步；说明见 [`evaluation/README.md`](evaluation/README.md)
+- `imports/`：MCP 演示数据、意图树、示例问题与摄取流水线，执行顺序见 [`imports/README.md`](imports/README.md)
 
 ## 增量升级
 

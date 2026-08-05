@@ -1,7 +1,7 @@
 -- 12306（拿个offer-12306）知识库意图树导入脚本
 --
--- 适用文档目录：resources/docs/12306-pdf-doc/（89 篇 PDF，其中 2 篇近似空文档不纳入叶子映射）
--- 设计说明：resources/docs/12306-pdf-doc/intent-tree-design.md（按正文内容聚类，非原目录结构）
+-- 适用文档目录：resources/knowledge-samples/12306-pdf-doc/（89 篇 PDF，其中 2 篇近似空文档不纳入叶子映射）
+-- 设计说明：resources/knowledge-samples/12306-pdf-doc/intent-tree-design.md（按正文内容聚类，非原目录结构）
 --
 -- 空文档（建议不入库）：
 --   4.核心技术文档/用户敏感信息展示时学会脱敏.pdf          （仅跳转说明）
@@ -14,7 +14,7 @@
 --
 -- 导入后：redis-cli DEL ragent:intent:tree
 --
--- 系统交互节点 sys* 见 mcp-intent-nodes-import.sql，请勿重复插入。
+-- 系统交互节点 sys* 见 system-intent-nodes-import.sql，请勿重复插入。
 
 -- ---------------------------------------------------------------------------
 -- 可选：清理后重导（慎用）

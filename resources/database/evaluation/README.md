@@ -16,7 +16,7 @@ RAG 评测工作台数据库脚本目录（与通用 `schema_pg.sql` / `upgrades
 6. `t_eval_score_batch` — 评分批次
 7. `t_eval_score` — 指标分数
 
-口径见 [`docs/evaluation/phase-0-adr.md`](../../../docs/evaluation/phase-0-adr.md)。
+口径见 [`docs/evaluation/design/phase-0-adr.md`](../../../docs/evaluation/design/phase-0-adr.md)。
 
 ## 执行方式
 
@@ -28,11 +28,7 @@ psql -U postgres -d ragent -f resources/database/schema_pg.sql
 psql -U postgres -d ragent -f resources/database/evaluation/schema_eval_workbench.sql
 ```
 
-**已有环境升级**：按 `upgrades/v1.1.0/` 顺序执行。若历史库已建过已取消的 `t_eval_manual_override`，执行：
-
-```bash
-psql -U postgres -d ragent -f resources/database/upgrades/v1.1.0/260803_drop_eval_manual_override.sql
-```
+**已有环境升级**：按 `upgrades/v1.1.0/` 顺序执行。`t_eval_manual_override` 已取消；仓库不再提供对应升级脚本，存在该历史表的数据库应先按实际版本和数据保留要求确认处理方案。
 
 ## 维护约定
 

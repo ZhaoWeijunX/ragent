@@ -11,7 +11,7 @@
 --   - onboarding 新员工入职与培训（多格式文档，与 group/hr 互补）
 --   - 12306 拿个offer实战专栏（PDF，需已灌入对应知识库与意图树）
 --
--- 执行前请确认已导入意图树（resources/database/imports/intent-nodes/mcp-intent-nodes-import.sql 等）
+-- 执行前请确认已导入所需意图树（resources/database/imports/intent-nodes/system-intent-nodes-import.sql、各知识库脚本或 MCP 脚本等）
 -- 且 Demo 知识库文档已就绪；ragent-test / biz-security / 12306 类问题需本地知识库已配置
 
 -- ---------------------------------------------------------------------------

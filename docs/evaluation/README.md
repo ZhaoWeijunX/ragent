@@ -1,33 +1,12 @@
-# RAG 评测工作台 — 阶段 0 交付物
+# RAG 评测工作台
 
-本目录存放阶段 0（规格冻结与技术验证）产物。**不修改**现有 `/rag/v3/chat`、`/rag/eval`、Trace 业务实现；仅新增契约、ADR、示例与只读验证脚本。
+本目录汇总评测工作台的规划、设计契约、阶段报告和配套校验资产。业务实现边界与历史结论以相应文档为准。
 
-| 文档 / 目录 | 说明 |
-|-------------|------|
-| [phase-0-exit-report.md](./phase-0-exit-report.md) | 阶段 0 退出条件对照与 Spike 口径 |
-| [phase-1-exit-report.md](./phase-1-exit-report.md) | 阶段 1 建表与骨架退出对照 |
-| [phase-2-exit-report.md](./phase-2-exit-report.md) | 阶段 2 评估集资产化退出对照 |
-| [phase-3-exit-report.md](./phase-3-exit-report.md) | 阶段 3 Run 状态机与双路径录制退出对照 |
-| [phase-4-exit-report.md](./phase-4-exit-report.md) | 阶段 4 自建指标、报告与 MVP 退出对照 |
-| [phase-5-exit-report.md](./phase-5-exit-report.md) | 阶段 5 RAGAS 服务化与降级退出对照 |
-| [phase-5-handoff.md](./phase-5-handoff.md) | 阶段 5 交接（压缩上下文：分支/能力/缺口/联调） |
-| [phase-0-adr.md](./phase-0-adr.md) | 冻结口径：状态机、Thinking、业务码、恢复、双路径等 |
-| [field-mapping.md](./field-mapping.md) | Java/API camelCase ↔ Python snake_case 映射 |
-| [ragas-scoring-service-contract.md](./ragas-scoring-service-contract.md) | `ragenteval` HTTP 评分服务契约 |
-| [schemas/](./schemas/) | `EvalSample` / `EvalRecord` / `MetricResult` JSON Schema |
-| [examples/](./examples/) | 双向可反序列化的样例 JSON |
-| [fixtures/](./fixtures/) | Schema 校验用夹具（含非法样例） |
-
-配套脚本：
-
-| 脚本 | 说明 |
+| 分类 | 内容 |
 |------|------|
-| [`scripts/evaluation/eval_phase0_validate_schemas.py`](../../scripts/evaluation/eval_phase0_validate_schemas.py) | 离线校验 Schema + 样例互转 |
-| [`scripts/evaluation/eval_phase0_spike.py`](../../scripts/evaluation/eval_phase0_spike.py) | 对运行中的 ragent 做 SSE/TTFT、`/rag/eval`、taskId→traceId spike |
-| [`scripts/evaluation/README.md`](../../scripts/evaluation/README.md) | 本模块脚本说明（与通用 `scripts/README.md` 分离） |
+| [planning/](planning/) | 需求与逐阶段开发方案 |
+| [design/](design/) | ADR 与冻结的系统口径 |
+| [contracts/](contracts/) | JSON Schema、样例、字段映射与 RAGAS HTTP 契约 |
+| [reports/](reports/) | 阶段 0–5 退出报告 |
 
-相关上游文档：
-
-- [需求文档](../rag-evaluation-workbench-requirements.md)
-- [开发方案](../rag-evaluation-workbench-development-plan.md)
-- 外部参考实现：`D:\code\ragenteval\eval\common\schemas.py`
+配套脚本见 [`scripts/evaluation/`](../../scripts/evaluation/README.md)：离线 Schema 校验无需启动服务；在线 Spike 需要运行中的 ragent。
