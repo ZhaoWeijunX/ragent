@@ -95,14 +95,55 @@ docker compose -f ragent-stack.compose.yaml up -d
 
 统一入口会在内部加载远程 Linux 专用配置，但命令行不再需要 migration override、`--env-file`、项目源码目录或第二套 Compose 命令。项目原有的本地开发 Compose 未加入 Redis/RocketMQ 新卷，不会改变旧机以后按原方式启动的行为。不要启动包中的 `source-rocketmq-stack.compose.yaml`。
 
-常用管理命令：
+在 Linux Docker 主机本地执行的常用管理命令：
 
 ```bash
+# 检查 Compose 配置并列出服务
+docker compose -f ragent-stack.compose.yaml config --quiet
+docker compose -f ragent-stack.compose.yaml config --services
+
+# 启动、查看状态、查看日志
+docker compose -f ragent-stack.compose.yaml up -d
 docker compose -f ragent-stack.compose.yaml ps
 docker compose -f ragent-stack.compose.yaml logs --tail 200
+docker compose -f ragent-stack.compose.yaml logs -f --tail 100
+
+# 重启全部服务或单个服务（将 postgres 替换为目标服务名）
+docker compose -f ragent-stack.compose.yaml restart
+docker compose -f ragent-stack.compose.yaml restart postgres
+
+# 停止服务但保留容器，或删除容器和网络但保留命名卷
 docker compose -f ragent-stack.compose.yaml stop
+docker compose -f ragent-stack.compose.yaml down
+
+# 重新创建并启动服务，同时移除不再出现在配置中的旧容器
 docker compose -f ragent-stack.compose.yaml up -d --remove-orphans
 ```
+
+本次迁移在 Windows OpenSSH 配置中使用 `centos` 作为目标 Linux 主机别名时，可以直接在 PowerShell 执行：
+
+```powershell
+# 启动全部服务
+ssh centos "cd /opt/ragent-docker && docker compose -f ragent-stack.compose.yaml up -d"
+
+# 查看服务状态
+ssh centos "cd /opt/ragent-docker && docker compose -f ragent-stack.compose.yaml ps"
+
+# 查看最近 200 行日志；需要持续跟踪时添加 -f
+ssh centos "cd /opt/ragent-docker && docker compose -f ragent-stack.compose.yaml logs --tail 200"
+ssh centos "cd /opt/ragent-docker && docker compose -f ragent-stack.compose.yaml logs -f --tail 100"
+
+# 重启全部服务
+ssh centos "cd /opt/ragent-docker && docker compose -f ragent-stack.compose.yaml restart"
+
+# 停止全部服务但保留容器和数据
+ssh centos "cd /opt/ragent-docker && docker compose -f ragent-stack.compose.yaml stop"
+
+# 删除容器和网络但保留命名卷；之后仍可用 up -d 恢复运行
+ssh centos "cd /opt/ragent-docker && docker compose -f ragent-stack.compose.yaml down"
+```
+
+部署入口是 `/opt/ragent-docker/ragent-stack.compose.yaml`，环境变量文件是同目录下的 `/opt/ragent-docker/.env`。不要运行 `docker compose down -v`、`docker volume prune` 或 `docker system prune --volumes`，这些命令会删除已恢复的数据卷。也不要再次运行清空目标 Docker 的重置脚本。
 
 容器均配置 `restart: unless-stopped`。启用 Docker 开机启动后，Linux 重启时容器会自动恢复：
 
