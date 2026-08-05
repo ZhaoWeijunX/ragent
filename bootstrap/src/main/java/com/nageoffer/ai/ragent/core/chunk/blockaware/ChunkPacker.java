@@ -88,14 +88,17 @@ public class ChunkPacker {
 
     /**
      * 到了下一节的边界要不要断开
+     * <p>
+     * minChars 管下限、maxChars 管目标，两条职责不共用一个阈值：让「攒够 minChars 就断」兼任断点判据，
+     * 等于把下限变成事实上的目标——标题密集的文档配 1024 也只切得出 300 上下的块
      */
     private static boolean breakBefore(int bufferLen, int sectionLen, int minChars, ChunkBudget budget) {
-        // 已攒够一块就断：节边界是语义跳变处，为凑体量把两节揉进一块不划算
-        if (bufferLen >= minChars) {
-            return true;
-        }
         // 还不够一块：并进来即便超预算也认，容忍上限才是底线
-        return bufferLen + SEPARATOR.length() + sectionLen > budget.toleranceChars();
+        if (bufferLen < minChars) {
+            return bufferLen + SEPARATOR.length() + sectionLen > budget.toleranceChars();
+        }
+        // 装得下就继续装：节边界只是候选断点，装不下时才真断
+        return bufferLen + SEPARATOR.length() + sectionLen > budget.maxChars();
     }
 
     /**

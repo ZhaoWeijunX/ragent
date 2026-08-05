@@ -36,6 +36,13 @@ public record ChunkBudget(int maxChars, int overlapChars, int rowsPerChunk, int 
 
     private static final int DEFAULT_TOLERANCE_FACTOR = 3;
 
+    private static final int DEFAULT_MAX_CHARS = 1024;
+
+    /**
+     * 块重叠默认取块大小的几分之一
+     */
+    public static final int OVERLAP_DIVISOR = 8;
+
     /** 容忍倍数上限：乘出来的值仍受 {@link #MAX_CHARS_LIMIT} 封顶，此处只拦明显填错的量级 */
     public static final int TOLERANCE_FACTOR_LIMIT = 8;
 
@@ -83,15 +90,23 @@ public record ChunkBudget(int maxChars, int overlapChars, int rowsPerChunk, int 
     }
 
     /**
+     * 给定块大小对应的默认重叠
+     * <p>
+     * 重叠不只为冗余，它同时是 {@link com.nageoffer.ai.ragent.core.chunk.text.TextSplitter} 回退寻找句末标点的
+     * 最大距离，取小了切口会落在句子中间——1024 配 64 对中文长句就常常回退不到句号，故按块大小等比给
+     */
+    public static int defaultOverlapFor(int maxChars) {
+        return Math.max(0, Math.min(maxChars - 1, maxChars / OVERLAP_DIVISOR));
+    }
+
+    /**
      * 系统默认预算：全局唯一一份默认值
      * <p>
      * {@code maxChars} 取 1024 而非常见的 512：防语义稀释靠 {@code ChunkPacker} 的章节边界而非把块压小，
-     * 而 {@code RetrieveRequest.topK} 默认 5，块太小会让名额被同一章节的碎片占满，它真正切开的只有超长散文段落；
-     * {@code overlapChars} 取 128 不只为冗余，它同时是 {@link com.nageoffer.ai.ragent.core.chunk.text.TextSplitter}
-     * 回退寻找句末标点的最大距离，64 对中文长句常常回退不到句号
+     * 而 {@code RetrieveRequest.topK} 默认 5，块太小会让名额被同一章节的碎片占满，它真正切开的只有超长散文段落
      */
     public static ChunkBudget defaults() {
-        return new ChunkBudget(1024, 128, 50);
+        return new ChunkBudget(DEFAULT_MAX_CHARS, defaultOverlapFor(DEFAULT_MAX_CHARS), 50);
     }
 
     /**

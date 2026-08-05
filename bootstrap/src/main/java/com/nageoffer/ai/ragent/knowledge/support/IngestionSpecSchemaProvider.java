@@ -90,23 +90,28 @@ public class IngestionSpecSchemaProvider {
                 .distinct()
                 .sorted()
                 .toList();
-        // 说明写"调大调小会怎样"，而不是把字段名换句话说一遍
+        // hint 答“这个数是什么”、detail 答“调大调小会怎样”，都不是把字段名换句话说一遍；
         List<IngestionSpecSchemaVO.BudgetField> fields = List.of(
                 new IngestionSpecSchemaVO.BudgetField(IngestionSpecCodec.KEY_MAX_CHARS, "块大小", defaults.maxChars(),
-                        1, ChunkBudget.MAX_CHARS_LIMIT,
-                        "一段目标放多少字。这是目标不是硬上限，为保住整章或整张表不被切开，实际可以撑到"
-                                + "「块大小 × 结构容忍倍数」。调小检索更精准、每段能带的上下文更少，一般 512 ~ 1024"),
+                        1, ChunkBudget.MAX_CHARS_LIMIT, 512, ChunkBudget.MAX_CHARS_LIMIT,
+                        "一段目标放多少字",
+                        "这是目标，不是硬上限。为保住整章或整张表不被切开，一段最多能撑到「块大小 × 结构容忍倍数」。"
+                                + "调小则检索更精准，但每段带的上下文更少"),
                 new IngestionSpecSchemaVO.BudgetField(IngestionSpecCodec.KEY_OVERLAP_CHARS, "块重叠", defaults.overlapChars(),
-                        0, ChunkBudget.MAX_CHARS_LIMIT - 1,
-                        "相邻两段重复多少字。仅当单个段落超过块大小、不得不从中间切开时生效；按标题与段落边界切分的"
-                                + "文档（Markdown / PDF / Word）通常用不到。必须小于块大小"),
+                        0, ChunkBudget.MAX_CHARS_LIMIT - 1, 64, 1024,
+                        "相邻两段重复多少字",
+                        "只在单个段落超过块大小、必须拦腰切开时才生效，多数段落到不了这一步。它同时是切口回退找"
+                                + "句号的最大距离，填太小会切在句子中间。默认取块大小的 1/" + ChunkBudget.OVERLAP_DIVISOR
+                                + "，且必须小于块大小"),
                 new IngestionSpecSchemaVO.BudgetField(IngestionSpecCodec.KEY_ROWS_PER_CHUNK, "表格每块行数", defaults.rowsPerChunk(),
-                        1, ChunkBudget.ROWS_PER_CHUNK_LIMIT,
-                        "表格每段放多少数据行。列多且每格字数长的表调小，一般 20 ~ 50"),
+                        1, ChunkBudget.ROWS_PER_CHUNK_LIMIT, 20, 50,
+                        "表格每段放多少数据行",
+                        "列多、每格字数长的表要调小"),
                 new IngestionSpecSchemaVO.BudgetField(IngestionSpecCodec.KEY_TOLERANCE_FACTOR, "结构容忍倍数",
-                        defaults.toleranceFactor(), 1, ChunkBudget.TOLERANCE_FACTOR_LIMIT,
+                        defaults.toleranceFactor(), 1, ChunkBudget.TOLERANCE_FACTOR_LIMIT, 2, 4,
+                        "一段最多可超出块大小的倍数",
                         "为保住整章、整张表、整个代码块不被切开，允许一段撑到块大小的几倍。填 1 就是严格按块大小切，"
-                                + "章节会被切碎；调大则块更完整但检索更粗、单次问答塞给模型的上下文更多"));
+                                + "章节会被切碎；调大则块更完整，但检索更粗、单次问答塞给模型的上下文也更多"));
         return new IngestionSpecSchemaVO(
                 PARSE_PROFILE_LABEL, profiles, profileExtensions, fields, IngestionSpecCodec.WHOLE_DOCUMENT_SENTINEL);
     }

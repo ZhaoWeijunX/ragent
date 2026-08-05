@@ -127,7 +127,10 @@ export interface BudgetFieldSchema {
   defaultValue: number;
   min: number;
   max: number;
+  recommendedMin: number;
+  recommendedMax: number;
   hint?: string | null;
+  detail?: string | null;
 }
 
 /**

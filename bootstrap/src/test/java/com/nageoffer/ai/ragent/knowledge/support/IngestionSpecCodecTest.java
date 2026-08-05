@@ -70,7 +70,8 @@ class IngestionSpecCodecTest {
 
         ChunkBudget defaults = ChunkBudget.defaults();
         assertEquals(600, spec.budget().maxChars());
-        assertEquals(defaults.overlapChars(), spec.budget().overlapChars());
+        // 缺省重叠跟着块大小等比走，而不是照搬默认预算里配 1024 的那个 128
+        assertEquals(75, spec.budget().overlapChars());
         assertEquals(defaults.rowsPerChunk(), spec.budget().rowsPerChunk());
         assertEquals(ParseProfile.FAST, spec.parseProfile());
     }

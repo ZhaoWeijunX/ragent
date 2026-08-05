@@ -41,8 +41,12 @@ rocketmq:
     group: ragent-producer${unique-name:}_pg
     send-message-timeout: 2000
 
-milvus:
-  uri: http://localhost:19530
+ragent:
+  engine:
+    type: workflow  # 执行架构档位，可选 workflow（v1 编排管线）/ agent（v2 ReAct 架构，RAG 管线降级为主 Agent 的一个 Tool）
+  demo-mode: false
+  eval:
+    enabled: true
 
 rag:
   storage:
@@ -247,7 +251,7 @@ ai:
         candidates: [ qwen-flash, qwen-plus, qwen3-local ]
         timeout-ms: 5000
       standard:
-        candidates: [ qwen-plus, qwen3-local, gpt-5.4 ]
+        candidates: [ qwen3-max, qwen-plus, qwen3-local, gpt-5.4 ]
         timeout-ms: 30000
       deep:
         candidates: [ qwen3-max, glm-4.7 ]
@@ -315,7 +319,5 @@ sa-token:
   is-log: false
   is-print: false
 
-app:
-  demo-mode: false
-  eval:
-    enabled: true
+milvus:
+  uri: http://localhost:19530

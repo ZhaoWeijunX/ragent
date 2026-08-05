@@ -37,9 +37,6 @@ import java.util.stream.IntStream;
 
 import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.ANSWER_CITATION_RULES_PROMPT_PATH;
 import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.CONTEXT_FORMAT_PATH;
-import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.MCP_KB_MIXED_PROMPT_PATH;
-import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.MCP_ONLY_PROMPT_PATH;
-import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.RAG_ENTERPRISE_PROMPT_PATH;
 
 /**
  * RAG Prompt 编排服务
@@ -51,6 +48,7 @@ import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.RAG_ENTERPRISE_PR
 public class RAGPromptService {
 
     private final PromptTemplateLoader templateLoader;
+    private final AgentPromptResolver agentPromptResolver;
     private final RAGConfigProperties ragConfigProperties;
 
     /**
@@ -199,9 +197,9 @@ public class RAGPromptService {
 
     private String defaultTemplate(PromptScene scene) {
         return switch (scene) {
-            case KB_ONLY -> templateLoader.load(RAG_ENTERPRISE_PROMPT_PATH);
-            case MCP_ONLY -> templateLoader.load(MCP_ONLY_PROMPT_PATH);
-            case MIXED -> templateLoader.load(MCP_KB_MIXED_PROMPT_PATH);
+            case KB_ONLY -> agentPromptResolver.resolve(AgentPromptSlot.KB_ANSWER);
+            case MCP_ONLY -> agentPromptResolver.resolve(AgentPromptSlot.MCP_ANSWER);
+            case MIXED -> agentPromptResolver.resolve(AgentPromptSlot.MIXED_ANSWER);
             case EMPTY -> "";
         };
     }
