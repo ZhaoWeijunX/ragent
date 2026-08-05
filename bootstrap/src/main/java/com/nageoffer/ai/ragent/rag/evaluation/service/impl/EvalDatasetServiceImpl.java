@@ -23,6 +23,7 @@ import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.baomidou.mybatisplus.extension.toolkit.SqlHelper;
 import com.mzt.logapi.starter.annotation.LogRecord;
 import com.nageoffer.ai.ragent.audit.constant.BizChangeBizType;
 import com.nageoffer.ai.ragent.audit.constant.BizChangeOperationType;
@@ -58,6 +59,8 @@ import com.nageoffer.ai.ragent.rag.evaluation.service.EvalDatasetService;
 import com.nageoffer.ai.ragent.rag.evaluation.support.EvalCaseImportSupport;
 import com.nageoffer.ai.ragent.rag.evaluation.support.EvalJsonSupport;
 import lombok.RequiredArgsConstructor;
+import org.apache.ibatis.logging.Log;
+import org.apache.ibatis.logging.LogFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -65,8 +68,10 @@ import org.springframework.web.multipart.MultipartFile;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.regex.Matcher;
@@ -78,6 +83,8 @@ import java.util.stream.Collectors;
 public class EvalDatasetServiceImpl implements EvalDatasetService {
 
     private static final Pattern VERSION_SEQ_PATTERN = Pattern.compile("^v(\\d+)$", Pattern.CASE_INSENSITIVE);
+    private static final int CASE_INSERT_BATCH_SIZE = 200;
+    private static final Log BATCH_LOG = LogFactory.getLog(EvalDatasetServiceImpl.class);
 
     private final EvalDatasetMapper datasetMapper;
     private final EvalDatasetVersionMapper versionMapper;
@@ -95,7 +102,16 @@ public class EvalDatasetServiceImpl implements EvalDatasetService {
                 .eq(StrUtil.isNotBlank(request.getStatus()), EvalDatasetDO::getStatus, request.getStatus())
                 .ne(StrUtil.isBlank(request.getStatus()), EvalDatasetDO::getStatus, EvalWorkbenchConstants.DATASET_ARCHIVED)
                 .orderByDesc(EvalDatasetDO::getUpdateTime));
-        return result.convert(this::toDatasetVO);
+        List<String> datasetIds = result.getRecords().stream().map(EvalDatasetDO::getId).toList();
+        if (datasetIds.isEmpty()) {
+            return result.convert(dataset -> toDatasetVO(dataset, null));
+        }
+        Map<String, EvalDatasetVersionDO> latestVersions = new HashMap<>();
+        versionMapper.selectList(Wrappers.lambdaQuery(EvalDatasetVersionDO.class)
+                        .in(EvalDatasetVersionDO::getDatasetId, datasetIds)
+                        .orderByDesc(EvalDatasetVersionDO::getCreateTime))
+                .forEach(version -> latestVersions.putIfAbsent(version.getDatasetId(), version));
+        return result.convert(dataset -> toDatasetVO(dataset, latestVersions.get(dataset.getId())));
     }
 
     @Override
@@ -251,15 +267,17 @@ public class EvalDatasetServiceImpl implements EvalDatasetService {
                 .build();
         versionMapper.insert(target);
 
-        List<EvalCaseDO> cases = listCases(source.getId());
-        for (EvalCaseDO sourceCase : cases) {
-            EvalCaseDO copy = BeanUtil.copyProperties(sourceCase, EvalCaseDO.class);
-            copy.setId(null);
-            copy.setDatasetVersionId(target.getId());
-            copy.setCreateTime(null);
-            copy.setUpdateTime(null);
-            caseMapper.insert(copy);
-        }
+        List<EvalCaseDO> copies = listCases(source.getId()).stream()
+                .map(sourceCase -> {
+                    EvalCaseDO copy = BeanUtil.copyProperties(sourceCase, EvalCaseDO.class);
+                    copy.setId(null);
+                    copy.setDatasetVersionId(target.getId());
+                    copy.setCreateTime(null);
+                    copy.setUpdateTime(null);
+                    return copy;
+                })
+                .toList();
+        insertCases(copies);
         refreshVersionStats(target.getId());
         return target.getId();
     }
@@ -356,9 +374,7 @@ public class EvalDatasetServiceImpl implements EvalDatasetService {
 
         // 按 queryId upsert：先清再插简化一致性（草稿可重导）
         caseMapper.delete(Wrappers.lambdaQuery(EvalCaseDO.class).eq(EvalCaseDO::getDatasetVersionId, versionId));
-        for (EvalCaseUpsertRequest req : accepted) {
-            caseMapper.insert(EvalCaseImportSupport.toNewCaseDO(versionId, req));
-        }
+        insertCases(accepted.stream().map(req -> EvalCaseImportSupport.toNewCaseDO(versionId, req)).toList());
         refreshVersionStats(versionId);
         return EvalImportResultVO.builder()
                 .versionId(versionId)
@@ -515,6 +531,15 @@ public class EvalDatasetServiceImpl implements EvalDatasetService {
         return count == null ? 0 : count.intValue();
     }
 
+    private void insertCases(List<EvalCaseDO> cases) {
+        if (cases.isEmpty()) {
+            return;
+        }
+        boolean inserted = SqlHelper.executeBatch(EvalCaseDO.class, BATCH_LOG, cases, CASE_INSERT_BATCH_SIZE,
+                (sqlSession, record) -> sqlSession.getMapper(EvalCaseMapper.class).insert(record));
+        Assert.isTrue(inserted, () -> new ClientException("批量写入评测样本失败"));
+    }
+
     private String resolveNextVersionName(String datasetId, String preferred) {
         if (StrUtil.isNotBlank(preferred)) {
             String name = StrUtil.trim(preferred);
@@ -611,6 +636,10 @@ public class EvalDatasetServiceImpl implements EvalDatasetService {
                 .eq(EvalDatasetVersionDO::getDatasetId, dataset.getId())
                 .orderByDesc(EvalDatasetVersionDO::getCreateTime)
                 .last("limit 1"));
+        return toDatasetVO(dataset, latest);
+    }
+
+    private EvalDatasetVO toDatasetVO(EvalDatasetDO dataset, EvalDatasetVersionDO latest) {
         return EvalDatasetVO.builder()
                 .id(dataset.getId())
                 .name(dataset.getName())
@@ -620,7 +649,7 @@ public class EvalDatasetServiceImpl implements EvalDatasetService {
                 .createdBy(dataset.getCreatedBy())
                 .latestVersion(latest == null ? null : latest.getVersion())
                 .latestVersionStatus(latest == null ? null : latest.getStatus())
-                .latestSampleCount(latest == null ? 0 : countCases(latest.getId()))
+                .latestSampleCount(latest == null || latest.getSampleCount() == null ? 0 : latest.getSampleCount())
                 .createTime(dataset.getCreateTime())
                 .updateTime(dataset.getUpdateTime())
                 .build();

@@ -513,7 +513,6 @@ PENDING
 - `status`
 - `current_phase`
 - `config_snapshot` JSON
-- `threshold_snapshot` JSON
 - `total_count`
 - `success_count`
 - `failed_count`
@@ -567,7 +566,6 @@ PENDING
 - `status`
 - `algorithm_version`
 - `judge_config_snapshot` JSON
-- `threshold_snapshot` JSON
 - `sample_count`
 - `token_usage` JSON
 - `estimated_cost`
@@ -753,7 +751,6 @@ app:
       endpoint: ${RAGAS_ENDPOINT:}
       concurrency: 2
       timeout-seconds: 180
-      retry-times: 2
       max-samples-per-run: 500
       max-independent-runs: 3
 ```

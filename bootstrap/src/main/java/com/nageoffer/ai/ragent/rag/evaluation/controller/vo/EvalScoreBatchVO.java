@@ -33,7 +33,6 @@ public class EvalScoreBatchVO {
     private String algorithmVersion;
     private Integer sampleCount;
     private String externalJobId;
-    private Map<String, Object> thresholdSnapshot;
     private Map<String, Object> judgeConfigSnapshot;
     /** 外部 job 进度（来自 judge_config_snapshot.progress） */
     private Integer progressTotal;

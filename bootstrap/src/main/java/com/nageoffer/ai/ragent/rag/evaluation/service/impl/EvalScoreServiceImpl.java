@@ -22,6 +22,7 @@ import cn.hutool.core.util.IdUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONUtil;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.baomidou.mybatisplus.extension.toolkit.SqlHelper;
 import com.nageoffer.ai.ragent.framework.exception.ClientException;
 import com.nageoffer.ai.ragent.infra.config.AIModelProperties;
 import com.nageoffer.ai.ragent.infra.enums.ModelCapability;
@@ -51,6 +52,8 @@ import com.nageoffer.ai.ragent.rag.evaluation.metric.impl.RetrievalMetrics;
 import com.nageoffer.ai.ragent.rag.evaluation.service.EvalScoreService;
 import com.nageoffer.ai.ragent.rag.evaluation.support.EvalJsonSupport;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.ibatis.logging.Log;
+import org.apache.ibatis.logging.LogFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
@@ -88,6 +91,8 @@ public class EvalScoreServiceImpl implements EvalScoreService {
     public static final String BATCH_COMPLETED = "COMPLETED";
     public static final String BATCH_FAILED = "FAILED";
     public static final String BATCH_PARTIAL = "PARTIAL_SUCCESS";
+    private static final int SCORE_INSERT_BATCH_SIZE = 200;
+    private static final Log BATCH_LOG = LogFactory.getLog(EvalScoreServiceImpl.class);
 
     private final EvalRunMapper runMapper;
     private final EvalRecordMapper recordMapper;
@@ -131,10 +136,6 @@ public class EvalScoreServiceImpl implements EvalScoreService {
         List<EvalScoreSample> samples = loadSamples(run);
         String batchId = IdUtil.getSnowflakeNextIdStr();
         Date started = new Date();
-        Map<String, Object> threshold = EvalJsonSupport.toMap(run.getThresholdSnapshot());
-        if (threshold.isEmpty()) {
-            threshold = defaultThreshold();
-        }
 
         EvalScoreBatchDO batch = EvalScoreBatchDO.builder()
                 .id(batchId)
@@ -143,7 +144,6 @@ public class EvalScoreServiceImpl implements EvalScoreService {
                 .status(BATCH_RUNNING)
                 .algorithmVersion(MetricResult.ALGORITHM_VERSION)
                 .judgeConfigSnapshot("{}")
-                .thresholdSnapshot(JSONUtil.toJsonStr(threshold))
                 .sampleCount(samples.size())
                 .tokenUsage("{}")
                 .startedAt(started)
@@ -163,9 +163,7 @@ public class EvalScoreServiceImpl implements EvalScoreService {
             for (MetricResult mr : results) {
                 rows.addAll(toScoreRows(batchId, runId, mr, byQuery));
             }
-            for (EvalScoreDO row : rows) {
-                scoreMapper.insert(row);
-            }
+            insertScores(rows);
 
             scoreBatchMapper.update(null, Wrappers.lambdaUpdate(EvalScoreBatchDO.class)
                     .eq(EvalScoreBatchDO::getId, batchId)
@@ -699,7 +697,6 @@ public class EvalScoreServiceImpl implements EvalScoreService {
                 .status(BATCH_PENDING)
                 .algorithmVersion("ragas-1.0.0")
                 .judgeConfigSnapshot(JSONUtil.toJsonStr(judgeSnap))
-                .thresholdSnapshot("{}")
                 .sampleCount(sampleCount)
                 .tokenUsage("{}")
                 .startedAt(new Date())
@@ -1111,14 +1108,13 @@ public class EvalScoreServiceImpl implements EvalScoreService {
                         (a, b) -> a,
                         LinkedHashMap::new));
 
+        List<EvalScoreDO> rows = new ArrayList<>();
         if (snap.metrics() != null) {
             for (Map<String, Object> m : snap.metrics()) {
-                MetricResult mr = fromRagasMetricMap(m);
-                for (EvalScoreDO row : toScoreRows(batchId, runId, mr, byQuery)) {
-                    scoreMapper.insert(row);
-                }
+                rows.addAll(toScoreRows(batchId, runId, fromRagasMetricMap(m), byQuery));
             }
         }
+        insertScores(rows);
 
         EvalScoreBatchDO cur = scoreBatchMapper.selectById(batchId);
         if (cur != null && BATCH_FAILED.equals(cur.getStatus()) && isUserCancelledMessage(cur.getErrorMessage())) {
@@ -1152,6 +1148,15 @@ public class EvalScoreServiceImpl implements EvalScoreService {
                 .set(EvalScoreBatchDO::getEstimatedCost, snap.estimatedCostUsd() == null
                         ? null : BigDecimal.valueOf(snap.estimatedCostUsd()).setScale(6, RoundingMode.HALF_UP))
                 .set(EvalScoreBatchDO::getErrorMessage, errorMessage));
+    }
+
+    private void insertScores(List<EvalScoreDO> rows) {
+        if (rows.isEmpty()) {
+            return;
+        }
+        boolean inserted = SqlHelper.executeBatch(EvalScoreDO.class, BATCH_LOG, rows, SCORE_INSERT_BATCH_SIZE,
+                (sqlSession, row) -> sqlSession.getMapper(EvalScoreMapper.class).insert(row));
+        Assert.isTrue(inserted, () -> new ClientException("批量写入评测分数失败"));
     }
 
     @SuppressWarnings("unchecked")
@@ -1257,7 +1262,6 @@ public class EvalScoreServiceImpl implements EvalScoreService {
                 .algorithmVersion(batch.getAlgorithmVersion())
                 .sampleCount(batch.getSampleCount())
                 .externalJobId(batch.getExternalJobId())
-                .thresholdSnapshot(EvalJsonSupport.toMap(batch.getThresholdSnapshot()))
                 .judgeConfigSnapshot(judge)
                 .progressTotal(asInt(progress.get("total")))
                 .progressCompleted(asInt(progress.get("completed")))
@@ -1287,18 +1291,6 @@ public class EvalScoreServiceImpl implements EvalScoreService {
             }
         }
         return null;
-    }
-
-    private Map<String, Object> defaultThreshold() {
-        Map<String, Object> snap = new LinkedHashMap<>();
-        snap.put("schemaVersion", "1.0.0");
-        snap.put("policyVersion", "draft");
-        snap.put("rules", List.of(
-                Map.of("metric", "hit@5", "dimension", "OVERALL", "op", "gte", "value", 0.9),
-                Map.of("metric", "intent_top1", "dimension", "OVERALL", "op", "gte", "value", 0.8)
-        ));
-        snap.put("onViolate", "WARN");
-        return snap;
     }
 
     private String toCsv(EvalMetricReportVO report) {

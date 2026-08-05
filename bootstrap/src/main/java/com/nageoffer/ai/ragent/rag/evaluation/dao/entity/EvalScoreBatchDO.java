@@ -72,12 +72,6 @@ public class EvalScoreBatchDO {
     private String judgeConfigSnapshot;
 
     /**
-     * 阈值快照
-     */
-    @TableField(typeHandler = JsonbTypeHandler.class)
-    private String thresholdSnapshot;
-
-    /**
      * 样本数
      */
     private Integer sampleCount;

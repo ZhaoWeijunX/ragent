@@ -161,7 +161,6 @@ public class EvalCompareServiceImpl implements EvalCompareService {
                 .datasetVersionId(run.getDatasetVersionId())
                 .datasetVersion(run.getDatasetVersion())
                 .status(run.getStatus())
-                .qualityVerdict(run.getQualityVerdict())
                 .configSnapshot(run.getConfigSnapshot())
                 .build();
     }

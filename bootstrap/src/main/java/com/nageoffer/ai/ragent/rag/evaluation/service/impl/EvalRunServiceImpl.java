@@ -173,13 +173,6 @@ public class EvalRunServiceImpl implements EvalRunService {
         }
         configSnapshot.put("ragas", ragasPref);
 
-        Map<String, Object> thresholdSnapshot = new LinkedHashMap<>();
-        thresholdSnapshot.put("schemaVersion", "1.0.0");
-        thresholdSnapshot.put("policyId", null);
-        thresholdSnapshot.put("policyVersion", "draft");
-        thresholdSnapshot.put("rules", List.of());
-        thresholdSnapshot.put("onViolate", "FAIL");
-
         Map<String, Object> tags = request.getTags() == null ? new LinkedHashMap<>() : new LinkedHashMap<>(request.getTags());
         tags.putIfAbsent("environment", "unknown");
         tags.putIfAbsent("appVersion", "unknown");
@@ -193,10 +186,8 @@ public class EvalRunServiceImpl implements EvalRunService {
                 .baselineRunId(StrUtil.blankToDefault(request.getBaselineRunId(), null))
                 .status(EvalWorkbenchConstants.RUN_PENDING)
                 .currentPhase(EvalWorkbenchConstants.RUN_PENDING)
-                .qualityVerdict(EvalWorkbenchConstants.VERDICT_NOT_EVALUATED)
                 .cancelRequested(0)
                 .configSnapshot(JSONUtil.toJsonStr(configSnapshot))
-                .thresholdSnapshot(JSONUtil.toJsonStr(thresholdSnapshot))
                 .tags(JSONUtil.toJsonStr(tags))
                 .totalCount(sampleCount.intValue())
                 .successCount(0)
@@ -368,10 +359,8 @@ public class EvalRunServiceImpl implements EvalRunService {
                 .baselineRunId(run.getBaselineRunId())
                 .status(run.getStatus())
                 .currentPhase(run.getCurrentPhase())
-                .qualityVerdict(run.getQualityVerdict())
                 .cancelRequested(run.getCancelRequested() != null && run.getCancelRequested() == 1)
                 .configSnapshot(EvalJsonSupport.toMap(run.getConfigSnapshot()))
-                .thresholdSnapshot(EvalJsonSupport.toMap(run.getThresholdSnapshot()))
                 .tags(EvalJsonSupport.toMap(run.getTags()))
                 .totalCount(run.getTotalCount())
                 .successCount(run.getSuccessCount())

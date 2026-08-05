@@ -36,10 +36,8 @@ public class EvalRunVO {
     private String baselineRunId;
     private String status;
     private String currentPhase;
-    private String qualityVerdict;
     private Boolean cancelRequested;
     private Map<String, Object> configSnapshot;
-    private Map<String, Object> thresholdSnapshot;
     private Map<String, Object> tags;
     private Integer totalCount;
     private Integer successCount;

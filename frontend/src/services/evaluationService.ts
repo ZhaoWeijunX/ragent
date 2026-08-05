@@ -193,10 +193,8 @@ export interface EvalRun {
   baselineRunId?: string | null;
   status: string;
   currentPhase?: string | null;
-  qualityVerdict?: string | null;
   cancelRequested?: boolean | null;
   configSnapshot?: Record<string, unknown>;
-  thresholdSnapshot?: Record<string, unknown>;
   tags?: Record<string, unknown>;
   totalCount: number;
   successCount: number;
@@ -504,7 +502,6 @@ export interface EvalRunCompare {
     datasetVersionId?: string | null;
     datasetVersion?: string | null;
     status?: string | null;
-    qualityVerdict?: string | null;
     configSnapshot?: Record<string, unknown> | null;
   };
   baseline: {
@@ -513,7 +510,6 @@ export interface EvalRunCompare {
     datasetVersionId?: string | null;
     datasetVersion?: string | null;
     status?: string | null;
-    qualityVerdict?: string | null;
     configSnapshot?: Record<string, unknown> | null;
   };
   deterministic: EvalCompareScoreSide;

@@ -24,12 +24,6 @@ import { QueryTermMappingPage } from "@/pages/admin/query-term-mapping/QueryTerm
 import { AgentProfilePage } from "@/pages/admin/agents/AgentProfilePage";
 import { AgentPromptPage } from "@/pages/admin/agents/AgentPromptPage";
 import { UserListPage } from "@/pages/admin/users/UserListPage";
-import { EvalDatasetListPage } from "@/pages/admin/evaluations/EvalDatasetListPage";
-import { EvalDatasetDetailPage } from "@/pages/admin/evaluations/EvalDatasetDetailPage";
-import { EvalDatasetVersionPage } from "@/pages/admin/evaluations/EvalDatasetVersionPage";
-import { EvalRunListPage } from "@/pages/admin/evaluations/EvalRunListPage";
-import { EvalRunDetailPage } from "@/pages/admin/evaluations/EvalRunDetailPage";
-import { EvalRunComparePage } from "@/pages/admin/evaluations/EvalRunComparePage";
 import { useAuthStore } from "@/stores/authStore";
 
 function RequireAuth({ children }: { children: JSX.Element }) {
@@ -183,27 +177,33 @@ export const router = createBrowserRouter([
       },
       {
         path: "evaluations/datasets",
-        element: <EvalDatasetListPage />
+        lazy: () => import("@/pages/admin/evaluations/EvalDatasetListPage")
+          .then(({ EvalDatasetListPage }) => ({ Component: EvalDatasetListPage }))
       },
       {
         path: "evaluations/datasets/:datasetId",
-        element: <EvalDatasetDetailPage />
+        lazy: () => import("@/pages/admin/evaluations/EvalDatasetDetailPage")
+          .then(({ EvalDatasetDetailPage }) => ({ Component: EvalDatasetDetailPage }))
       },
       {
         path: "evaluations/dataset-versions/:versionId",
-        element: <EvalDatasetVersionPage />
+        lazy: () => import("@/pages/admin/evaluations/EvalDatasetVersionPage")
+          .then(({ EvalDatasetVersionPage }) => ({ Component: EvalDatasetVersionPage }))
       },
       {
         path: "evaluations/runs",
-        element: <EvalRunListPage />
+        lazy: () => import("@/pages/admin/evaluations/EvalRunListPage")
+          .then(({ EvalRunListPage }) => ({ Component: EvalRunListPage }))
       },
       {
         path: "evaluations/runs/:runId/compare/:baselineRunId",
-        element: <EvalRunComparePage />
+        lazy: () => import("@/pages/admin/evaluations/EvalRunComparePage")
+          .then(({ EvalRunComparePage }) => ({ Component: EvalRunComparePage }))
       },
       {
         path: "evaluations/runs/:runId",
-        element: <EvalRunDetailPage />
+        lazy: () => import("@/pages/admin/evaluations/EvalRunDetailPage")
+          .then(({ EvalRunDetailPage }) => ({ Component: EvalRunDetailPage }))
       },
       {
         path: "mappings",

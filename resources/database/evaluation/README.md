@@ -11,7 +11,7 @@ RAG 评测工作台数据库脚本目录（与通用 `schema_pg.sql` / `upgrades
 1. `t_eval_dataset` — 评估集
 2. `t_eval_dataset_version` — 版本（DRAFT / PUBLISHED / ARCHIVED）
 3. `t_eval_case` — 样本
-4. `t_eval_run` — 运行（含租约、tags、quality_verdict）
+4. `t_eval_run` — 运行（含租约、tags）
 5. `t_eval_record` — 录制
 6. `t_eval_score_batch` — 评分批次
 7. `t_eval_score` — 指标分数

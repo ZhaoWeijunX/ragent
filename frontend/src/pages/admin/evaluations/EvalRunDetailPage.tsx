@@ -232,6 +232,7 @@ export function EvalRunDetailPage() {
   const [recordDetailLoading, setRecordDetailLoading] = useState(false);
   const [recordRerunning, setRecordRerunning] = useState(false);
   const ragasStatusRef = useRef<string | null>(null);
+  const initialRecordsRunIdRef = useRef<string | undefined>(undefined);
 
   const activeRagasBatch =
     scoreBatches.find((b) => b.scoreType === "RAGAS" && RAGAS_BATCH_ACTIVE.has(b.status || "")) || null;
@@ -296,11 +297,15 @@ export function EvalRunDetailPage() {
   };
 
   useEffect(() => {
-    refresh();
+    void refresh();
   }, [runId]);
 
   useEffect(() => {
-    loadRecords();
+    if (initialRecordsRunIdRef.current !== runId) {
+      initialRecordsRunIdRef.current = runId;
+      return;
+    }
+    void loadRecords();
   }, [pageNo, statusFilter, keyword]);
 
   useEffect(() => {
@@ -400,7 +405,7 @@ export function EvalRunDetailPage() {
     setRecordRerunning(true);
     try {
       await rerunRecord(runId, recordId);
-      toast.success("已提交单样本重跑，可关闭本窗；完成后将自动更新自建指标");
+      toast.success("已提交单样本重跑，完成后将自动更新自建指标");
       const deadline = Date.now() + 15 * 60 * 1000;
       let sawActive = false;
       while (Date.now() < deadline) {

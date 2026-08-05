@@ -108,8 +108,6 @@ public class EvalProperties {
 
         private int timeoutSeconds = 180;
 
-        private int retryTimes = 2;
-
         private int maxSamplesPerRun = 500;
 
         /**

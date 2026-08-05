@@ -47,12 +47,6 @@ public final class EvalWorkbenchConstants {
     public static final String RUN_FAILED = "FAILED";
     public static final String RUN_CANCELLED = "CANCELLED";
 
-    /** quality verdict */
-    public static final String VERDICT_PASS = "PASS";
-    public static final String VERDICT_FAIL = "FAIL";
-    public static final String VERDICT_WARN = "WARN";
-    public static final String VERDICT_NOT_EVALUATED = "NOT_EVALUATED";
-
     /** score batch type */
     public static final String SCORE_DETERMINISTIC = "DETERMINISTIC";
     public static final String SCORE_RAGAS = "RAGAS";

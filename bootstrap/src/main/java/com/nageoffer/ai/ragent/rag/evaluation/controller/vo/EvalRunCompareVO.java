@@ -72,7 +72,6 @@ public class EvalRunCompareVO {
         private String datasetVersionId;
         private String datasetVersion;
         private String status;
-        private String qualityVerdict;
         private Map<String, Object> configSnapshot;
     }
 

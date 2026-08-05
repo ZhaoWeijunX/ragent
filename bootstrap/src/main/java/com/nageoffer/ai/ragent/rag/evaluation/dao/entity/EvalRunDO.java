@@ -70,11 +70,6 @@ public class EvalRunDO {
     private String currentPhase;
 
     /**
-     * 质量判定
-     */
-    private String qualityVerdict;
-
-    /**
      * 是否请求取消
      */
     private Integer cancelRequested;
@@ -84,12 +79,6 @@ public class EvalRunDO {
      */
     @TableField(typeHandler = JsonbTypeHandler.class)
     private String configSnapshot;
-
-    /**
-     * 阈值快照
-     */
-    @TableField(typeHandler = JsonbTypeHandler.class)
-    private String thresholdSnapshot;
 
     /**
      * 标签快照

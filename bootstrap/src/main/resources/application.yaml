@@ -64,7 +64,6 @@ ragent:
       concurrency: 2                                               # 预留：客户端侧并发上限（当前提交为整批一次）
       timeout-seconds: 180                                         # 单次 HTTP 超时（秒）；轮询总时限约为该值 ×10
       poll-interval-seconds: 10                                    # 轮询外部 job 固定间隔（秒），不做退避
-      retry-times: 2                                               # 预留：提交/轮询瞬时失败重试（当前未接线）
       max-samples-per-run: 500                                     # 单次 RAGAS 批次最多送评样本数（超出截断）
       max-independent-runs: 1                                      # ragas_n（1–3）；>1 对同一样本多次采样取均值，成本倍增
       # Judge 专用聊天模型（与 ai.chat 业务档位分离）；embedding 仍用 ai.embedding

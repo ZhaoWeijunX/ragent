@@ -274,13 +274,17 @@ public class EvalRunWorker {
 
         // 阶段 5：可选自动 RAGAS（单样本重跑跳过，由用户手动触发）
         EvalRunDO afterDet = runMapper.selectById(runId);
-        if (!singleCaseRerun && afterDet != null && shouldAutoStartRagas(afterDet)) {
+        if (!singleCaseRerun
+                && afterDet != null
+                && evalProperties.getRagas() != null
+                && evalProperties.getRagas().isEnabled()
+                && shouldAutoStartRagas(afterDet)) {
             runMapper.update(null, Wrappers.lambdaUpdate(EvalRunDO.class)
                     .eq(EvalRunDO::getId, runId)
                     .set(EvalRunDO::getStatus, EvalWorkbenchConstants.RUN_RAGAS_SCORING)
                     .set(EvalRunDO::getCurrentPhase, EvalWorkbenchConstants.RUN_RAGAS_SCORING));
             try {
-                evalScoreService.scoreRagas(runId);
+                evalScoreService.submitRagasAsync(runId, null);
             } catch (Exception ex) {
                 log.error("RAGAS 评分失败（不影响自建指标报告） runId={}", runId, ex);
             }

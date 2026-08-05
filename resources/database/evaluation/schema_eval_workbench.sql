@@ -104,10 +104,8 @@ CREATE TABLE IF NOT EXISTS t_eval_run (
     baseline_run_id      VARCHAR(20),
     status               VARCHAR(32)  NOT NULL DEFAULT 'PENDING',
     current_phase        VARCHAR(32)  NOT NULL DEFAULT 'PENDING',
-    quality_verdict      VARCHAR(32)  NOT NULL DEFAULT 'NOT_EVALUATED',
     cancel_requested     SMALLINT     NOT NULL DEFAULT 0,
     config_snapshot      JSONB        NOT NULL DEFAULT '{}'::jsonb,
-    threshold_snapshot   JSONB        NOT NULL DEFAULT '{}'::jsonb,
     tags                 JSONB        NOT NULL DEFAULT '{}'::jsonb,
     total_count          INTEGER      NOT NULL DEFAULT 0,
     success_count        INTEGER      NOT NULL DEFAULT 0,
@@ -137,7 +135,6 @@ CREATE INDEX IF NOT EXISTS idx_eval_run_created
 COMMENT ON TABLE t_eval_run IS '评测运行；status与current_phase分离；终态互斥';
 COMMENT ON COLUMN t_eval_run.status IS 'PENDING/RECORDING/DETERMINISTIC_SCORING/RAGAS_SCORING/REPORTING/COMPLETED/PARTIAL_SUCCESS/FAILED/CANCELLED';
 COMMENT ON COLUMN t_eval_run.current_phase IS '当前执行阶段';
-COMMENT ON COLUMN t_eval_run.quality_verdict IS 'PASS/FAIL/WARN/NOT_EVALUATED，与执行状态独立';
 COMMENT ON COLUMN t_eval_run.tags IS 'gitBranch/gitCommit/environment/appVersion 等';
 COMMENT ON COLUMN t_eval_run.lease_owner IS 'Runner租约持有者，用于崩溃恢复';
 COMMENT ON COLUMN t_eval_run.lease_expire_at IS '租约过期时间';
@@ -202,7 +199,6 @@ CREATE TABLE IF NOT EXISTS t_eval_score_batch (
     status                 VARCHAR(32)     NOT NULL DEFAULT 'PENDING',
     algorithm_version      VARCHAR(64)     NOT NULL,
     judge_config_snapshot  JSONB           NOT NULL DEFAULT '{}'::jsonb,
-    threshold_snapshot     JSONB           NOT NULL DEFAULT '{}'::jsonb,
     sample_count           INTEGER         NOT NULL DEFAULT 0,
     token_usage            JSONB           NOT NULL DEFAULT '{}'::jsonb,
     estimated_cost         NUMERIC(12, 6),
