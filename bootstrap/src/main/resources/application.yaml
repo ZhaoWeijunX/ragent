@@ -111,7 +111,7 @@ rag:
   graph:
     type: none  # 图谱后端总开关，可选 none / lightrag。lightrag 即接入后端供「后台可视化 / 检索读取」；是否参与检索、是否写入分别由 rag.search.channels.graph.enabled 与下方 ingestion.enabled 独立控制
     lightrag:
-      base-url: http://127.0.0.1:9621
+      base-url: http://${ragent.infra.host:localhost}:9621
       query-mode: mix  # naive / local / global / hybrid / mix
       timeout-ms: 30000
     embedding-model: qwen-emb-8b  # 与 LightRAG 的 SiliconFlow Qwen3-Embedding-8B 配置一致

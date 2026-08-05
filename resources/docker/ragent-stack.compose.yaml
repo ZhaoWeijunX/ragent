@@ -1,0 +1,13 @@
+name: ragent-stack
+
+# Linux 部署统一入口。恢复脚本会把本文件及其子 Compose 安装到同一部署目录，
+# 并创建同目录 .env 与 graphrag/.env；日常只需执行：
+#   docker compose -f ragent-stack.compose.yaml up -d
+include:
+  - path:
+      - ./ragent-infra.compose.yaml
+      - ./deployment/ragent-infra.remote.override.yaml
+  - path:
+      - ./graphrag/lightrag-neo4j-stack.compose.yaml
+      - ./deployment/graphrag.remote.override.yaml
+    env_file: ./graphrag/.env

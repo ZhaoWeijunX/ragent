@@ -1,0 +1,7 @@
+volumes:
+  neo4j-data:
+    name: lightrag-neo4j-stack_neo4j-data
+  neo4j-logs:
+    name: lightrag-neo4j-stack_neo4j-logs
+  lightrag-data:
+    name: lightrag-neo4j-stack_lightrag-data
