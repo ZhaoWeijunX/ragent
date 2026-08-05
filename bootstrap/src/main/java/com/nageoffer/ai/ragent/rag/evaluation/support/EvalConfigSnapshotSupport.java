@@ -32,6 +32,7 @@ import com.nageoffer.ai.ragent.rag.config.RAGConfigProperties;
 import com.nageoffer.ai.ragent.rag.config.RAGDefaultProperties;
 import com.nageoffer.ai.ragent.rag.config.SearchChannelProperties;
 import com.nageoffer.ai.ragent.rag.constant.RAGConstant;
+import com.nageoffer.ai.ragent.rag.core.prompt.AgentPromptResolver;
 import com.nageoffer.ai.ragent.rag.dao.entity.IntentNodeDO;
 import com.nageoffer.ai.ragent.rag.dao.mapper.IntentNodeMapper;
 import com.nageoffer.ai.ragent.rag.eval.EvalProperties;
@@ -62,12 +63,10 @@ import java.util.stream.Collectors;
  */
 @Component
 @RequiredArgsConstructor
-@ConditionalOnProperty(prefix = "app.eval", name = "workbench-enabled", havingValue = "true")
+@ConditionalOnProperty(prefix = "ragent.eval", name = "workbench-enabled", havingValue = "true")
 public class EvalConfigSnapshotSupport {
 
-    private static final List<String> PROMPT_PATHS = List.of(
-            RAGConstant.RAG_ENTERPRISE_PROMPT_PATH,
-            RAGConstant.CHAT_SYSTEM_PROMPT_PATH,
+    private static final List<String> CLASSPATH_PROMPT_PATHS = List.of(
             RAGConstant.QUERY_REWRITE_AND_SPLIT_PROMPT_PATH,
             RAGConstant.INTENT_CLASSIFIER_PROMPT_PATH,
             RAGConstant.ANSWER_CITATION_RULES_PROMPT_PATH,
@@ -75,6 +74,7 @@ public class EvalConfigSnapshotSupport {
     );
 
     private final EvalProperties evalProperties;
+    private final AgentPromptResolver agentPromptResolver;
     private final AIModelProperties aiModelProperties;
     private final SearchChannelProperties searchChannelProperties;
     private final RAGConfigProperties ragConfigProperties;
@@ -203,8 +203,12 @@ public class EvalConfigSnapshotSupport {
     private Map<String, Object> snapshotPrompt() {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("version", null);
-        out.put("classpathPaths", PROMPT_PATHS);
-        out.put("classpathContentSha256", hashClasspathPrompts(PROMPT_PATHS));
+        Map<String, String> effectivePrompts = agentPromptResolver.resolveAll();
+        out.put("source", "agent-profile");
+        out.put("effectiveSlotKeys", effectivePrompts.keySet().stream().sorted().toList());
+        out.put("effectiveContentSha256", hashEffectivePrompts(effectivePrompts));
+        out.put("classpathPaths", CLASSPATH_PROMPT_PATHS);
+        out.put("classpathContentSha256", hashClasspathPrompts(CLASSPATH_PROMPT_PATHS));
         out.put("citationRulesIncluded", Boolean.TRUE.equals(ragConfigProperties.getCitationEnabled()));
         return out;
     }
@@ -344,15 +348,29 @@ public class EvalConfigSnapshotSupport {
         return DigestUtil.sha256Hex(digest.toString());
     }
 
+    static String hashEffectivePrompts(Map<String, String> prompts) {
+        StringBuilder digest = new StringBuilder();
+        prompts.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey())
+                .forEach(entry -> digest.append(entry.getKey())
+                        .append('\n')
+                        .append(StrUtil.nullToEmpty(entry.getValue()))
+                        .append('\n'));
+        return DigestUtil.sha256Hex(digest.toString());
+    }
+
     private static String readClasspathText(String path) {
         try {
             ClassPathResource resource = new ClassPathResource(path);
             if (!resource.exists()) {
-                return "";
+                throw new IllegalStateException("Prompt resource does not exist: " + path);
             }
             return StreamUtils.copyToString(resource.getInputStream(), StandardCharsets.UTF_8);
         } catch (Exception ex) {
-            return "";
+            if (ex instanceof IllegalStateException illegalStateException) {
+                throw illegalStateException;
+            }
+            throw new IllegalStateException("Failed to read prompt resource: " + path, ex);
         }
     }
 

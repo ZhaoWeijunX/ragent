@@ -21,10 +21,13 @@ import com.nageoffer.ai.ragent.infra.config.AIModelProperties;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class EvalConfigSnapshotSupportTest {
@@ -55,14 +58,39 @@ class EvalConfigSnapshotSupportTest {
     @Test
     void hashClasspathPromptsIsStable() {
         String a = EvalConfigSnapshotSupport.hashClasspathPrompts(List.of(
-                "prompt/answer-chat-kb.st",
-                "prompt/answer-chat-system.st"
+                "prompt/intent-classifier.st",
+                "prompt/answer-citation-rules.st"
         ));
         String b = EvalConfigSnapshotSupport.hashClasspathPrompts(List.of(
-                "prompt/answer-chat-system.st",
-                "prompt/answer-chat-kb.st"
+                "prompt/answer-citation-rules.st",
+                "prompt/intent-classifier.st"
         ));
         assertEquals(a, b);
         assertTrue(a.matches("[0-9a-f]{64}"));
+    }
+
+    @Test
+    void hashClasspathPromptsRejectsMissingResource() {
+        assertThrows(IllegalStateException.class,
+                () -> EvalConfigSnapshotSupport.hashClasspathPrompts(List.of("prompt/missing.st")));
+    }
+
+    @Test
+    void hashEffectivePromptsIsStableAndContentSensitive() {
+        Map<String, String> first = new LinkedHashMap<>();
+        first.put("KB_ANSWER", "kb prompt");
+        first.put("SYSTEM_CHAT", "system prompt");
+
+        Map<String, String> reordered = new LinkedHashMap<>();
+        reordered.put("SYSTEM_CHAT", "system prompt");
+        reordered.put("KB_ANSWER", "kb prompt");
+
+        Map<String, String> changed = new LinkedHashMap<>(first);
+        changed.put("KB_ANSWER", "changed prompt");
+
+        String expected = EvalConfigSnapshotSupport.hashEffectivePrompts(first);
+        assertEquals(expected, EvalConfigSnapshotSupport.hashEffectivePrompts(reordered));
+        assertNotEquals(expected, EvalConfigSnapshotSupport.hashEffectivePrompts(changed));
+        assertTrue(expected.matches("[0-9a-f]{64}"));
     }
 }

@@ -38,7 +38,7 @@ import java.util.Set;
 @Slf4j
 @Component
 @RequiredArgsConstructor
-@ConditionalOnProperty(prefix = "app.eval", name = "workbench-enabled", havingValue = "true")
+@ConditionalOnProperty(prefix = "ragent.eval", name = "workbench-enabled", havingValue = "true")
 public class EvalRunLeaseReclaimer {
 
     private static final Set<String> ACTIVE = Set.of(
@@ -53,7 +53,7 @@ public class EvalRunLeaseReclaimer {
     private final EvalRunWorker runWorker;
     private final EvalProperties evalProperties;
 
-    @Scheduled(fixedDelayString = "${app.eval.lease-heartbeat-seconds:30}000")
+    @Scheduled(fixedDelayString = "${ragent.eval.lease-heartbeat-seconds:30}000")
     public void reclaim() {
         Date now = new Date();
         List<EvalRunDO> candidates = runMapper.selectList(Wrappers.lambdaQuery(EvalRunDO.class)

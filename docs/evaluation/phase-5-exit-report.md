@@ -15,7 +15,7 @@
 | Judge 配置快照 / externalJobId | 通过 | `t_eval_score_batch.judge_config_snapshot` / `external_job_id` |
 | 前端 RAGAS 区与口径提示 | 通过 | Run 详情「RAGAS LLM-as-judge」表 + Context Recall 不可替换提示 |
 | 同一 Record 可多 RAGAS 批次 | 通过 | `POST .../ragas-rescore` 每次新建 batch |
-| 采样 n=1..3 | 通过 | `app.eval.ragas.max-independent-runs` → `ragas_n` |
+| 采样 n=1..3 | 通过 | `ragent.eval.ragas.max-independent-runs` → `ragas_n` |
 | 自动化测试 | 部分 | Python：`tests/test_score_api.py`（skip_ragas / idempotency）；Java 暂无 RAGAS 集成测 |
 
 ## ragenteval（外部仓库）
@@ -37,14 +37,14 @@
 配置：
 
 ```yaml
-app.eval.ragas:
+ragent.eval.ragas:
   enabled: true
   endpoint: http://127.0.0.1:8089
   service-token: ${RAGAS_SERVICE_TOKEN:}
   max-independent-runs: 1
 ```
 
-Run 创建需 `ragasEnabled=true`，且全局 `app.eval.ragas.enabled=true`。
+Run 创建需 `ragasEnabled=true`，且全局 `ragent.eval.ragas.enabled=true`。
 
 ## 前端
 
@@ -64,7 +64,7 @@ Run 创建需 `ragasEnabled=true`，且全局 `app.eval.ragas.enabled=true`。
 
 | 组件 | 要求 |
 |------|------|
-| ragent | `app.eval.workbench-enabled=true`；评测表已建；管理员登录 |
+| ragent | `ragent.eval.workbench-enabled=true`；评测表已建；管理员登录 |
 | ragenteval | 分支 `feat/ragas-http-service`；本机可起 HTTP 服务 |
 | 评估集 | 至少一个 `PUBLISHED` 版本（建议先用 20 条 smoke 集） |
 
@@ -206,9 +206,9 @@ uvicorn eval.service.app:app --port 8089
 ragent：
 
 ```yaml
-app.eval.ragas.enabled: true
-app.eval.ragas.endpoint: http://127.0.0.1:8089
-app.eval.ragas.max-independent-runs: 1
+ragent.eval.ragas.enabled: true
+ragent.eval.ragas.endpoint: http://127.0.0.1:8089
+ragent.eval.ragas.max-independent-runs: 1
 ```
 
 建议：
@@ -235,7 +235,7 @@ app.eval.ragas.max-independent-runs: 1
 ### 7. 回归关注点
 
 1. **未勾选 RAGAS** 的 Run：不应进入长时间 `RAGAS_SCORING`，终态与阶段 4 一致。
-2. **`app.eval.ragas.enabled=false`**：管理台异步路径抛错提示；Worker 同步路径跳过（日志可见 skip）。
+2. **`ragent.eval.ragas.enabled=false`**：管理台异步路径抛错提示；Worker 同步路径跳过（日志可见 skip）。
 3. 自建 `rescore` 与 RAGAS `ragas-rescore` 互不影响对方历史 batch。
 4. 进行中 RAGAS：管理台「取消」→ `POST .../ragas-batches/{batchId}/cancel`；录制中的 Run 取消仍以协作式录制取消为准。
 

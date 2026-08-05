@@ -908,7 +908,7 @@ export function EvalRunDetailPage() {
                       }`
                     : ragasReport
                       ? ` 批次 ${ragasReport.batchId} · ${ragasReport.status} · ${ragasReport.algorithmVersion || "-"}`
-                      : " 暂无 RAGAS 批次（需创建时勾选「启用 RAGAS」，且 app.eval.ragas.enabled=true）"}
+                      : " 暂无 RAGAS 批次（需创建时勾选「启用 RAGAS」，且 ragent.eval.ragas.enabled=true）"}
                   {!activeRagasBatch && (() => {
                     const hint = formatRagasCostHint(latestRagasBatch);
                     return hint ? ` · ${hint}` : "";

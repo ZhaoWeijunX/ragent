@@ -39,7 +39,7 @@ import java.util.Map;
 @Slf4j
 @Component
 @RequiredArgsConstructor
-@ConditionalOnProperty(prefix = "app.eval", name = "workbench-enabled", havingValue = "true")
+@ConditionalOnProperty(prefix = "ragent.eval", name = "workbench-enabled", havingValue = "true")
 public class RagasHttpSemanticEvaluationProvider implements SemanticEvaluationProvider {
 
     private final EvalProperties evalProperties;

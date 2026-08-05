@@ -74,7 +74,7 @@ import java.util.stream.Collectors;
 
 @Slf4j
 @Service
-@ConditionalOnProperty(prefix = "app.eval", name = "workbench-enabled", havingValue = "true")
+@ConditionalOnProperty(prefix = "ragent.eval", name = "workbench-enabled", havingValue = "true")
 public class EvalScoreServiceImpl implements EvalScoreService {
 
     public static final String DIM_OVERALL = "OVERALL";
@@ -225,9 +225,9 @@ public class EvalScoreServiceImpl implements EvalScoreService {
         }
         if (evalProperties.getRagas() == null || !evalProperties.getRagas().isEnabled()) {
             if (async) {
-                throw new ClientException("全局 RAGAS 未启用：请将 app.eval.ragas.enabled / RAGAS_ENABLED 设为 true 并重启服务");
+                throw new ClientException("全局 RAGAS 未启用：请将 ragent.eval.ragas.enabled / RAGAS_ENABLED 设为 true 并重启服务");
             }
-            log.info("app.eval.ragas.enabled=false，跳过 RAGAS runId={}", runId);
+            log.info("ragent.eval.ragas.enabled=false，跳过 RAGAS runId={}", runId);
             return null;
         }
 
@@ -883,7 +883,7 @@ public class EvalScoreServiceImpl implements EvalScoreService {
                 ? null
                 : evalProperties.getRagas().getJudgeChat();
         if (judgeChat == null || judgeChat.getCandidates() == null || judgeChat.getCandidates().isEmpty()) {
-            throw new ClientException("未配置 RAGAS Judge 聊天模型（app.eval.ragas.judge-chat）");
+            throw new ClientException("未配置 RAGAS Judge 聊天模型（ragent.eval.ragas.judge-chat）");
         }
         return judgeChat.getCandidates().stream()
                 .filter(c -> c != null && modelId.equals(c.getId()))

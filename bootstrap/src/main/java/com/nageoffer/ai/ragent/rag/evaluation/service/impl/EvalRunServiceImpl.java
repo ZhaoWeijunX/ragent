@@ -66,7 +66,7 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
-@ConditionalOnProperty(prefix = "app.eval", name = "workbench-enabled", havingValue = "true")
+@ConditionalOnProperty(prefix = "ragent.eval", name = "workbench-enabled", havingValue = "true")
 public class EvalRunServiceImpl implements EvalRunService {
 
     public static final String DUAL_PATH_DISCLAIMER =

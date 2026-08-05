@@ -32,7 +32,7 @@
 
 | 路径 | Judge 模型 | 可选？ |
 |------|------------|--------|
-| 创建 Run 自动 RAGAS | `app.eval.ragas.judge-chat.default-model` + `ai.embedding.default-model` | 否（改 yaml） |
+| 创建 Run 自动 RAGAS | `ragent.eval.ragas.judge-chat.default-model` + `ai.embedding.default-model` | 否（改 yaml） |
 | 详情弹窗重评 | 弹窗选 chat/embedding | 是 |
 
 当前 Judge 候选：`deepseek-v4-pro`（deepseek）、`gpt-5.4-mini`（aihubmix）；默认 chat=`gpt-5.4-mini`。
@@ -45,7 +45,7 @@
 - `RagasHttpSemanticEvaluationProvider`：submit/poll/cancel
 - `EvalRunWorker`：录制后可选 `scoreRagas`
 - `EvalRunController`：`ragas-rescore` / `ragas-batches/{id}/cancel` / `ragas-judge-models`
-- `application.yaml` → `app.eval.ragas.*` + `judge-chat`
+- `application.yaml` → `ragent.eval.ragas.*` + `judge-chat`
 
 **FE**
 
@@ -83,7 +83,7 @@
 ## 7. 本地联调备忘
 
 1. 起 ragenteval（见 `eval/service/README.md`），默认 `:8089`
-2. ragent：`app.eval.ragas.enabled=true`，`endpoint` 指向服务；`DEEPSEEK_API_KEY` / `AIHUBMIX_API_KEY` 按选用模型
+2. ragent：`ragent.eval.ragas.enabled=true`，`endpoint` 指向服务；`DEEPSEEK_API_KEY` / `AIHUBMIX_API_KEY` 按选用模型
 3. Run 勾选「启用 RAGAS」或详情「RAGAS 评分」
 4. 进度看 `work_completed/work_total`（评分项），勿用误导的「已评样本」中间态
 5. 改 yaml / Python 后需重启对应进程

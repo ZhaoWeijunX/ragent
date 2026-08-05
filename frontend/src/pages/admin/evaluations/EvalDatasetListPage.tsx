@@ -52,7 +52,7 @@ export function EvalDatasetListPage() {
       const statusParam = status === "ARCHIVED" ? "ARCHIVED" : undefined;
       setPageData(await pageDatasets(current, PAGE_SIZE, kw || undefined, statusParam));
     } catch (error) {
-      toast.error(getErrorMessage(error, "加载评估集失败（请确认 app.eval.workbench-enabled=true）"));
+      toast.error(getErrorMessage(error, "加载评估集失败（请确认 ragent.eval.workbench-enabled=true）"));
     } finally {
       setLoading(false);
     }

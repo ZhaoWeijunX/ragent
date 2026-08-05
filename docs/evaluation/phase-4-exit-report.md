@@ -24,7 +24,7 @@
 
 ## API（新增 / 扩展）
 
-前缀 `/admin/evaluations`，需 `admin` + `app.eval.workbench-enabled=true`：
+前缀 `/admin/evaluations`，需 `admin` + `ragent.eval.workbench-enabled=true`：
 
 | 方法 | 路径 | 说明 |
 |------|------|------|

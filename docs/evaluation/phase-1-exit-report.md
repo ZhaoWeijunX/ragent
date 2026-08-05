@@ -11,7 +11,7 @@
 | 已有库升级入口 | 通过 | `resources/database/upgrades/v1.1.0/260730_eval_workbench.sql` |
 | 全量 schema 同步 | 通过 | `resources/database/schema_pg.sql` 追加评测表段落 |
 | 工作台包骨架 | 通过 | `bootstrap/.../rag/evaluation/**` |
-| feature flag 关闭无工作台任务 | 通过 | `app.eval.workbench-enabled: false`；`EvaluationWorkbenchConfiguration` 条件装配 |
+| feature flag 关闭无工作台任务 | 通过 | `ragent.eval.workbench-enabled: false`；`EvaluationWorkbenchConfiguration` 条件装配 |
 | 专用线程池 | 通过 | `evalRecordExecutor`（仅 workbench 开启时） |
 | 审计类型扩展 | 通过 | `BizChangeBizType.EVAL_*` |
 

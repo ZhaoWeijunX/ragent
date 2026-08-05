@@ -433,7 +433,7 @@ export function EvalRunListPage() {
               <span>
                 启用 RAGAS
                 <span className="mt-0.5 block text-xs text-muted-foreground">
-                  允许在详情页手动评分；需 app.eval.ragas.enabled 与评分服务可用。
+                  允许在详情页手动评分；需 ragent.eval.ragas.enabled 与评分服务可用。
                 </span>
               </span>
             </label>

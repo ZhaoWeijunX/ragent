@@ -54,7 +54,7 @@ import java.util.List;
  */
 @RestController
 @RequiredArgsConstructor
-@ConditionalOnProperty(prefix = "app.eval", name = "workbench-enabled", havingValue = "true")
+@ConditionalOnProperty(prefix = "ragent.eval", name = "workbench-enabled", havingValue = "true")
 public class EvalRunController {
 
     private final EvalRunService evalRunService;

@@ -21,7 +21,7 @@ import lombok.Data;
 
 /**
  * 管理台「RAGAS 评分」请求：指定 Judge 聊天 / 嵌入模型候选 id。
- * chat → {@code app.eval.ragas.judge-chat}；embedding → {@code ai.embedding}。
+ * chat → {@code ragent.eval.ragas.judge-chat}；embedding → {@code ai.embedding}。
  */
 @Data
 public class EvalRagasRescoreRequest {

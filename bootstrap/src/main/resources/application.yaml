@@ -42,8 +42,42 @@ ragent:
   engine:
     type: workflow  # 执行架构档位，可选 workflow（v1 编排管线）/ agent（v2 ReAct 架构，RAG 管线降级为主 Agent 的一个 Tool）
   demo-mode: false
+  # 评测旁路 + 工作台（与 Chat Pipeline 隔离；生产请关闭 enabled / workbench-enabled / ragas.enabled）
   eval:
+    # 旁路 GET /rag/eval；工作台双路径录制取证据依赖此开关，本地联调需 true
     enabled: true
+    # 评测工作台 Admin API / Runner / 专用线程池 / 租约回收；生产请 false
+    workbench-enabled: true
+    max-active-runs: 1              # 同时处于录制阶段的最大 Run 数（共享环境务必保持 1）
+    record-concurrency: 1           # 单 Run 内样本录制并发；勿与在线聊天线程池抢资源
+    sample-timeout-seconds: 120     # 单样本录制超时（秒）
+    sample-retry-times: 1           # 单样本失败后的额外重试次数
+    record-thinking: false          # true 时把 thinking 写入 t_eval_record（MVP 默认关，注意脱敏）
+    lease-heartbeat-seconds: 30     # Runner 租约心跳间隔（秒）
+    lease-expire-seconds: 90        # 租约过期后由 EvalRunLeaseReclaimer 回收可恢复 Run
+    # RAGAS LLM-as-judge：依赖外部 ragenteval HTTP 服务；失败不回滚 Record / 确定性分数
+    # 联调：uvicorn eval.service.app:app --port 8089，再将 enabled 置 true；Run 创建仍须勾选「启用 RAGAS」
+    ragas:
+      enabled: ${RAGAS_ENABLED:false}                              # 全局总开关；false 时即使 Run.ragasEnabled=true 也跳过
+      endpoint: ${RAGAS_ENDPOINT:http://127.0.0.1:8089}             # 评分服务 Base URL（无尾斜杠）；空则视为不可用
+      service-token: ${RAGAS_SERVICE_TOKEN:}                        # 可选；与 ragenteval RAGENTEVAL_SERVICE_TOKEN 对齐，Bearer 鉴权
+      concurrency: 2                                               # 预留：客户端侧并发上限（当前提交为整批一次）
+      timeout-seconds: 180                                         # 单次 HTTP 超时（秒）；轮询总时限约为该值 ×10
+      poll-interval-seconds: 10                                    # 轮询外部 job 固定间隔（秒），不做退避
+      retry-times: 2                                               # 预留：提交/轮询瞬时失败重试（当前未接线）
+      max-samples-per-run: 500                                     # 单次 RAGAS 批次最多送评样本数（超出截断）
+      max-independent-runs: 1                                      # ragas_n（1–3）；>1 对同一样本多次采样取均值，成本倍增
+      # Judge 专用聊天模型（与 ai.chat 业务档位分离）；embedding 仍用 ai.embedding
+      # DeepSeek 侧用 v4-pro（指令遵循更稳，利于 faithfulness 等 JSON 解析）；flash 成本低但易 OutputParser 失败
+      judge-chat:
+        default-model: gpt-5.4-mini
+        candidates:
+          - id: deepseek-v4-pro
+            provider: deepseek
+            model: deepseek-v4-pro
+          - id: gpt-5.4-mini
+            provider: aihubmix
+            model: gpt-5.4-mini
 
 rag:
   storage:
@@ -347,43 +381,5 @@ logging:
     console: "%clr(%d{yyyy-MM-dd HH:mm:ss.SSS}){faint} %clr(%5p) %clr([%15.15t]){faint} %clr(%-40.40logger{39}){cyan} %clr(:){faint} %msg%n"
     file: "%d{yyyy-MM-dd HH:mm:ss.SSS} %5p [%15.15t] %-40.40logger{39} : %msg%n"
 
-app:
-#  demo-mode: false
-  # 评测旁路 + 工作台（与 Chat Pipeline 隔离；生产请关闭 enabled / workbench-enabled / ragas.enabled）
-  eval:
-    # 旁路 GET /rag/eval；工作台双路径录制取证据依赖此开关，本地联调需 true
-#    enabled: true
-    # 评测工作台 Admin API / Runner / 专用线程池 / 租约回收；生产请 false
-    workbench-enabled: true
-    max-active-runs: 1              # 同时处于录制阶段的最大 Run 数（共享环境务必保持 1）
-    record-concurrency: 1           # 单 Run 内样本录制并发；勿与在线聊天线程池抢资源
-    sample-timeout-seconds: 120     # 单样本录制超时（秒）
-    sample-retry-times: 1           # 单样本失败后的额外重试次数
-    record-thinking: false          # true 时把 thinking 写入 t_eval_record（MVP 默认关，注意脱敏）
-    lease-heartbeat-seconds: 30     # Runner 租约心跳间隔（秒）
-    lease-expire-seconds: 90        # 租约过期后由 EvalRunLeaseReclaimer 回收可恢复 Run
-    # RAGAS LLM-as-judge：依赖外部 ragenteval HTTP 服务；失败不回滚 Record / 确定性分数
-    # 联调：uvicorn eval.service.app:app --port 8089，再将 enabled 置 true；Run 创建仍须勾选「启用 RAGAS」
-    ragas:
-      enabled: ${RAGAS_ENABLED:false}                              # 全局总开关；false 时即使 Run.ragasEnabled=true 也跳过
-      endpoint: ${RAGAS_ENDPOINT:http://127.0.0.1:8089}             # 评分服务 Base URL（无尾斜杠）；空则视为不可用
-      service-token: ${RAGAS_SERVICE_TOKEN:}                        # 可选；与 ragenteval RAGENTEVAL_SERVICE_TOKEN 对齐，Bearer 鉴权
-      concurrency: 2                                               # 预留：客户端侧并发上限（当前提交为整批一次）
-      timeout-seconds: 180                                         # 单次 HTTP 超时（秒）；轮询总时限约为该值 ×10
-      poll-interval-seconds: 10                                    # 轮询外部 job 固定间隔（秒），不做退避
-      retry-times: 2                                               # 预留：提交/轮询瞬时失败重试（当前未接线）
-      max-samples-per-run: 500                                     # 单次 RAGAS 批次最多送评样本数（超出截断）
-      max-independent-runs: 1                                      # ragas_n（1–3）；>1 对同一样本多次采样取均值，成本倍增
-      # Judge 专用聊天模型（与 ai.chat 业务档位分离）；embedding 仍用 ai.embedding
-      # DeepSeek 侧用 v4-pro（指令遵循更稳，利于 faithfulness 等 JSON 解析）；flash 成本低但易 OutputParser 失败
-      judge-chat:
-        default-model: gpt-5.4-mini
-        candidates:
-          - id: deepseek-v4-pro
-            provider: deepseek
-            model: deepseek-v4-pro
-          - id: gpt-5.4-mini
-            provider: aihubmix
-            model: gpt-5.4-mini
 milvus:
   uri: http://localhost:19530

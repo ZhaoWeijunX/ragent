@@ -31,13 +31,13 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
 /**
- * 评测工作台配置：仅在 {@code app.eval.workbench-enabled=true} 时注册任务资源。
+ * 评测工作台配置：仅在 {@code ragent.eval.workbench-enabled=true} 时注册任务资源。
  * <p>
  * 不改动聊天线程池；Mapper 由启动类统一扫描。
  */
 @Configuration
 @RequiredArgsConstructor
-@ConditionalOnProperty(prefix = "app.eval", name = "workbench-enabled", havingValue = "true")
+@ConditionalOnProperty(prefix = "ragent.eval", name = "workbench-enabled", havingValue = "true")
 public class EvaluationWorkbenchConfiguration {
 
     private final EvalProperties evalProperties;

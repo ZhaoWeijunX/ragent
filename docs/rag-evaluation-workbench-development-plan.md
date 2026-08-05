@@ -78,7 +78,7 @@ MVP 累计约 **6–8** 个日历周；V1 累计约 **10–13** 个日历周（�
   - 升级入口：`resources/database/upgrades/v1.1.0/260730_eval_workbench.sql`（与权威脚本同步）
   - 全量 schema 已追加评测表段落：`resources/database/schema_pg.sql`
   - Java 包骨架：`bootstrap/.../rag/evaluation/`（entity/mapper/config/constant + 后续分层 package-info）
-  - 配置：`app.eval.workbench-enabled` 默认 false；`evalRecordExecutor` 仅在开关开启时注册
+  - 配置：`ragent.eval.workbench-enabled` 默认 false；`evalRecordExecutor` 仅在开关开启时注册
   - 审计类型：`EVAL_DATASET` / `EVAL_DATASET_VERSION` / `EVAL_RUN`
   - 已取消：`t_eval_manual_override`（见 `260803_drop_eval_manual_override.sql`）
 

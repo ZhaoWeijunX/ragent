@@ -87,7 +87,7 @@
    psql -U postgres -d ragent -f resources/database/upgrades/v1.1.0/260730_eval_workbench.sql
    ```
 
-2. 配置开启工作台：`app.eval.workbench-enabled: true`（本地 `application.yaml` 默认已开）。
+2. 配置开启工作台：`ragent.eval.workbench-enabled: true`（本地 `application.yaml` 默认已开）。
 3. 后端与前端已启动，使用 **admin** 账号登录管理台。
 
 ### 2. 推荐数据文件

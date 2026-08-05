@@ -104,7 +104,7 @@ status=PENDING, phase=PENDING
 |----|------|
 | 默认 | **不落库**（`thinking = null`） |
 | 原因 | 体积大、可能含中间推理与敏感信息；需求 §26.1.5 |
-| 调试 | 配置 `app.eval.record-thinking=false`（默认）；若未来开启，须脱敏且仅 ADMIN 可见 |
+| 调试 | 配置 `ragent.eval.record-thinking=false`（默认）；若未来开启，须脱敏且仅 ADMIN 可见 |
 | Spike / 内存 | Runner 内存可聚合 thinking 用于本地 spike，不写入 `t_eval_record` |
 
 ## 7. 文档业务码

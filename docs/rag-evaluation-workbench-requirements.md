@@ -760,7 +760,7 @@ app:
 
 说明：
 
-- `app.eval.enabled` 继续控制评测旁路。
+- `ragent.eval.enabled` 继续控制评测旁路。
 - `workbench-enabled` 控制工作台 API 与任务执行。
 - 生产环境默认关闭；确需生产评测时必须限制角色、并发和成本。
 - Judge 密钥使用现有模型配置或 Secret，不允许进入数据库明文字段。

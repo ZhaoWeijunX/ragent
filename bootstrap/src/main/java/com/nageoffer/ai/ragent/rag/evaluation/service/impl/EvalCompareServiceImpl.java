@@ -39,7 +39,7 @@ import java.util.Objects;
 
 @Service
 @RequiredArgsConstructor
-@ConditionalOnProperty(prefix = "app.eval", name = "workbench-enabled", havingValue = "true")
+@ConditionalOnProperty(prefix = "ragent.eval", name = "workbench-enabled", havingValue = "true")
 public class EvalCompareServiceImpl implements EvalCompareService {
 
     private final EvalRunService evalRunService;

@@ -45,7 +45,7 @@ spring:
    - 「腾讯科技有哪些紧急工单」
    - 「本月工单解决率」
 
-可选：开启 `app.eval.enabled=true` 后访问 `/rag/eval?question=...` 仅测检索链路。
+可选：开启 `ragent.eval.enabled=true` 后访问 `/rag/eval?question=...` 仅测检索链路。
 
 ## 新增文件
 

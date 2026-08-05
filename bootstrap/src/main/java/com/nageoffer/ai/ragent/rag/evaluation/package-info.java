@@ -19,7 +19,7 @@
  * RAG 评测工作台包。
  * <p>
  * 与旁路包 {@code com.nageoffer.ai.ragent.rag.eval} 分离：本包承载数据集 / Run / 录制 / 评分 / 报告。
- * API 前缀 {@code /admin/evaluations}；由 {@code app.eval.workbench-enabled} 控制任务资源注册。
+ * API 前缀 {@code /admin/evaluations}；由 {@code ragent.eval.workbench-enabled} 控制任务资源注册。
  * 阶段 1 仅落持久化与骨架，业务 CRUD 自阶段 2 起实现。
  */
 package com.nageoffer.ai.ragent.rag.evaluation;

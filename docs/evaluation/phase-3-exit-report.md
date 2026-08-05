@@ -12,7 +12,7 @@
 | 状态机 PENDING→RECORDING→…→终态 | 通过 | `EvalRunWorker#finalizeRun`；评分阶段见阶段 4 |
 | 租约领取与过期恢复 | 通过 | `lease_owner` / `lease_expire_at` + `EvalRunLeaseReclaimer` |
 | 双路径录制写入 `t_eval_record` | 通过 | `EvalDualPathSampleRecorder`：真实 Chat 管线 + 旁路证据 + taskId→traceId |
-| Thinking 默认不落库 | 通过 | `app.eval.record-thinking=false` |
+| Thinking 默认不落库 | 通过 | `ragent.eval.record-thinking=false` |
 | 单样本失败 → PARTIAL_SUCCESS | 通过 | `EvalRunTerminalStatus` |
 | 取消保留已录制数据 | 通过 | 协作式取消；已录制保留；未开跑样本写 `cancelled` Record |
 | 前端 Run 列表/进度/漂移披露 | 通过 | `EvalRunListPage` / `EvalRunDetailPage` |
@@ -20,7 +20,7 @@
 
 ## API
 
-前缀 `/admin/evaluations`，需 `admin` + `app.eval.workbench-enabled=true`：
+前缀 `/admin/evaluations`，需 `admin` + `ragent.eval.workbench-enabled=true`：
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
@@ -66,7 +66,7 @@ app:
 
 ## 运行实例（本地冒烟步骤与预期）
 
-前置：`app.eval.enabled=true`、`app.eval.workbench-enabled=true`；ragent 已启动；管理员已登录；评估集已有 **PUBLISHED** 版本（建议先导入 `D:\code\ragenteval\eval\rag\dataset\eval_set_v1.jsonl` 的 20 条并发布）。
+前置：`ragent.eval.enabled=true`、`ragent.eval.workbench-enabled=true`；ragent 已启动；管理员已登录；评估集已有 **PUBLISHED** 版本（建议先导入 `D:\code\ragenteval\eval\rag\dataset\eval_set_v1.jsonl` 的 20 条并发布）。
 
 ### 场景 A：创建并跑完 20 条 Run
 

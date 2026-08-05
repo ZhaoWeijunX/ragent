@@ -53,7 +53,7 @@ public interface EvalScoreService {
     void cancelRagasBatch(String runId, String batchId);
 
     /**
-     * RAGAS 弹窗可选模型：Judge chat（app.eval.ragas.judge-chat）+ embedding（ai.embedding）。
+     * RAGAS 弹窗可选模型：Judge chat（ragent.eval.ragas.judge-chat）+ embedding（ai.embedding）。
      */
     EvalRagasJudgeModelsVO listRagasJudgeModels();
 

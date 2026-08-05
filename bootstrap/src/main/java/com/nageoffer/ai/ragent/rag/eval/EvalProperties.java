@@ -25,7 +25,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 评测配置：旁路接口（/rag/eval）与评测工作台共用前缀 {@code app.eval}。
+ * 评测配置：旁路接口（/rag/eval）与评测工作台共用前缀 {@code ragent.eval}。
  */
 @Data
 @Component

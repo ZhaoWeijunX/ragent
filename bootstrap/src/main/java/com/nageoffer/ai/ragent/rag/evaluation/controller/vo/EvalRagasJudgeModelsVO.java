@@ -24,7 +24,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * RAGAS 评分弹窗可选模型：Judge chat 来自 {@code app.eval.ragas.judge-chat}，embedding 来自 {@code ai.embedding}。
+ * RAGAS 评分弹窗可选模型：Judge chat 来自 {@code ragent.eval.ragas.judge-chat}，embedding 来自 {@code ai.embedding}。
  */
 @Data
 @Builder

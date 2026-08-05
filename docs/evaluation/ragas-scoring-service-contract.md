@@ -221,7 +221,7 @@ Base URL 示例：`http://ragenteval:8089`
 
 1. 将 camelCase Record 转为 snake_case。
 2. `POST /v1/evaluations/score`，保存 `job_id` 到 score_batch。
-3. 轮询至终态（固定间隔，默认 `app.eval.ragas.poll-interval-seconds`，通常 10s；无指数退避）。
+3. 轮询至终态（固定间隔，默认 `ragent.eval.ragas.poll-interval-seconds`，通常 10s；无指数退避）。
 4. 结果转 camelCase 写入 `t_eval_score`；`token_usage` / `estimated_cost` 写入 score_batch 并暴露给管理台。
 5. 超时/5xx/NaN → batch `FAILED` 或 `PARTIAL_SUCCESS`，**不**修改 `t_eval_record`。
 6. 管理台可 `POST .../ragas-batches/{batchId}/cancel` → 调本服务 cancel。
