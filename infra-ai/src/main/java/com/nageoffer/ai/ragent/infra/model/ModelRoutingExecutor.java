@@ -58,7 +58,7 @@ public class ModelRoutingExecutor {
                 continue;
             }
             // 3. 熔断层判断是否通路
-            if (!healthStore.allowCall(target.id())) {
+            if (healthStore.allowCall(target.id()) == null) {
                 continue;
             }
 

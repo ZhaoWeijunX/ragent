@@ -38,8 +38,12 @@ rocketmq:
     group: ragent-producer${unique-name:}_pg
     send-message-timeout: 2000
 
-milvus:
-  uri: http://localhost:19530
+ragent:
+  engine:
+    type: workflow  # 执行架构档位，可选 workflow（v1 编排管线）/ agent（v2 ReAct 架构，RAG 管线降级为主 Agent 的一个 Tool）
+  demo-mode: false
+  eval:
+    enabled: true
 
 rag:
   storage:
@@ -344,11 +348,11 @@ logging:
     file: "%d{yyyy-MM-dd HH:mm:ss.SSS} %5p [%15.15t] %-40.40logger{39} : %msg%n"
 
 app:
-  demo-mode: false
+#  demo-mode: false
   # 评测旁路 + 工作台（与 Chat Pipeline 隔离；生产请关闭 enabled / workbench-enabled / ragas.enabled）
   eval:
     # 旁路 GET /rag/eval；工作台双路径录制取证据依赖此开关，本地联调需 true
-    enabled: true
+#    enabled: true
     # 评测工作台 Admin API / Runner / 专用线程池 / 租约回收；生产请 false
     workbench-enabled: true
     max-active-runs: 1              # 同时处于录制阶段的最大 Run 数（共享环境务必保持 1）
@@ -381,3 +385,5 @@ app:
           - id: gpt-5.4-mini
             provider: aihubmix
             model: gpt-5.4-mini
+milvus:
+  uri: http://localhost:19530

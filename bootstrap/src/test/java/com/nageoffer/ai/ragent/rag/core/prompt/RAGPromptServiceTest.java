@@ -29,13 +29,26 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class RAGPromptServiceTest {
+
+    /**
+     * 基础模板已迁入 DB 由管理员可编辑，故此处只桩一段带标记的假模板
+     * 断言落在本类的职责（选模板、清理、追加引用规则）上，不再断言模板正文内容
+     */
+    private static final String STUB_BASE_TEMPLATE = "# 桩基础模板\n\n正文占位";
 
     private static RAGPromptService service(boolean citationEnabled) {
         RAGConfigProperties properties = new RAGConfigProperties();
         properties.setCitationEnabled(citationEnabled);
-        return new RAGPromptService(new PromptTemplateLoader(new DefaultResourceLoader()), properties);
+
+        AgentPromptResolver resolver = mock(AgentPromptResolver.class);
+        when(resolver.resolve(any())).thenReturn(STUB_BASE_TEMPLATE);
+
+        return new RAGPromptService(new PromptTemplateLoader(new DefaultResourceLoader()), resolver, properties);
     }
 
     private static PromptContext kbContext() {
@@ -52,6 +65,8 @@ class RAGPromptServiceTest {
 
         assertTrue(result.contains("# 行内引用规则"));
         assertTrue(result.contains("[N](#cite-N)"));
+        // 引用规则追加在基础模板之后
+        assertTrue(result.indexOf("# 桩基础模板") < result.indexOf("# 行内引用规则"));
 
         // 引用只落在正文单元末尾，标题一律不带引用，示例本身也不能出现带引用的标题
         assertTrue(result.contains("标题与小标题一律不加引用"));
@@ -63,9 +78,8 @@ class RAGPromptServiceTest {
         assertTrue(result.contains("由两份资料共同支撑。[1](#cite-1)[3](#cite-3)"));
 
         // 出处只允许数字角标：文档名与内部标签的禁令由基础模板统一声明，引用规则只声明自己是它的唯一例外
-        assertTrue(result.contains("**也不得报出处。**"));
-        assertTrue(result.contains("标签属性、内部编号"));
-        assertTrue(result.contains("除角标外仍不得报文档名、不得罗列来源清单"));
+        assertTrue(result.contains("本章只豁免一件事：出处改以数字角标呈现"));
+        assertTrue(result.contains("不报文档名、不出现输入侧的标签与属性字样、不罗列来源清单"));
     }
 
     @Test
@@ -78,15 +92,11 @@ class RAGPromptServiceTest {
     }
 
     @Test
-    void includesMediaAndTableRulesFromKnowledgePrompt() {
-        // 模板内的媒体与表格章节和引用开关无关：两种开关状态都必须带上
+    void usesResolvedTemplateAsBase() {
+        // 无自定义意图模板时，基础模板整段取自 AgentPromptResolver
         for (boolean citationEnabled : new boolean[]{true, false}) {
             String result = service(citationEnabled).buildSystemPrompt(kbContext());
-
-            assertTrue(result.contains("# 链接、图片与附件处理"));
-            assertTrue(result.contains("# HTML 表格处理"));
-            // HTML 表格章节声明压过格式建议，必须排在基础模板的格式章节之后
-            assertTrue(result.indexOf("# 格式与 Markdown 规范") < result.indexOf("# HTML 表格处理"));
+            assertTrue(result.startsWith(STUB_BASE_TEMPLATE));
         }
     }
 
@@ -101,14 +111,13 @@ class RAGPromptServiceTest {
         String result = service(true).buildSystemPrompt(context);
 
         assertTrue(result.contains("# 自定义意图模板"));
-        assertFalse(result.contains("# 链接、图片与附件处理"));
-        assertFalse(result.contains("# HTML 表格处理"));
+        assertFalse(result.contains("# 桩基础模板"), "意图模板整份替换基础模板");
         assertTrue(result.contains("# 行内引用规则"));
         assertTrue(result.indexOf("# 自定义意图模板") < result.indexOf("# 行内引用规则"));
     }
 
     @Test
-    void includesKnowledgeRulesFromMixedPrompt() {
+    void includesCitationRulesFromMixedPrompt() {
         PromptContext context = PromptContext.builder()
                 .mcpContext("<data>动态数据</data>")
                 .kbContext("<content ref=\"1\">资料</content>")
@@ -119,14 +128,13 @@ class RAGPromptServiceTest {
 
         String result = service(true).buildSystemPrompt(context);
 
-        assertTrue(result.contains("# 链接、图片与附件处理"));
-        assertTrue(result.contains("# HTML 表格处理"));
+        assertTrue(result.contains("# 桩基础模板"));
         assertTrue(result.contains("# 行内引用规则"));
-        assertTrue(result.indexOf("# HTML 表格处理") < result.indexOf("# 行内引用规则"));
+        assertTrue(result.indexOf("# 桩基础模板") < result.indexOf("# 行内引用规则"));
     }
 
     @Test
-    void doesNotAppendKnowledgeRulesForMcpOnlyContext() {
+    void doesNotAppendCitationRulesForMcpOnlyContext() {
         PromptContext context = PromptContext.builder()
                 .mcpContext("<data>动态数据</data>")
                 .mcpIntents(List.of())
@@ -134,9 +142,7 @@ class RAGPromptServiceTest {
 
         String result = service(true).buildSystemPrompt(context);
 
-        assertFalse(result.contains("# 行内引用规则"));
-        assertFalse(result.contains("# 链接、图片与附件处理"));
-        assertFalse(result.contains("# HTML 表格处理"));
+        assertFalse(result.contains("# 行内引用规则"), "无知识库上下文时不追加引用规则");
     }
 
     private static NodeScore intentWithTemplate(String template) {

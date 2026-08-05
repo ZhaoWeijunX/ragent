@@ -30,8 +30,9 @@ import com.nageoffer.ai.ragent.rag.core.guidance.GuidanceDecision;
 import com.nageoffer.ai.ragent.rag.core.guidance.IntentGuidanceService;
 import com.nageoffer.ai.ragent.rag.core.intent.IntentResolver;
 import com.nageoffer.ai.ragent.rag.core.memory.ConversationMemoryService;
+import com.nageoffer.ai.ragent.rag.core.prompt.AgentPromptResolver;
+import com.nageoffer.ai.ragent.rag.core.prompt.AgentPromptSlot;
 import com.nageoffer.ai.ragent.rag.core.prompt.PromptContext;
-import com.nageoffer.ai.ragent.rag.core.prompt.PromptTemplateLoader;
 import com.nageoffer.ai.ragent.rag.core.prompt.RAGPromptService;
 import com.nageoffer.ai.ragent.rag.core.retrieval.RetrievalEngine;
 import com.nageoffer.ai.ragent.rag.core.rewrite.QueryRewriteService;
@@ -49,8 +50,6 @@ import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.List;
-
-import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.CHAT_SYSTEM_PROMPT_PATH;
 
 /**
  * 流式对话流水线
@@ -73,7 +72,7 @@ public class StreamChatPipeline {
     private final RetrievalEngine retrievalEngine;
     private final LLMService llmService;
     private final RAGPromptService promptBuilder;
-    private final PromptTemplateLoader promptTemplateLoader;
+    private final AgentPromptResolver agentPromptResolver;
     private final StreamTaskManager taskManager;
     private final SourcesAssembler sourcesAssembler;
     private final GroundingChunksAssembler groundingChunksAssembler;
@@ -215,7 +214,7 @@ public class StreamChatPipeline {
                                                           String customPrompt, StreamCallback callback) {
         String systemPrompt = StrUtil.isNotBlank(customPrompt)
                 ? customPrompt
-                : promptTemplateLoader.load(CHAT_SYSTEM_PROMPT_PATH);
+                : agentPromptResolver.resolve(AgentPromptSlot.SYSTEM_CHAT);
 
         List<ChatMessage> messages = new ArrayList<>();
         messages.add(ChatMessage.system(systemPrompt));

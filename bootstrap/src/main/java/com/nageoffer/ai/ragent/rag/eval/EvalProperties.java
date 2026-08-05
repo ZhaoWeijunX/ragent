@@ -29,7 +29,7 @@ import java.util.List;
  */
 @Data
 @Component
-@ConfigurationProperties(prefix = "app.eval")
+@ConfigurationProperties(prefix = "ragent.eval")
 public class EvalProperties {
 
     /**
