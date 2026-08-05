@@ -50,7 +50,7 @@ import java.util.stream.Collectors;
  */
 @RestController
 @RequiredArgsConstructor
-@ConditionalOnProperty(prefix = "app.eval", name = "enabled", havingValue = "true")
+@ConditionalOnProperty(prefix = "ragent.eval", name = "enabled", havingValue = "true")
 public class EvalController {
 
     private static final String SKIP_REASON_SYSTEM_ONLY = "SYSTEM_ONLY";

@@ -112,7 +112,7 @@ public final class OpenAIStyleSseParser {
         }
 
         boolean hasContent() {
-            return content != null && !content.isEmpty();
+            return content != null && !content.isBlank();
         }
 
         boolean hasReasoning() {
