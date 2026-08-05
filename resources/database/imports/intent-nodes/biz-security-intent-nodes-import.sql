@@ -1,7 +1,7 @@
 -- biz-security 知识库意图树导入脚本
 --
--- 适用文档目录：resources/docs/knowledge/biz/biz-security/（7 篇多格式文档）
--- 设计说明：resources/docs/knowledge/biz/biz-security/intent-tree-design.md
+-- 适用文档目录：resources/knowledge-samples/knowledge/biz/biz-security/（7 篇多格式文档）
+-- 设计说明：resources/knowledge-samples/knowledge/biz/biz-security/intent-tree-design.md
 --
 -- 文档清单：
 --   信息安全管理制度.md          (Markdown)
@@ -22,7 +22,7 @@
 --   或重启 bootstrap 服务
 --
 -- 系统交互节点（sys / sys-welcome / sys-about-bot）如已通过
--- resources/database/imports/intent-nodes/mcp-intent-nodes-import.sql 导入，请勿重复插入。
+-- resources/database/imports/intent-nodes/system-intent-nodes-import.sql 导入，请勿重复插入。
 
 -- ---------------------------------------------------------------------------
 -- 可选：清理本脚本涉及的意图节点后重新导入（慎用，会物理删除记录）
