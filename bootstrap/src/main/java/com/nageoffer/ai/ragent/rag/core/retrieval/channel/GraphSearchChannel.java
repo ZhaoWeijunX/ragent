@@ -92,6 +92,7 @@ public class GraphSearchChannel implements SearchChannel {
             GraphEvidence evidence = lightRagClient.retrieveByScope(
                     context.getMainQuestion(), queryMode, topK, collections);
             ScopeQuota quota = ScopeQuota.split(scope, baseTopK, properties.getScope().getSupplementRatio());
+            // 分别截取主召回和补充召回
             List<RetrievedChunk> primary = ScopeQuota.cap(evidence.matched(), quota.primary());
             List<RetrievedChunk> supplement = ScopeQuota.cap(evidence.unmatched(), quota.supplement());
 

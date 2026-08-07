@@ -24,6 +24,7 @@ import co.elastic.clients.elasticsearch.core.BulkRequest;
 import co.elastic.clients.elasticsearch.core.BulkResponse;
 import com.nageoffer.ai.ragent.core.chunk.model.EmbeddedChunk;
 import com.nageoffer.ai.ragent.rag.config.KeywordProperties;
+import com.nageoffer.ai.ragent.rag.core.keyword.model.KeywordIndexDocument;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -58,6 +59,39 @@ public class EsKeywordIndexService implements KeywordIndexService {
     @PostConstruct
     public void initSharedIndex() {
         ensureSharedIndex();
+    }
+
+    @Override
+    public void indexRawChunks(List<KeywordIndexDocument> chunks) {
+        if (CollUtil.isEmpty(chunks)) {
+            return;
+        }
+        ensureSharedIndex();
+
+        BulkRequest.Builder bulk = new BulkRequest.Builder();
+        for (KeywordIndexDocument chunk : chunks) {
+            bulk.operations(op -> op.index(idx -> idx
+                    .index(sharedIndex())
+                    .id(chunk.chunkId())
+                    .document(buildDocument(chunk))));
+        }
+
+        try {
+            BulkResponse resp = esClient.bulk(bulk.build());
+            if (resp.errors()) {
+                String failures = resp.items().stream()
+                        .filter(item -> item.error() != null)
+                        .limit(5)
+                        .map(item -> item.id() + ": " + item.error().reason())
+                        .reduce((left, right) -> left + "; " + right)
+                        .orElse("unknown bulk failure");
+                throw new RuntimeException("ES 关键词索引 Bulk 部分失败: " + failures);
+            }
+        } catch (RuntimeException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new RuntimeException("ES 关键词索引 Bulk 写入失败", e);
+        }
     }
 
     @Override
@@ -232,5 +266,19 @@ public class EsKeywordIndexService implements KeywordIndexService {
 
     private String sharedIndex() {
         return keywordProperties.sharedIndex();
+    }
+
+    private Map<String, Object> buildDocument(KeywordIndexDocument chunk) {
+        String content = chunk.content() == null ? "" : chunk.content();
+        if (content.length() > MAX_CONTENT_LENGTH) {
+            content = content.substring(0, MAX_CONTENT_LENGTH);
+        }
+
+        Map<String, Object> doc = new HashMap<>();
+        doc.put("content", content);
+        doc.put("collection_name", chunk.collectionName());
+        doc.put("doc_id", chunk.docId());
+        doc.put("chunk_index", chunk.chunkIndex());
+        return doc;
     }
 }

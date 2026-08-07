@@ -101,9 +101,9 @@ rag:
     type: pg  # 可选 milvus / pg
 
   keyword:
-    type: none  # 可选 none / es
+    type: es  # 可选 none / es
     es:
-      uris: http://127.0.0.1:9200
+      uris: http://${ragent.infra.host:localhost}:9200
       index: rag_keyword_store  # 全库共享索引，按 collection_name 字段区分知识库
       analyzer: ik_max_word
       search-analyzer: ik_smart
@@ -184,7 +184,7 @@ rag:
         enabled: true       # 向量通道总开关
         candidate-budget: 0 # 全局作用域取数上限；0=跟随 rerank-candidate-limit（超出即被下游截断属空转），确需更宽跨库广度时填正值
       keyword:
-        enabled: false      # 检索范围读引擎解析好的作用域，与向量通道同源
+        enabled: true      # 检索范围读引擎解析好的作用域，与向量通道同源
       graph:
         enabled: false    # 图谱检索通道开关：false 不参与问答召回（后端仍在，后台可视化照常）；置 true 前需先开 rag.graph.type=lightrag
       web-search:

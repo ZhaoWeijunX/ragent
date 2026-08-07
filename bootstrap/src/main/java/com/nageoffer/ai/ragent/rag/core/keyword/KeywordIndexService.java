@@ -18,6 +18,7 @@
 package com.nageoffer.ai.ragent.rag.core.keyword;
 
 import com.nageoffer.ai.ragent.core.chunk.model.EmbeddedChunk;
+import com.nageoffer.ai.ragent.rag.core.keyword.model.KeywordIndexDocument;
 
 import java.util.List;
 
@@ -30,6 +31,11 @@ import java.util.List;
  * {@code rag.keyword.type} 选择，none 时无实现注册，写侧装饰器也随之不注册
  */
 public interface KeywordIndexService {
+
+    /**
+     * 直接写入已经持久化的关键词文档，不要求 embedding。
+     */
+    void indexRawChunks(List<KeywordIndexDocument> chunks);
 
     /**
      * 批量建立文档分块的关键词索引
