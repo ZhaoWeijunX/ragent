@@ -90,7 +90,7 @@ public class EvalConfigSnapshotSupport {
 
     public Map<String, Object> build(EvalDatasetVersionDO version, int sampleCount) {
         Map<String, Object> snapshot = new LinkedHashMap<>();
-        snapshot.put("schemaVersion", "1.1.0");
+        snapshot.put("schemaVersion", "1.2.0");
         snapshot.put("datasetVersionId", version.getId());
         snapshot.put("datasetVersion", version.getVersion());
         snapshot.put("datasetContentHash", version.getContentHash());
@@ -150,16 +150,12 @@ public class EvalConfigSnapshotSupport {
 
     private Map<String, Object> snapshotRetrieval() {
         SearchChannelProperties.Channels channels = searchChannelProperties.getChannels();
+        SearchChannelProperties.Scope scope = searchChannelProperties.getScope();
         SearchChannelProperties.Fusion fusion = searchChannelProperties.getFusion();
         SearchChannelProperties.ChannelWeights weights = fusion.getChannelWeights();
 
-        Map<String, Object> vector = new LinkedHashMap<>();
-        vector.put("enabled", channels.getVector().isEnabled());
-        vector.put("minIntentScore", channels.getVector().getIntentDirected().getMinIntentScore());
-        vector.put("confidenceThreshold", channels.getVector().getGlobal().getConfidenceThreshold());
-        vector.put("singleIntentSupplementThreshold",
-                channels.getVector().getGlobal().getSingleIntentSupplementThreshold());
-        vector.put("candidateBudget", channels.getVector().getGlobal().getCandidateBudget());
+        Map<String, Object> vector = snapshotVector(channels.getVector());
+        Map<String, Object> scopeMap = snapshotScope(scope);
 
         Map<String, Object> webSearch = new LinkedHashMap<>();
         webSearch.put("enabled", channels.getWebSearch().isEnabled());
@@ -191,12 +187,28 @@ public class EvalConfigSnapshotSupport {
         out.put("graphBackend", graphProperties.getType());
         out.put("defaultTopK", searchChannelProperties.getDefaultTopK());
         out.put("recallBudget", searchChannelProperties.getRecallBudget());
+        out.put("scope", scopeMap);
         out.put("channels", channelMap);
         out.put("fusion", fusionMap);
         out.put("queryRewriteEnabled", Boolean.TRUE.equals(ragConfigProperties.getQueryRewriteEnabled()));
         out.put("rerankEnabled", Boolean.TRUE.equals(ragConfigProperties.getRerankEnabled()));
         out.put("contextEnrichEnabled", Boolean.TRUE.equals(ragConfigProperties.getContextEnrichEnabled()));
         out.put("citationEnabled", Boolean.TRUE.equals(ragConfigProperties.getCitationEnabled()));
+        return out;
+    }
+
+    static Map<String, Object> snapshotVector(SearchChannelProperties.Vector vector) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("enabled", vector.isEnabled());
+        out.put("candidateBudget", vector.getCandidateBudget());
+        return out;
+    }
+
+    static Map<String, Object> snapshotScope(SearchChannelProperties.Scope scope) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("minIntentScore", scope.getMinIntentScore());
+        out.put("confidenceThreshold", scope.getConfidenceThreshold());
+        out.put("supplementRatio", scope.getSupplementRatio());
         return out;
     }
 

@@ -18,6 +18,7 @@
 package com.nageoffer.ai.ragent.rag.evaluation.support;
 
 import com.nageoffer.ai.ragent.infra.config.AIModelProperties;
+import com.nageoffer.ai.ragent.rag.config.SearchChannelProperties;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -92,5 +93,26 @@ class EvalConfigSnapshotSupportTest {
         assertEquals(expected, EvalConfigSnapshotSupport.hashEffectivePrompts(reordered));
         assertNotEquals(expected, EvalConfigSnapshotSupport.hashEffectivePrompts(changed));
         assertTrue(expected.matches("[0-9a-f]{64}"));
+    }
+
+    @Test
+    void snapshotUsesUnifiedScopeAndCurrentVectorConfiguration() {
+        SearchChannelProperties properties = new SearchChannelProperties();
+        properties.getScope().setMinIntentScore(0.45);
+        properties.getScope().setConfidenceThreshold(0.7);
+        properties.getScope().setSupplementRatio(0.2);
+        properties.getChannels().getVector().setCandidateBudget(48);
+
+        Map<String, Object> scope = EvalConfigSnapshotSupport.snapshotScope(properties.getScope());
+        Map<String, Object> vector = EvalConfigSnapshotSupport.snapshotVector(
+                properties.getChannels().getVector());
+
+        assertEquals(0.45, scope.get("minIntentScore"));
+        assertEquals(0.7, scope.get("confidenceThreshold"));
+        assertEquals(0.2, scope.get("supplementRatio"));
+        assertEquals(48, vector.get("candidateBudget"));
+        assertFalse(vector.containsKey("minIntentScore"));
+        assertFalse(vector.containsKey("confidenceThreshold"));
+        assertFalse(vector.containsKey("singleIntentSupplementThreshold"));
     }
 }
