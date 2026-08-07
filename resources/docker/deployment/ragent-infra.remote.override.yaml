@@ -1,0 +1,45 @@
+services:
+  redis:
+    volumes:
+      - redis-data:/data
+
+  rmqbroker:
+    environment:
+      ROCKETMQ_BROKER_IP: "${ROCKETMQ_BROKER_IP:?ROCKETMQ_BROKER_IP is required}"
+    command:
+      - sh
+      - -c
+      - |
+        cat > /home/rocketmq/rocketmq-5.2.0/conf/broker.conf << EOF
+        brokerClusterName = DefaultCluster
+        brokerName = broker-a
+        brokerId = 0
+        deleteWhen = 04
+        fileReservedTime = 48
+        brokerRole = ASYNC_MASTER
+        flushDiskType = ASYNC_FLUSH
+        brokerIP1 = $${ROCKETMQ_BROKER_IP}
+        timerMaxDelaySec = 31622400
+        coldDataScanEnable = false
+        coldDataFlowControlEnable = false
+        EOF
+        sh mqbroker -c /home/rocketmq/rocketmq-5.2.0/conf/broker.conf
+    volumes:
+      - rocketmq-store:/home/rocketmq/store
+      - rocketmq-logs:/home/rocketmq/logs
+
+volumes:
+  pgdata:
+    name: ragent-infra_pgdata
+  rustfs-data:
+    name: ragent-infra_rustfs-data
+  redis-data:
+    name: ragent-infra_redis-data
+  rocketmq-store:
+    name: ragent-infra_rocketmq-store
+  rocketmq-logs:
+    name: ragent-infra_rocketmq-logs
+
+networks:
+  rocketmq:
+    name: ragent-infra_rocketmq

@@ -41,6 +41,9 @@ python .\scripts\ingestion\batch_import_12306_pdfs.py --dry-run
 
 默认以预览模式运行；确认输出后再显式添加 `--apply`。
 
+## 评测辅助
+
+[`evaluation/`](evaluation/README.md) 包含评测工作台的离线契约校验与在线 Spike。离线校验不依赖启动服务；在线脚本需要可访问的 ragent、管理员凭证和目标评测数据。
 
 ## 压测
 

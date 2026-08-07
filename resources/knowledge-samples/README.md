@@ -10,4 +10,3 @@
 | `knowledge/group/` | 集团通用知识库样本 |
 
 对应意图树 SQL 和导入顺序见 [`../database/imports/README.md`](../database/imports/README.md)。目录中的 `intent-tree-design.md` 与生成辅助脚本均随样本保留。
-

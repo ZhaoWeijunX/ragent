@@ -214,4 +214,3 @@ WHERE intent_code = 'ticket-data'
 
 COMMIT;
 
-

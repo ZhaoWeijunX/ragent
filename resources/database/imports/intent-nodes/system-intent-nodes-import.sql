@@ -52,4 +52,3 @@ INSERT INTO t_intent_node (
 
 COMMIT;
 
-

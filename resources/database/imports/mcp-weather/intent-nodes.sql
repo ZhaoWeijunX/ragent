@@ -107,4 +107,3 @@ WHERE intent_code = 'weather-data'
 
 COMMIT;
 
-

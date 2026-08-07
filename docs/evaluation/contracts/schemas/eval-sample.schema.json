@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ragent.local/schemas/evaluation/eval-sample.schema.json",
+  "title": "EvalSample",
+  "description": "评估集单条样本（工作台 API / DB 导入规范，camelCase）。Python ragenteval 侧见 field-mapping.md。schemaVersion=1.0.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "queryId", "query", "requiresRag"],
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "const": "1.0.0",
+      "description": "契约版本；导入与跨语言序列化必须携带"
+    },
+    "queryId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "数据集版本内唯一业务 ID"
+    },
+    "query": {
+      "type": "string",
+      "minLength": 1,
+      "description": "用户原始问题（去首尾空格后非空）"
+    },
+    "intentL1": {
+      "type": "string",
+      "default": ""
+    },
+    "intentL2": {
+      "type": "string",
+      "default": "",
+      "description": "二级/叶子意图编码，对齐意图树 leaf code"
+    },
+    "difficulty": {
+      "type": "string",
+      "enum": ["easy", "medium", "hard"],
+      "default": "medium"
+    },
+    "requiresRag": {
+      "type": "boolean",
+      "description": "该问题是否应进入知识检索"
+    },
+    "expectedDocIds": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "default": [],
+      "description": "must 文档业务码（doc_name 去后缀）"
+    },
+    "niceToHaveDocIds": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "default": [],
+      "description": "nice 文档业务码；Python 侧 expected_doc_ids_nice"
+    },
+    "groundTruth": {
+      "type": "string",
+      "default": "",
+      "description": "自然语言标准答案；禁止元指令口吻"
+    },
+    "expectedAnswerType": {
+      "type": ["string", "null"],
+      "default": null
+    },
+    "trapType": {
+      "type": ["string", "null"],
+      "default": null
+    },
+    "enabledMetrics": {
+      "type": "array",
+      "items": { "type": "string" },
+      "default": [],
+      "description": "样本级指标路由；空则用 Run 默认。Python 侧 eval_metrics"
+    },
+    "tags": {
+      "type": "array",
+      "items": { "type": "string" },
+      "default": []
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": true,
+      "default": {}
+    }
+  }
+}

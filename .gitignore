@@ -53,3 +53,7 @@ resources/docker/graphrag/.env
 ### Tmp Out ###
 .output/
 docs/temp
+
+### Python cache ###
+__pycache__/
+*.pyc

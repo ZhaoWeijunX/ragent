@@ -24,7 +24,9 @@ import {
   Upload,
   Users,
   FolderKanban,
-  Workflow
+  Workflow,
+  FlaskConical,
+  PlayCircle
 } from "lucide-react";
 import { useAuthStore } from "@/stores/authStore";
 import { Button } from "@/components/ui/button";
@@ -57,6 +59,8 @@ type MenuChild = {
   label: string;
   icon: any;
   search?: string;
+  /** 额外前缀：命中时也高亮该子项（如 dataset-versions 归属评估集） */
+  matchPrefixes?: string[];
 };
 
 type MenuItem = {
@@ -144,14 +148,33 @@ const menuGroups: MenuGroup[] = [
         icon: KeyRound
       },
       {
-        path: "/admin/traces",
-        label: "链路追踪",
-        icon: Workflow
+        id: "evaluations",
+        path: "/admin/evaluations/datasets",
+        label: "RAG 评测",
+        icon: FlaskConical,
+        children: [
+          {
+            path: "/admin/evaluations/datasets",
+            label: "评估集",
+            icon: ClipboardList,
+            matchPrefixes: ["/admin/evaluations/dataset-versions"]
+          },
+          {
+            path: "/admin/evaluations/runs",
+            label: "评测运行",
+            icon: PlayCircle
+          }
+        ]
       },
       {
         path: "/admin/change-logs",
         label: "审计日志",
         icon: ShieldCheck
+      },
+      {
+        path: "/admin/traces",
+        label: "链路追踪",
+        icon: Workflow
       },
     ]
   },
@@ -186,6 +209,10 @@ const breadcrumbMap: Record<string, string> = {
   "intent-list": "意图列表",
   ingestion: "数据通道",
   traces: "链路追踪",
+  evaluations: "RAG 评测",
+  datasets: "评估集",
+  "dataset-versions": "评估集版本",
+  runs: "评测运行",
   "change-logs": "审计日志",
   "sample-questions": "示例问题",
   mappings: "关键词映射",
@@ -206,7 +233,11 @@ export function AdminLayout() {
     newPassword: "",
     confirmPassword: ""
   });
-  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({ ingestion: true, intent: true });
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
+    ingestion: true,
+    intent: true,
+    evaluations: true
+  });
   const [kbQuery, setKbQuery] = useState("");
   const [kbOptions, setKbOptions] = useState<KnowledgeBase[]>([]);
   const [docOptions, setDocOptions] = useState<KnowledgeDocumentSearchItem[]>([]);
@@ -312,6 +343,35 @@ export function AdminLayout() {
             label: breadcrumbMap[section] || section
           });
         }
+      } else if (section === "evaluations") {
+        items.push({
+          label: "RAG 评测",
+          to: "/admin/evaluations/datasets"
+        });
+        const sub = segments[2];
+        if (sub === "datasets") {
+          items.push({
+            label: "评估集",
+            to: segments.length > 3 ? "/admin/evaluations/datasets" : undefined
+          });
+          if (segments.length > 3) {
+            items.push({ label: "评估集详情" });
+          }
+        } else if (sub === "dataset-versions") {
+          items.push({
+            label: "评估集",
+            to: "/admin/evaluations/datasets"
+          });
+          items.push({ label: "版本详情" });
+        } else if (sub === "runs") {
+          items.push({
+            label: "评测运行",
+            to: segments.length > 3 ? "/admin/evaluations/runs" : undefined
+          });
+          if (segments.length > 3) {
+            items.push({ label: "运行详情" });
+          }
+        }
       } else {
         items.push({
           label: breadcrumbMap[section] || section,
@@ -355,14 +415,32 @@ export function AdminLayout() {
   const isIngestionActive = location.pathname.startsWith("/admin/ingestion");
   const isIntentActive =
     location.pathname.startsWith("/admin/intent-tree") || location.pathname.startsWith("/admin/intent-list");
+  const isEvaluationsActive = location.pathname.startsWith("/admin/evaluations");
 
   useEffect(() => {
     setOpenGroups((prev) => ({
       ...prev,
       ingestion: prev.ingestion || isIngestionActive,
-      intent: prev.intent || isIntentActive
+      intent: prev.intent || isIntentActive,
+      evaluations: prev.evaluations || isEvaluationsActive
     }));
-  }, [isIngestionActive, isIntentActive]);
+  }, [isIngestionActive, isIntentActive, isEvaluationsActive]);
+
+  const isLeafActive = (path: string, search?: string, matchPrefixes?: string[]) => {
+    const matched =
+      location.pathname === path ||
+      location.pathname.startsWith(`${path}/`) ||
+      (matchPrefixes || []).some(
+        (prefix) => location.pathname === prefix || location.pathname.startsWith(`${prefix}/`)
+      );
+    if (!matched) {
+      return false;
+    }
+    if (search) {
+      return location.search === search;
+    }
+    return true;
+  };
 
   const handlePasswordSubmit = async () => {
     if (!passwordForm.currentPassword || !passwordForm.newPassword) {
@@ -448,16 +526,6 @@ export function AdminLayout() {
     }
   };
 
-  const isLeafActive = (path: string, search?: string) => {
-    if (location.pathname !== path && !location.pathname.startsWith(`${path}/`)) {
-      return false;
-    }
-    if (search) {
-      return location.search === search;
-    }
-    return true;
-  };
-
   const hasQuery = kbQuery.trim().length > 0;
   const showSuggest = searchFocused && hasQuery;
 
@@ -512,14 +580,16 @@ export function AdminLayout() {
                     );
                   }
 
-                  const isGroupActive = item.children.some((child) => isLeafActive(child.path, child.search));
+                  const isGroupActive = item.children.some((child) =>
+                    isLeafActive(child.path, child.search, child.matchPrefixes)
+                  );
                   const groupId = item.id as string;
                   const isOpen = openGroups[groupId];
 
                   if (collapsed) {
                     return item.children.map((child) => {
                       const ChildIcon = child.icon;
-                      const isActive = isLeafActive(child.path, child.search);
+                      const isActive = isLeafActive(child.path, child.search, child.matchPrefixes);
                       return (
                         <Link
                           key={child.label}
@@ -572,7 +642,7 @@ export function AdminLayout() {
                         <div className="ml-6 space-y-1">
                           {item.children.map((child) => {
                             const ChildIcon = child.icon;
-                            const isActive = isLeafActive(child.path, child.search);
+                            const isActive = isLeafActive(child.path, child.search, child.matchPrefixes);
                             return (
                               <Link
                                 key={child.label}

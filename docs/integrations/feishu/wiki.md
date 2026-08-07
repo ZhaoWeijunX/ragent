@@ -124,4 +124,3 @@ psql -h localhost -U postgres -d ragent \
 - Job 完成后文档记录、原文件和分块状态一致。
 - `content-format=pdf` 时可看到 MinerU 解析结果；关闭或破坏 PDF 路径时，降级行为符合 `fallback-on-error`。
 - `SUBTREE` / `ENTIRE_SPACE` 任务不超过 `max-pages-per-job`，并可通过 Job Items 定位失败页面。
-

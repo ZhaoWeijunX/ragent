@@ -105,4 +105,3 @@ WHERE intent_code = 'youcom-search'
 
 COMMIT;
 
-

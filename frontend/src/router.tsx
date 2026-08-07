@@ -176,6 +176,36 @@ export const router = createBrowserRouter([
         element: <SampleQuestionPage />
       },
       {
+        path: "evaluations/datasets",
+        lazy: () => import("@/pages/admin/evaluations/EvalDatasetListPage")
+          .then(({ EvalDatasetListPage }) => ({ Component: EvalDatasetListPage }))
+      },
+      {
+        path: "evaluations/datasets/:datasetId",
+        lazy: () => import("@/pages/admin/evaluations/EvalDatasetDetailPage")
+          .then(({ EvalDatasetDetailPage }) => ({ Component: EvalDatasetDetailPage }))
+      },
+      {
+        path: "evaluations/dataset-versions/:versionId",
+        lazy: () => import("@/pages/admin/evaluations/EvalDatasetVersionPage")
+          .then(({ EvalDatasetVersionPage }) => ({ Component: EvalDatasetVersionPage }))
+      },
+      {
+        path: "evaluations/runs",
+        lazy: () => import("@/pages/admin/evaluations/EvalRunListPage")
+          .then(({ EvalRunListPage }) => ({ Component: EvalRunListPage }))
+      },
+      {
+        path: "evaluations/runs/:runId/compare/:baselineRunId",
+        lazy: () => import("@/pages/admin/evaluations/EvalRunComparePage")
+          .then(({ EvalRunComparePage }) => ({ Component: EvalRunComparePage }))
+      },
+      {
+        path: "evaluations/runs/:runId",
+        lazy: () => import("@/pages/admin/evaluations/EvalRunDetailPage")
+          .then(({ EvalRunDetailPage }) => ({ Component: EvalRunDetailPage }))
+      },
+      {
         path: "mappings",
         element: <QueryTermMappingPage />
       },

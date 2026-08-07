@@ -81,4 +81,3 @@ psql -h localhost -U postgres -d ragent \
 ```
 
 脚本写入后，请根据实际部署刷新服务缓存，并用目标知识库或 MCP 请求验证节点可被命中。
-
