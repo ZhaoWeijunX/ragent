@@ -66,6 +66,9 @@ public class DelegatingTransactionListener implements RocketMQLocalTransactionLi
         checkerMap.put(topic, checker);
     }
 
+    /**
+     * 发送事务消息时，通过此方法调用本地事务，完成后通知给 broker：commit/rollback
+     */
     @Override
     public RocketMQLocalTransactionState executeLocalTransaction(Message message, Object arg) {
         String txId = (String) message.getHeaders().get(HEADER_TX_ID);
@@ -83,6 +86,9 @@ public class DelegatingTransactionListener implements RocketMQLocalTransactionLi
         }
     }
 
+    /**
+     * 事务消息回查，本地事务完成但broker为收到的兜底，broker出现错误或情况不明时会调用，可能多次
+     */
     @Override
     public RocketMQLocalTransactionState checkLocalTransaction(Message message) {
         String topic = (String) message.getHeaders().get(HEADER_TOPIC);
