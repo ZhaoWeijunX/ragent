@@ -297,7 +297,9 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
                 "文档分块",
                 event,
                 arg -> {
+                    // ---- 本地事务逻辑 ----
                     // Wrapper 更新不触发 updateTime 自动填充, 显式刷新, 使卡死恢复以分块开始时刻为基准
+                    // CAS 更新状态
                     int updated = documentMapper.update(
                             new LambdaUpdateWrapper<KnowledgeDocumentDO>()
                                     .set(KnowledgeDocumentDO::getStatus, DocumentStatus.RUNNING.getCode())
@@ -913,6 +915,9 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
         }
     }
 
+    /**
+     * 真实落盘，分为【本地文件】和【URL】文件两种，URL中适配了【飞书】
+     */
     private StoredFileDTO resolveStoredFile(String bucketName, SourceType sourceType, String sourceLocation, MultipartFile file) {
         if (SourceType.FILE == sourceType) {
             Assert.notNull(file, () -> new ClientException("上传文件不能为空"));

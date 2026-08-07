@@ -80,6 +80,12 @@ public class RocketMQProducerAdapter implements MessageQueueProducer {
 
         TransactionSendResult sendResult;
         try {
+            /*
+             * 内部做的事情：
+             * 1. 把消息发到broker，标记为 half，消费者不可见
+             * 2. 回调刚刚注册的 本地事务 localTransaction ： executeLocalTransaction
+             * 3. 本地事务commit，可消费；rollback 丢掉
+             */
             sendResult = rocketMQTemplate.sendMessageInTransaction(topic, message, null);
         } catch (Throwable ex) {
             transactionListener.unregisterLocalTransaction(txId);
