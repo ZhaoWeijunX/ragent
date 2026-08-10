@@ -33,6 +33,11 @@ public interface EvalScoreService {
     String scoreDeterministic(String runId);
 
     /**
+     * 管理台手工重新执行自建指标评分，并记录审计日志。
+     */
+    String rescoreDeterministic(String runId);
+
+    /**
      * 同步执行一轮 RAGAS（供 Runner 流水线内调用）：提交外部服务并轮询至终态。
      * 失败不回滚 Record / 自建分数。
      * @return batchId；跳过时返回 null
@@ -46,6 +51,11 @@ public interface EvalScoreService {
      * @return batchId；跳过时返回 null（仅同步 Runner 路径）；管理台异步路径遇未启用会抛错
      */
     String submitRagasAsync(String runId, EvalRagasRescoreRequest request);
+
+    /**
+     * 管理台手工重新执行 RAGAS 评分，并记录审计日志。
+     */
+    String rescoreRagas(String runId, EvalRagasRescoreRequest request);
 
     /**
      * 取消进行中的 RAGAS 批次：协作式 cancel 外部 job，并将 batch 标为 FAILED。

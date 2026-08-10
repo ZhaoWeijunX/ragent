@@ -2,14 +2,17 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Boxes,
   Check,
+  ClipboardList,
   Copy,
   Database,
   Eye,
   FileText,
+  GitBranch,
   ListChecks,
   MessagesSquare,
   Network,
   Orbit,
+  PlayCircle,
   ScrollText,
   Search,
   ShieldCheck,
@@ -96,6 +99,9 @@ const BIZ_TYPE_OPTIONS = [
   { value: "INTENT_TREE", label: "意图树" },
   { value: "QUERY_TERM_MAPPING", label: "关键词映射" },
   { value: "SAMPLE_QUESTION", label: "示例问题" },
+  { value: "EVAL_DATASET", label: "评估集" },
+  { value: "EVAL_DATASET_VERSION", label: "评估集版本" },
+  { value: "EVAL_RUN", label: "评测运行" },
   { value: "USER", label: "用户" }
 ];
 
@@ -141,6 +147,9 @@ const BIZ_TYPE_META: Record<string, { icon: LucideIcon; className: string }> = {
   INTENT_TREE: { icon: Network, className: "bg-[#f9f0ff] text-[#722ED1]" },
   QUERY_TERM_MAPPING: { icon: Tags, className: "bg-[#fff0f6] text-[#EB2F96]" },
   SAMPLE_QUESTION: { icon: MessagesSquare, className: "bg-[#f6ffed] text-[#52C41A]" },
+  EVAL_DATASET: { icon: ClipboardList, className: "bg-[#fff0f6] text-[#C41D7F]" },
+  EVAL_DATASET_VERSION: { icon: GitBranch, className: "bg-[#e6fffb] text-[#08979C]" },
+  EVAL_RUN: { icon: PlayCircle, className: "bg-[#fff7e6] text-[#D46B08]" },
   USER: { icon: User, className: "bg-[#fff2e8] text-[#FA541C]" }
 };
 

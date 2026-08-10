@@ -17,6 +17,7 @@
 
 package com.nageoffer.ai.ragent.rag.evaluation.service.impl;
 
+import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.lang.Assert;
 import cn.hutool.core.util.IdUtil;
 import cn.hutool.core.util.StrUtil;
@@ -205,23 +206,44 @@ public class EvalRunServiceImpl implements EvalRunService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    @LogRecord(
+            success = "取消评测运行：{{#runId}}",
+            fail = "取消评测运行失败：{{#_errorMsg}}",
+            type = BizChangeBizType.EVAL_RUN,
+            subType = BizChangeOperationType.RUN,
+            bizNo = "{{#runId}}",
+            extra = BizChangeLogContext.SNAPSHOT_EXPRESSION,
+            condition = BizChangeLogContext.RECORD_CONDITION
+    )
     public void cancelRun(String runId) {
         EvalRunDO run = requireRun(runId);
         if (TERMINAL.contains(run.getStatus())) {
             throw new ClientException("终态 Run 不可取消");
         }
+        EvalRunDO before = BeanUtil.copyProperties(run, EvalRunDO.class);
         runMapper.update(null, Wrappers.lambdaUpdate(EvalRunDO.class)
                 .eq(EvalRunDO::getId, runId)
                 .notIn(EvalRunDO::getStatus, TERMINAL)
                 .set(EvalRunDO::getCancelRequested, 1));
+        bizChangeLogContext.put(runId, before, runMapper.selectById(runId));
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    @LogRecord(
+            success = "恢复评测运行：{{#runId}}",
+            fail = "恢复评测运行失败：{{#_errorMsg}}",
+            type = BizChangeBizType.EVAL_RUN,
+            subType = BizChangeOperationType.RUN,
+            bizNo = "{{#runId}}",
+            extra = BizChangeLogContext.SNAPSHOT_EXPRESSION,
+            condition = BizChangeLogContext.RECORD_CONDITION
+    )
     public void resumeRun(String runId) {
         EvalRunDO run = requireRun(runId);
         Assert.isTrue(RESUMABLE.contains(run.getStatus()),
                 () -> new ClientException("仅 FAILED / PARTIAL_SUCCESS / CANCELLED 可重试失败样本"));
+        EvalRunDO before = BeanUtil.copyProperties(run, EvalRunDO.class);
 
         long active = countActiveRuns();
         Assert.isTrue(active < Math.max(1, evalProperties.getMaxActiveRuns()),
@@ -238,15 +260,26 @@ public class EvalRunServiceImpl implements EvalRunService {
                 .set(EvalRunDO::getLeaseOwner, null)
                 .set(EvalRunDO::getLeaseExpireAt, null)
                 .set(EvalRunDO::getProgress, 0));
+        bizChangeLogContext.put(runId, before, runMapper.selectById(runId));
         runWorker.submit(runId);
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    @LogRecord(
+            success = "重跑评测样本：{{#runId}} / {{#recordId}}",
+            fail = "重跑评测样本失败：{{#_errorMsg}}",
+            type = BizChangeBizType.EVAL_RUN,
+            subType = BizChangeOperationType.RUN,
+            bizNo = "{{#runId}}",
+            extra = BizChangeLogContext.SNAPSHOT_EXPRESSION,
+            condition = BizChangeLogContext.RECORD_CONDITION
+    )
     public void rerunRecord(String runId, String recordId) {
         EvalRunDO run = requireRun(runId);
         Assert.isTrue(TERMINAL.contains(run.getStatus()),
                 () -> new ClientException("仅终态 Run 可单样本重跑"));
+        EvalRunDO before = BeanUtil.copyProperties(run, EvalRunDO.class);
 
         EvalRecordDO record = recordMapper.selectById(recordId);
         Assert.notNull(record, () -> new ClientException("录制记录不存在"));
@@ -271,6 +304,7 @@ public class EvalRunServiceImpl implements EvalRunService {
                 .set(EvalRunDO::getErrorMessage, null)
                 .set(EvalRunDO::getLeaseOwner, null)
                 .set(EvalRunDO::getLeaseExpireAt, null));
+        bizChangeLogContext.put(runId, before, runMapper.selectById(runId));
         runWorker.submitSingleCaseRerun(runId, record.getCaseId());
     }
 

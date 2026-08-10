@@ -17,12 +17,17 @@
 
 package com.nageoffer.ai.ragent.rag.evaluation.service.impl;
 
+import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.lang.Assert;
 import cn.hutool.core.util.IdUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONUtil;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.toolkit.SqlHelper;
+import com.mzt.logapi.starter.annotation.LogRecord;
+import com.nageoffer.ai.ragent.audit.constant.BizChangeBizType;
+import com.nageoffer.ai.ragent.audit.constant.BizChangeOperationType;
+import com.nageoffer.ai.ragent.audit.support.BizChangeLogContext;
 import com.nageoffer.ai.ragent.framework.exception.ClientException;
 import com.nageoffer.ai.ragent.infra.config.AIModelProperties;
 import com.nageoffer.ai.ragent.infra.enums.ModelCapability;
@@ -103,6 +108,7 @@ public class EvalScoreServiceImpl implements EvalScoreService {
     private final EvalProperties evalProperties;
     private final SemanticEvaluationProvider semanticEvaluationProvider;
     private final AIModelProperties aiModelProperties;
+    private final BizChangeLogContext bizChangeLogContext;
     private final Executor evalRagasExecutor;
 
     public EvalScoreServiceImpl(EvalRunMapper runMapper,
@@ -111,10 +117,11 @@ public class EvalScoreServiceImpl implements EvalScoreService {
                                 EvalScoreBatchMapper scoreBatchMapper,
                                 EvalScoreMapper scoreMapper,
                                 DeterministicMetricEngine metricEngine,
-                                EvalProperties evalProperties,
-                                SemanticEvaluationProvider semanticEvaluationProvider,
-                                AIModelProperties aiModelProperties,
-                                @Qualifier("evalRagasExecutor") Executor evalRagasExecutor) {
+                                 EvalProperties evalProperties,
+                                 SemanticEvaluationProvider semanticEvaluationProvider,
+                                 AIModelProperties aiModelProperties,
+                                 BizChangeLogContext bizChangeLogContext,
+                                 @Qualifier("evalRagasExecutor") Executor evalRagasExecutor) {
         this.runMapper = runMapper;
         this.recordMapper = recordMapper;
         this.caseMapper = caseMapper;
@@ -124,6 +131,7 @@ public class EvalScoreServiceImpl implements EvalScoreService {
         this.evalProperties = evalProperties;
         this.semanticEvaluationProvider = semanticEvaluationProvider;
         this.aiModelProperties = aiModelProperties;
+        this.bizChangeLogContext = bizChangeLogContext;
         this.evalRagasExecutor = evalRagasExecutor;
     }
 
@@ -183,6 +191,23 @@ public class EvalScoreServiceImpl implements EvalScoreService {
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
+    @LogRecord(
+            success = "重新执行确定性评分：{{#runId}}",
+            fail = "重新执行确定性评分失败：{{#_errorMsg}}",
+            type = BizChangeBizType.EVAL_RUN,
+            subType = BizChangeOperationType.RUN,
+            bizNo = "{{#runId}}",
+            extra = BizChangeLogContext.SNAPSHOT_EXPRESSION,
+            condition = BizChangeLogContext.RECORD_CONDITION
+    )
+    public String rescoreDeterministic(String runId) {
+        String batchId = scoreDeterministic(runId);
+        bizChangeLogContext.put(runId, null, scoreBatchMapper.selectById(batchId));
+        return batchId;
+    }
+
+    @Override
     public String scoreRagas(String runId) {
         return doScoreRagas(runId, false, null);
     }
@@ -193,6 +218,36 @@ public class EvalScoreServiceImpl implements EvalScoreService {
     }
 
     @Override
+    @LogRecord(
+            success = "重新执行 RAGAS 评分：{{#runId}}",
+            fail = "重新执行 RAGAS 评分失败：{{#_errorMsg}}",
+            type = BizChangeBizType.EVAL_RUN,
+            subType = BizChangeOperationType.RUN,
+            bizNo = "{{#runId}}",
+            extra = BizChangeLogContext.SNAPSHOT_EXPRESSION,
+            condition = BizChangeLogContext.RECORD_CONDITION
+    )
+    public String rescoreRagas(String runId, EvalRagasRescoreRequest request) {
+        EvalScoreBatchDO activeBefore = findActiveRagasBatch(runId);
+        String batchId = submitRagasAsync(runId, request);
+        if (activeBefore != null && Objects.equals(activeBefore.getId(), batchId)) {
+            bizChangeLogContext.skip();
+            return batchId;
+        }
+        bizChangeLogContext.put(runId, null, scoreBatchMapper.selectById(batchId));
+        return batchId;
+    }
+
+    @Override
+    @LogRecord(
+            success = "取消 RAGAS 评分批次：{{#batchId}}",
+            fail = "取消 RAGAS 评分批次失败：{{#_errorMsg}}",
+            type = BizChangeBizType.EVAL_RUN,
+            subType = BizChangeOperationType.RUN,
+            bizNo = "{{#runId}}",
+            extra = BizChangeLogContext.SNAPSHOT_EXPRESSION,
+            condition = BizChangeLogContext.RECORD_CONDITION
+    )
     public void cancelRagasBatch(String runId, String batchId) {
         EvalScoreBatchDO batch = scoreBatchMapper.selectById(batchId);
         Assert.notNull(batch, () -> new ClientException("评分批次不存在"));
@@ -205,10 +260,12 @@ public class EvalScoreServiceImpl implements EvalScoreService {
         if (!BATCH_PENDING.equals(batch.getStatus()) && !BATCH_RUNNING.equals(batch.getStatus())) {
             throw new ClientException("批次已结束，无法取消");
         }
+        EvalScoreBatchDO before = BeanUtil.copyProperties(batch, EvalScoreBatchDO.class);
         if (StrUtil.isNotBlank(batch.getExternalJobId())) {
             semanticEvaluationProvider.cancel(batch.getExternalJobId());
         }
         failBatch(batchId, "用户取消");
+        bizChangeLogContext.put(runId, before, scoreBatchMapper.selectById(batchId));
     }
 
     private String doScoreRagas(String runId, boolean async, EvalRagasRescoreRequest request) {

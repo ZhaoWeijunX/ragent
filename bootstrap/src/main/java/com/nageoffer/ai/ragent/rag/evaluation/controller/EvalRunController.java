@@ -106,14 +106,14 @@ public class EvalRunController {
     @PostMapping(EvalWorkbenchConstants.API_PREFIX + "/runs/{runId}/rescore")
     public Result<String> rescore(@PathVariable String runId) {
         requireAdmin();
-        return Results.success(evalScoreService.scoreDeterministic(runId));
+        return Results.success(evalScoreService.rescoreDeterministic(runId));
     }
 
     @PostMapping(EvalWorkbenchConstants.API_PREFIX + "/runs/{runId}/ragas-rescore")
     public Result<String> ragasRescore(@PathVariable String runId,
                                        @RequestBody(required = false) EvalRagasRescoreRequest request) {
         requireAdmin();
-        return Results.success(evalScoreService.submitRagasAsync(runId, request));
+        return Results.success(evalScoreService.rescoreRagas(runId, request));
     }
 
     @PostMapping(EvalWorkbenchConstants.API_PREFIX + "/runs/{runId}/ragas-batches/{batchId}/cancel")

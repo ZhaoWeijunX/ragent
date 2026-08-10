@@ -24,6 +24,10 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.mzt.logapi.starter.annotation.LogRecord;
+import com.nageoffer.ai.ragent.audit.constant.BizChangeBizType;
+import com.nageoffer.ai.ragent.audit.constant.BizChangeOperationType;
+import com.nageoffer.ai.ragent.audit.support.BizChangeLogContext;
 import com.nageoffer.ai.ragent.framework.context.UserContext;
 import com.nageoffer.ai.ragent.framework.exception.ClientException;
 import com.nageoffer.ai.ragent.framework.mq.producer.MessageQueueProducer;
@@ -79,6 +83,7 @@ public class FeishuWikiImportServiceImpl implements FeishuWikiImportService {
     private final KnowledgeDocumentService documentService;
     private final IngestionSpecCodec ingestionSpecCodec;
     private final MessageQueueProducer messageQueueProducer;
+    private final BizChangeLogContext bizChangeLogContext;
 
     @Value("feishu-wiki-import_topic${unique-name:}")
     private String importTopic;
@@ -97,6 +102,15 @@ public class FeishuWikiImportServiceImpl implements FeishuWikiImportService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    @LogRecord(
+            success = "启动飞书 Wiki 导入：{{#request.rootUrl}}",
+            fail = "启动飞书 Wiki 导入失败：{{#_errorMsg}}",
+            type = BizChangeBizType.KNOWLEDGE_BASE,
+            subType = BizChangeOperationType.RUN,
+            bizNo = "{{#kbId}}",
+            extra = BizChangeLogContext.SNAPSHOT_EXPRESSION,
+            condition = BizChangeLogContext.RECORD_CONDITION
+    )
     public FeishuWikiImportJobVO startImport(String kbId, FeishuWikiImportRequest request) {
         validateKb(kbId);
         validateRequest(request);
@@ -153,6 +167,7 @@ public class FeishuWikiImportServiceImpl implements FeishuWikiImportService {
                         .build()
         );
 
+        bizChangeLogContext.put(kbId, null, job);
         return toJobVO(job);
     }
 

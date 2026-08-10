@@ -241,6 +241,15 @@ public class EvalDatasetServiceImpl implements EvalDatasetService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    @LogRecord(
+            success = "创建评估集版本：{{#datasetId}}",
+            fail = "创建评估集版本失败：{{#_errorMsg}}",
+            type = BizChangeBizType.EVAL_DATASET_VERSION,
+            subType = BizChangeOperationType.CREATE,
+            bizNo = BizChangeLogContext.BIZ_ID_EXPRESSION,
+            extra = BizChangeLogContext.SNAPSHOT_EXPRESSION,
+            condition = BizChangeLogContext.RECORD_CONDITION
+    )
     public String createDraftVersion(String datasetId, EvalDatasetVersionCreateRequest request) {
         requireDataset(datasetId);
         String versionName = resolveNextVersionName(datasetId, request == null ? null : request.getVersion());
@@ -251,11 +260,21 @@ public class EvalDatasetServiceImpl implements EvalDatasetService {
                 .sampleCount(0)
                 .build();
         versionMapper.insert(version);
+        bizChangeLogContext.put(version.getId(), null, versionMapper.selectById(version.getId()));
         return version.getId();
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    @LogRecord(
+            success = "复制评估集版本：{{#versionId}}",
+            fail = "复制评估集版本失败：{{#_errorMsg}}",
+            type = BizChangeBizType.EVAL_DATASET_VERSION,
+            subType = BizChangeOperationType.CREATE,
+            bizNo = BizChangeLogContext.BIZ_ID_EXPRESSION,
+            extra = BizChangeLogContext.SNAPSHOT_EXPRESSION,
+            condition = BizChangeLogContext.RECORD_CONDITION
+    )
     public String copyVersion(String versionId) {
         EvalDatasetVersionDO source = requireVersion(versionId);
         String newName = resolveNextVersionName(source.getDatasetId(), null);
@@ -279,25 +298,48 @@ public class EvalDatasetServiceImpl implements EvalDatasetService {
                 .toList();
         insertCases(copies);
         refreshVersionStats(target.getId());
+        bizChangeLogContext.put(target.getId(), null, versionMapper.selectById(target.getId()));
         return target.getId();
     }
 
     @Override
+    @LogRecord(
+            success = "归档评估集版本：{{#versionId}}",
+            fail = "归档评估集版本失败：{{#_errorMsg}}",
+            type = BizChangeBizType.EVAL_DATASET_VERSION,
+            subType = BizChangeOperationType.UPDATE,
+            bizNo = "{{#versionId}}",
+            extra = BizChangeLogContext.SNAPSHOT_EXPRESSION,
+            condition = BizChangeLogContext.RECORD_CONDITION
+    )
     public void archiveVersion(String versionId) {
         EvalDatasetVersionDO version = requireVersion(versionId);
         Assert.isTrue(EvalWorkbenchConstants.VERSION_PUBLISHED.equals(version.getStatus()),
                 () -> new ClientException("仅已发布版本可归档；草稿请直接删除"));
+        EvalDatasetVersionDO before = BeanUtil.copyProperties(version, EvalDatasetVersionDO.class);
         version.setStatus(EvalWorkbenchConstants.VERSION_ARCHIVED);
         versionMapper.updateById(version);
+        bizChangeLogContext.put(versionId, before, versionMapper.selectById(versionId));
     }
 
     @Override
+    @LogRecord(
+            success = "恢复评估集版本：{{#versionId}}",
+            fail = "恢复评估集版本失败：{{#_errorMsg}}",
+            type = BizChangeBizType.EVAL_DATASET_VERSION,
+            subType = BizChangeOperationType.UPDATE,
+            bizNo = "{{#versionId}}",
+            extra = BizChangeLogContext.SNAPSHOT_EXPRESSION,
+            condition = BizChangeLogContext.RECORD_CONDITION
+    )
     public void unarchiveVersion(String versionId) {
         EvalDatasetVersionDO version = requireVersion(versionId);
         Assert.isTrue(EvalWorkbenchConstants.VERSION_ARCHIVED.equals(version.getStatus()),
                 () -> new ClientException("仅已归档版本可恢复为已发布"));
+        EvalDatasetVersionDO before = BeanUtil.copyProperties(version, EvalDatasetVersionDO.class);
         version.setStatus(EvalWorkbenchConstants.VERSION_PUBLISHED);
         versionMapper.updateById(version);
+        bizChangeLogContext.put(versionId, before, versionMapper.selectById(versionId));
     }
 
     @Override
@@ -330,8 +372,18 @@ public class EvalDatasetServiceImpl implements EvalDatasetService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    @LogRecord(
+            success = "导入评估集版本样本：{{#versionId}}",
+            fail = "导入评估集版本样本失败：{{#_errorMsg}}",
+            type = BizChangeBizType.EVAL_DATASET_VERSION,
+            subType = BizChangeOperationType.UPDATE,
+            bizNo = "{{#versionId}}",
+            extra = BizChangeLogContext.SNAPSHOT_EXPRESSION,
+            condition = BizChangeLogContext.RECORD_CONDITION
+    )
     public EvalImportResultVO importCases(String versionId, MultipartFile file) {
         EvalDatasetVersionDO version = requireDraftVersion(versionId);
+        EvalDatasetVersionDO before = BeanUtil.copyProperties(version, EvalDatasetVersionDO.class);
         Assert.notNull(file, () -> new ClientException("导入文件不能为空"));
         Assert.isFalse(file.isEmpty(), () -> new ClientException("导入文件不能a为空"));
 
@@ -363,6 +415,7 @@ public class EvalDatasetServiceImpl implements EvalDatasetService {
         int failed = (int) issues.stream().filter(i -> EvalCaseImportSupport.LEVEL_ERROR.equals(i.getLevel())).count();
         int warnings = (int) issues.stream().filter(i -> EvalCaseImportSupport.LEVEL_WARNING.equals(i.getLevel())).count();
         if (!parsed.fileIssues().isEmpty() && accepted.isEmpty()) {
+            bizChangeLogContext.skip();
             return EvalImportResultVO.builder()
                     .versionId(versionId)
                     .successCount(0)
@@ -376,6 +429,7 @@ public class EvalDatasetServiceImpl implements EvalDatasetService {
         caseMapper.delete(Wrappers.lambdaQuery(EvalCaseDO.class).eq(EvalCaseDO::getDatasetVersionId, versionId));
         insertCases(accepted.stream().map(req -> EvalCaseImportSupport.toNewCaseDO(versionId, req)).toList());
         refreshVersionStats(versionId);
+        bizChangeLogContext.put(versionId, before, versionMapper.selectById(versionId));
         return EvalImportResultVO.builder()
                 .versionId(versionId)
                 .successCount(accepted.size())
