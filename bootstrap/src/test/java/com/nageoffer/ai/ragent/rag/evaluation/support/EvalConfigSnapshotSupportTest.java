@@ -101,7 +101,7 @@ class EvalConfigSnapshotSupportTest {
         properties.getScope().setMinIntentScore(0.45);
         properties.getScope().setConfidenceThreshold(0.7);
         properties.getScope().setSupplementRatio(0.2);
-        properties.getChannels().getVector().setCandidateBudget(48);
+        properties.getChannels().getVector().setEnabled(false);
 
         Map<String, Object> scope = EvalConfigSnapshotSupport.snapshotScope(properties.getScope());
         Map<String, Object> vector = EvalConfigSnapshotSupport.snapshotVector(
@@ -110,7 +110,8 @@ class EvalConfigSnapshotSupportTest {
         assertEquals(0.45, scope.get("minIntentScore"));
         assertEquals(0.7, scope.get("confidenceThreshold"));
         assertEquals(0.2, scope.get("supplementRatio"));
-        assertEquals(48, vector.get("candidateBudget"));
+        assertFalse((Boolean) vector.get("enabled"));
+        assertFalse(vector.containsKey("candidateBudget"));
         assertFalse(vector.containsKey("minIntentScore"));
         assertFalse(vector.containsKey("confidenceThreshold"));
         assertFalse(vector.containsKey("singleIntentSupplementThreshold"));

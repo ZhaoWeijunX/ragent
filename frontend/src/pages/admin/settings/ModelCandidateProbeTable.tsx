@@ -25,6 +25,7 @@ type ExtraColumn = {
 type ModelCandidateProbeTableProps = {
   capability: ModelCapabilityPath;
   candidates: ModelCandidate[];
+  defaultModel?: string | null;
   extraColumns?: ExtraColumn[];
   probeResults: Record<string, ModelProbeItem>;
   probingKeys: Set<string>;
@@ -92,6 +93,7 @@ export function ModelGroupProbeButton({
 export function ModelCandidateProbeTable({
   capability,
   candidates,
+  defaultModel,
   extraColumns = [],
   probeResults,
   probingKeys,
@@ -127,7 +129,14 @@ export function ModelCandidateProbeTable({
 
             return (
               <TableRow key={item.id}>
-                <TableCell className="font-medium">{item.id}</TableCell>
+                <TableCell className="whitespace-nowrap font-mono text-xs font-medium">
+                  <span className="inline-flex items-center gap-1.5">
+                    {item.id}
+                    {item.id === defaultModel ? (
+                      <span className="settings-tag is-indigo">默认</span>
+                    ) : null}
+                  </span>
+                </TableCell>
                 <TableCell>{item.provider}</TableCell>
                 <TableCell>{item.model}</TableCell>
                 {extraColumns.map((column) => (

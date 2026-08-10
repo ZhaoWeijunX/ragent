@@ -17,6 +17,7 @@
 
 package com.nageoffer.ai.ragent.infra.chat;
 
+import com.google.gson.JsonObject;
 import com.nageoffer.ai.ragent.framework.convention.ChatRequest;
 import com.nageoffer.ai.ragent.framework.trace.RagTraceNode;
 import com.nageoffer.ai.ragent.infra.enums.ModelProvider;
@@ -31,6 +32,13 @@ public class DeepSeekChatClient extends AbstractOpenAIStyleChatClient {
     @Override
     public String provider() {
         return ModelProvider.DEEPSEEK.getId();
+    }
+
+    @Override
+    protected void customizeRequestBody(JsonObject body, ChatRequest request) {
+        JsonObject thinking = new JsonObject();
+        thinking.addProperty("type", Boolean.TRUE.equals(request.getThinking()) ? "enabled" : "disabled");
+        body.add("thinking", thinking);
     }
 
     @Override

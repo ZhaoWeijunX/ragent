@@ -200,7 +200,6 @@ public class EvalConfigSnapshotSupport {
     static Map<String, Object> snapshotVector(SearchChannelProperties.Vector vector) {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("enabled", vector.isEnabled());
-        out.put("candidateBudget", vector.getCandidateBudget());
         return out;
     }
 

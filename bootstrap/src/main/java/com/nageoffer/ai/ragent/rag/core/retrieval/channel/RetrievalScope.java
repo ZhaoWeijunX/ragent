@@ -19,7 +19,9 @@ package com.nageoffer.ai.ragent.rag.core.retrieval.channel;
 
 import com.nageoffer.ai.ragent.rag.core.intent.NodeScore;
 
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * 检索作用域
@@ -30,7 +32,7 @@ import java.util.List;
  * @param directed              是否收窄到命中库
  * @param topScore              KB 意图最高分，仅用于观测与阈值校准
  * @param intents               命中的 KB 意图，定向时非空
- * @param targetCollections     主检索范围：定向为命中库，全局为全部有效库
+ * @param targetCollections     主检索范围：定向为命中且有效的库（绑定集与知识库表求交），全局为全部有效库
  * @param supplementCollections 补充检索范围：全部有效库减去命中库，全局作用域下恒为空
  */
 public record RetrievalScope(boolean directed,
@@ -38,6 +40,24 @@ public record RetrievalScope(boolean directed,
                              List<NodeScore> intents,
                              List<String> targetCollections,
                              List<String> supplementCollections) {
+
+    public Set<String> directedIntentIds() {
+        if (!directed) {
+            return Set.of();
+        }
+        Set<String> intentIds = new LinkedHashSet<>();
+        for (NodeScore intent : intents) {
+            if (intent == null || intent.getNode() == null) {
+                continue;
+            }
+            String intentId = intent.getNode().getId();
+            if (intentId == null || intentId.isBlank()) {
+                continue;
+            }
+            intentIds.add(intentId);
+        }
+        return Set.copyOf(intentIds);
+    }
 
     /**
      * 全局作用域：不收窄，无补充路
