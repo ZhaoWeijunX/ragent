@@ -73,6 +73,7 @@ public class ModelHealthController {
             case "chat" -> ModelCapability.CHAT;
             case "embedding" -> ModelCapability.EMBEDDING;
             case "rerank" -> ModelCapability.RERANK;
+            case "vlm" -> ModelCapability.VLM;
             default -> throw new IllegalArgumentException("Unsupported capability: " + capability);
         };
     }

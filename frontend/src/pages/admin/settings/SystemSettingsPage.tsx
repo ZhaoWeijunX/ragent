@@ -277,7 +277,7 @@ type ModelProbeBindings = {
   onProbeOne: (capability: ModelCapabilityPath, modelId: string) => void;
 };
 
-// embedding/rerank/vlm 共用的候选表，embedding/rerank 可按需接入主动探测
+// embedding/rerank/vlm 共用候选表，配置 probe 后可执行整组或单模型主动探测
 function ModelCandidatesCard({
   title,
   group,
@@ -796,7 +796,20 @@ export function SystemSettingsPage() {
               onProbeOne: handleProbeOne
             }}
           />
-          {vlm ? <ModelCandidatesCard title="视觉模型（VLM）" group={vlm} /> : null}
+          {vlm ? (
+            <ModelCandidatesCard
+              title="视觉模型（VLM）"
+              group={vlm}
+              probe={{
+                capability: "vlm",
+                probeResults,
+                probingKeys,
+                probing: probingCapability === "vlm",
+                onProbeGroup: () => handleProbeCapability("vlm"),
+                onProbeOne: handleProbeOne
+              }}
+            />
+          ) : null}
         </div>
 
         <div className="grid gap-4 xl:grid-cols-3">

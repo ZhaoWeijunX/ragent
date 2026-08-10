@@ -27,6 +27,7 @@ import com.nageoffer.ai.ragent.infra.config.AIModelProperties;
 import com.nageoffer.ai.ragent.infra.embedding.EmbeddingClient;
 import com.nageoffer.ai.ragent.infra.enums.ModelCapability;
 import com.nageoffer.ai.ragent.infra.rerank.RerankClient;
+import com.nageoffer.ai.ragent.infra.vlm.VlmService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -56,7 +57,8 @@ class ModelProbeServiceTest {
                 properties,
                 List.of(chatClient("bailian", "ok")),
                 List.of(),
-                List.of());
+                List.of(),
+                vlmService());
 
         ModelProbeResult result = service.probeOne(ModelCapability.CHAT, "qwen-plus");
 
@@ -72,7 +74,8 @@ class ModelProbeServiceTest {
                 properties,
                 List.of(chatClientFailure("bailian")),
                 List.of(),
-                List.of());
+                List.of(),
+                vlmService());
 
         ModelProbeResult result = service.probeOne(ModelCapability.CHAT, "qwen-plus");
 
@@ -88,7 +91,8 @@ class ModelProbeServiceTest {
                 properties,
                 List.of(chatClient("bailian", "ok")),
                 List.of(),
-                List.of());
+                List.of(),
+                vlmService());
 
         assertThrows(IllegalArgumentException.class,
                 () -> service.probeOne(ModelCapability.CHAT, "qwen-plus"));
@@ -104,7 +108,8 @@ class ModelProbeServiceTest {
                 properties,
                 List.of(),
                 List.of(embeddingClient("siliconflow")),
-                List.of());
+                List.of(),
+                vlmService());
 
         ModelProbeResult result = service.probeOne(ModelCapability.EMBEDDING, "qwen-emb");
 
@@ -121,12 +126,50 @@ class ModelProbeServiceTest {
                 properties,
                 List.of(),
                 List.of(),
-                List.of(rerankClient("bailian")));
+                List.of(rerankClient("bailian")),
+                vlmService());
 
         ModelProbeResult result = service.probeOne(ModelCapability.RERANK, "qwen-rerank");
 
         assertTrue(result.isHealthy());
         assertEquals(ModelCapability.RERANK, result.getCapability());
+    }
+
+    @Test
+    void probeVlmSuccessWithSelectedCandidate() {
+        AIModelProperties properties = baseProperties();
+        properties.getVlm().setCandidates(List.of(candidate("qwen-vl", "bailian", "qwen3-vl-plus", 1)));
+
+        service = new ModelProbeService(
+                properties,
+                List.of(),
+                List.of(),
+                List.of(),
+                vlmService());
+
+        ModelProbeResult result = service.probeOne(ModelCapability.VLM, "qwen-vl");
+
+        assertTrue(result.isHealthy());
+        assertEquals(ModelCapability.VLM, result.getCapability());
+        assertEquals("qwen-vl", result.getModelId());
+    }
+
+    @Test
+    void probeVlmEmptyResponseIsUnhealthy() {
+        AIModelProperties properties = baseProperties();
+        properties.getVlm().setCandidates(List.of(candidate("qwen-vl", "bailian", "qwen3-vl-plus", 1)));
+
+        service = new ModelProbeService(
+                properties,
+                List.of(),
+                List.of(),
+                List.of(),
+                vlmService(" "));
+
+        ModelProbeResult result = service.probeOne(ModelCapability.VLM, "qwen-vl");
+
+        assertFalse(result.isHealthy());
+        assertEquals("VLM response is empty", result.getErrorMessage());
     }
 
     private static AIModelProperties baseProperties() {
@@ -225,6 +268,28 @@ class ModelProbeServiceTest {
             @Override
             public List<RetrievedChunk> rerank(String query, List<RetrievedChunk> candidates, int topN, ModelTarget target) {
                 return candidates.subList(0, Math.min(topN, candidates.size()));
+            }
+        };
+    }
+
+    private static VlmService vlmService() {
+        return vlmService("blue square");
+    }
+
+    private static VlmService vlmService(String response) {
+        return new VlmService() {
+            @Override
+            public String describeImage(byte[] imageBytes, String mime, String prompt, Integer maxOutputTokens) {
+                throw new UnsupportedOperationException();
+            }
+
+            @Override
+            public String describeImage(
+                    byte[] imageBytes, String mime, String prompt, Integer maxOutputTokens, ModelTarget target) {
+                assertTrue(imageBytes.length > 0);
+                assertEquals("image/png", mime);
+                assertEquals("qwen-vl", target.id());
+                return response;
             }
         };
     }

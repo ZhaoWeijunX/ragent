@@ -17,6 +17,8 @@
 
 package com.nageoffer.ai.ragent.infra.vlm;
 
+import com.nageoffer.ai.ragent.infra.model.ModelTarget;
+
 /**
  * 视觉大模型（VLM）访问接口
  * <p>
@@ -38,4 +40,9 @@ public interface VlmService {
      * @return 模型返回的描述文本
      */
     String describeImage(byte[] imageBytes, String mime, String prompt, Integer maxOutputTokens);
+
+    /**
+     * 使用显式指定的模型目标执行图生文，供健康检测逐个验证候选模型。
+     */
+    String describeImage(byte[] imageBytes, String mime, String prompt, Integer maxOutputTokens, ModelTarget target);
 }

@@ -99,7 +99,7 @@ export function ModelCandidateProbeTable({
   probingKeys,
   onProbeOne
 }: ModelCandidateProbeTableProps) {
-  // chat 走档位排序，priority 对路由无意义，仅 embedding/rerank 展示
+  // chat 走档位排序，priority 对路由无意义，仅 embedding/rerank/vlm 展示
   const showPriority = capability !== "chat";
 
   return (

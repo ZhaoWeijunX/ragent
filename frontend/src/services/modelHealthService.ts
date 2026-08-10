@@ -1,6 +1,6 @@
 import { api } from "@/services/api";
 
-export type ModelCapabilityPath = "chat" | "embedding" | "rerank";
+export type ModelCapabilityPath = "chat" | "embedding" | "rerank" | "vlm";
 
 export type ModelProbeItem = {
   capability: string;

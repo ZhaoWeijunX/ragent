@@ -68,7 +68,12 @@ public class RoutingVlmService implements VlmService {
     @Override
     @RagTraceNode(name = "vlm-describe", type = "VLM")
     public String describeImage(byte[] imageBytes, String mime, String prompt, Integer maxOutputTokens) {
-        ModelTarget target = resolveTarget();
+        return describeImage(imageBytes, mime, prompt, maxOutputTokens, resolveTarget());
+    }
+
+    @Override
+    public String describeImage(
+            byte[] imageBytes, String mime, String prompt, Integer maxOutputTokens, ModelTarget target) {
         AIModelProperties.ProviderConfig provider = HttpResponseHelper.requireProvider(target, LABEL);
         HttpResponseHelper.requireApiKey(provider, LABEL);
 

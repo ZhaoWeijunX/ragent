@@ -17,6 +17,7 @@
 
 package com.nageoffer.ai.ragent.infra.chat;
 
+import com.google.gson.JsonObject;
 import com.nageoffer.ai.ragent.framework.convention.ChatRequest;
 import com.nageoffer.ai.ragent.framework.trace.RagTraceNode;
 import com.nageoffer.ai.ragent.infra.enums.ModelProvider;
@@ -31,6 +32,15 @@ public class AIHubMixChatClient extends AbstractOpenAIStyleChatClient {
     @Override
     public String provider() {
         return ModelProvider.AI_HUB_MIX.getId();
+    }
+
+    /**
+     * AIHubMix 的 OpenAI 兼容接口不支持 enable_thinking 参数。
+     * 保留基类的通用请求体字段，但跳过该 provider 特有的 thinking 字段。
+     */
+    @Override
+    protected void customizeRequestBody(JsonObject body, ChatRequest request) {
+        // AIHubMix 不接受 enable_thinking，即使值为 false 也会返回 400。
     }
 
     @Override

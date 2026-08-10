@@ -28,12 +28,14 @@ import com.nageoffer.ai.ragent.infra.embedding.EmbeddingClient;
 import com.nageoffer.ai.ragent.infra.enums.ModelCapability;
 import com.nageoffer.ai.ragent.infra.enums.ModelProvider;
 import com.nageoffer.ai.ragent.infra.rerank.RerankClient;
+import com.nageoffer.ai.ragent.infra.vlm.VlmService;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
@@ -56,6 +58,8 @@ import java.util.stream.Collectors;
 public class ModelProbeService {
 
     private static final String PROBE_TEXT = "ping";
+    private static final byte[] VLM_PROBE_IMAGE = Base64.getDecoder().decode(
+            "iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAA8SURBVFhH7c6hEQAgDATBVELNdAweE5GBIPZm3rzaWM3FebwOAAAgBYxZWxYAAAAAAADA/4DbAQAAtAM2cCGg00auDSAAAAAASUVORK5CYII=");
     private static final List<RetrievedChunk> RERANK_PROBE_CANDIDATES = List.of(
             RetrievedChunk.builder().id("probe-1").text("This is a probe document for rerank health check.").score(0.5f).build(),
             RetrievedChunk.builder().id("probe-2").text("Another probe document to validate rerank connectivity.").score(0.4f).build()
@@ -67,13 +71,15 @@ public class ModelProbeService {
     private final Map<String, ChatClient> chatClientsByProvider;
     private final Map<String, EmbeddingClient> embeddingClientsByProvider;
     private final Map<String, RerankClient> rerankClientsByProvider;
+    private final VlmService vlmService;
     private final ExecutorService probeExecutor;
 
     public ModelProbeService(
             AIModelProperties properties,
             List<ChatClient> chatClients,
             List<EmbeddingClient> embeddingClients,
-            List<RerankClient> rerankClients) {
+            List<RerankClient> rerankClients,
+            VlmService vlmService) {
         this.properties = properties;
         this.chatClientsByProvider = chatClients.stream()
                 .collect(Collectors.toMap(ChatClient::provider, Function.identity(), (a, b) -> a));
@@ -81,13 +87,14 @@ public class ModelProbeService {
                 .collect(Collectors.toMap(EmbeddingClient::provider, Function.identity(), (a, b) -> a));
         this.rerankClientsByProvider = rerankClients.stream()
                 .collect(Collectors.toMap(RerankClient::provider, Function.identity(), (a, b) -> a));
+        this.vlmService = vlmService;
         int parallelism = resolveParallelism();
         this.probeExecutor = Executors.newFixedThreadPool(parallelism, namedThreadFactory());
     }
 
     public List<ModelProbeResult> probeAll() {
         List<ModelProbeResult> results = new ArrayList<>();
-        for (ModelCapability capability : EnumSet.of(ModelCapability.CHAT, ModelCapability.EMBEDDING, ModelCapability.RERANK)) {
+        for (ModelCapability capability : EnumSet.allOf(ModelCapability.class)) {
             results.addAll(probe(capability));
         }
         return results;
@@ -226,6 +233,13 @@ public class ModelProbeService {
                     throw new IllegalStateException("Rerank response is empty");
                 }
             }
+            case VLM -> {
+                String description = vlmService.describeImage(
+                        VLM_PROBE_IMAGE, "image/png", "Reply with one word describing the image.", 16, target);
+                if (!StringUtils.hasText(description)) {
+                    throw new IllegalStateException("VLM response is empty");
+                }
+            }
             default -> throw new IllegalArgumentException("Unsupported capability: " + capability);
         }
     }
@@ -284,6 +298,7 @@ public class ModelProbeService {
             case CHAT -> properties.getChat();
             case EMBEDDING -> properties.getEmbedding();
             case RERANK -> properties.getRerank();
+            case VLM -> properties.getVlm();
             default -> null;
         };
     }
