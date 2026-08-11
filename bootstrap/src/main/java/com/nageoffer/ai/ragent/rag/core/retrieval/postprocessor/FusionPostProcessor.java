@@ -111,6 +111,7 @@ public class FusionPostProcessor implements SearchResultPostProcessor {
             }
         }
 
+        // 按 Chunk 唯一键回写分数并排序
         List<RetrievedChunk> fused = new ArrayList<>(chunks);
         for (RetrievedChunk chunk : fused) {
             Double score = rrfScores.get(RetrievedChunkKey.of(chunk));

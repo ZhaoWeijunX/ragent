@@ -92,6 +92,7 @@ public class LightRagClient {
             ObjectNode body = objectMapper.createObjectNode();
             body.put("query", question);
             body.put("mode", StrUtil.isNotBlank(mode) ? mode : "mix");
+            // 表示只需要图谱证据，不让 LightRAG 直接生成回答
             body.put("only_need_context", true);
             body.put("include_references", true);
             body.put("include_chunk_content", true);

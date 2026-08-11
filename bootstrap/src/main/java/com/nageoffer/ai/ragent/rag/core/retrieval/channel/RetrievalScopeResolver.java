@@ -56,29 +56,39 @@ public class RetrievalScopeResolver {
         List<NodeScore> kbIntents = extractKbIntents(subIntents);
         double topScore = kbIntents.stream().mapToDouble(NodeScore::getScore).max().orElse(0.0);
 
+        // ========== 什么时候退化为全局检索? ==========
+        // 场景一：没有有效 KB 意图,例如：只有MCP意图、无任何意图、KB意图全部低于0.4
         if (kbIntents.isEmpty()) {
             log.info("未识别出有效 KB 意图，检索走全局作用域");
             return RetrievalScope.global(topScore, activeCollections);
         }
+        // 场景二：最高分低于置信度阈值
         double threshold = properties.getScope().getConfidenceThreshold();
         if (topScore < threshold) {
             log.info("KB 意图置信度过低（{} < {}），检索走全局作用域", topScore, threshold);
             return RetrievalScope.global(topScore, activeCollections);
         }
 
+        // ========== 什么时候进入定向检索? ========== //
+        // 1. 提取意图绑定的知识库
         Set<String> bound = new LinkedHashSet<>(NodeScoreFilters.kbCollections(kbIntents));
         // 意图绑定与知识库表是两套数据，删库不回写意图节点：悬空库名对向量 / ES 只是查空库，
         // 图谱却会按库名匹配到已删库的图谱残留，故绑定集先与有效库求交
+        // 2. 和当前有效知识库求交集
         Set<String> targets = new LinkedHashSet<>(bound);
         targets.retainAll(activeCollections);
+
+        // 2.1 所有绑定知识库都已删除
         if (targets.isEmpty()) {
             log.warn("KB 意图绑定的知识库均已失效（{}），检索退化为全局作用域", bound);
             return RetrievalScope.global(topScore, activeCollections);
         }
+        // 2.2 只有部分绑定库失效,不会因为部分绑定失效而整体退化为全局。
         if (targets.size() < bound.size()) {
             bound.removeAll(targets);
             log.warn("KB 意图绑定中已失效的知识库（{}）不参与检索", bound);
         }
+        // 2.3 所有绑定库都有效，targets 作为主检索范围，supplement 作为补充检索范围
         List<String> supplement = activeCollections.stream()
                 .filter(collection -> !targets.contains(collection))
                 .toList();

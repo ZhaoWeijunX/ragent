@@ -171,8 +171,10 @@ public class RetrievalEngine {
         List<NodeScore> kbIntents = NodeScoreFilters.kb(intent.nodeScores());
         List<NodeScore> mcpIntents = NodeScoreFilters.mcp(intent.nodeScores());
 
+        // 对KB意图做检索
         KbResult kbResult = retrieveAndRerank(intent, kbIntents, budget);
 
+        // 对MCP意图做调用
         String mcpContext = CollUtil.isNotEmpty(mcpIntents)
                 ? executeMcpAndMerge(intent.subQuestion(), mcpIntents)
                 : "";

@@ -58,6 +58,7 @@ public class CollectionParallelRetriever {
      * 并行检索，复用调用方已算好的查询向量
      * 供同一次请求内还有其他向量取数路（如向量通道的补充路）时共用一次 embedding
      *
+     * 每个 collection 并行去查询，每个 topK 都是 budget，最后排序后做截断
      * @param queryVector 已归一化的查询向量
      */
     public List<RetrievedChunk> executeParallelRetrieval(String question,

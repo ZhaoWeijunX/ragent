@@ -129,6 +129,11 @@ public class MultiChannelRetrievalEngine {
         return intentIdsByChunkKey;
     }
 
+    /**
+     * 真正执行多通道检索
+     * @param context
+     * @return
+     */
     private List<SearchChannelResult> executeSearchChannels(SearchContext context) {
         // 按通道类型枚举序做稳定排序：通道并行执行、下游融合（RRF）与归因均与顺序无关，
         // 这里排序仅为日志/派发顺序稳定可复现，不承载任何检索优先级语义
@@ -263,7 +268,7 @@ public class MultiChannelRetrievalEngine {
 
     /**
      * 构建检索上下文
-     * 作用域在此处算一次挂进上下文，各通道只读不判，保证同一子问题内三条通道的检索范围一致
+     * 作用域在此处只算一次挂进上下文，各通道只读不判，保证同一子问题内三条通道的检索范围一致
      */
     private SearchContext buildSearchContext(SubQuestionIntent subIntent, RetrievalBudget budget) {
         List<SubQuestionIntent> subIntents = List.of(subIntent);

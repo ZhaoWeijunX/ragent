@@ -74,6 +74,7 @@ public class JdbcConversationMemorySummaryService implements ConversationMemoryS
         if (message.getRole() != ChatMessage.Role.ASSISTANT) {
             return;
         }
+        // 异步检查是否需要压缩，并进行压缩摘要
         CompletableFuture.runAsync(() -> doCompressIfNeeded(conversationId, userId), memorySummaryExecutor)
                 .exceptionally(ex -> {
                     log.error("对话记忆摘要异步任务失败 - conversationId: {}, userId: {}",
@@ -100,6 +101,11 @@ public class JdbcConversationMemorySummaryService implements ConversationMemoryS
         return ChatMessage.system(wrapped);
     }
 
+    /**
+     * 异步触发摘要压缩检查，会加锁
+     * @param conversationId
+     * @param userId
+     */
     private void doCompressIfNeeded(String conversationId, String userId) {
         long startTime = System.currentTimeMillis();
         int triggerTurns = memoryProperties.getSummaryStartTurns();

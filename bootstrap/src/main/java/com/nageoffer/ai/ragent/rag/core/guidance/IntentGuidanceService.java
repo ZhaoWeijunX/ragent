@@ -108,6 +108,11 @@ public class IntentGuidanceService {
         return new AmbiguityGroup(topicName, trimmedRanked);
     }
 
+    /**
+     * 跳过歧义引导的快速路径：
+     * - 快速通道 1：分数比值低于边界下限，意图明确
+     * - 快速通道 2：用户问题中显式提到了某个系统的 DOMAIN 级名称
+     */
     private boolean shouldSkipGuidance(String question, List<NodeScore> ranked) {
         double top = ranked.get(0).getScore();
         if (top <= 0) {
@@ -144,6 +149,12 @@ public class IntentGuidanceService {
         return false;
     }
 
+    /**
+     * 根据比值决定下一步的具体操作：
+     *  - 1. 比值大于等于 0.8，直接认为歧义；
+     *  - 2. 在 0.65～0.8 的边界区间，再调用一次 LLM 做二次确认；
+     *  - 3. 低于 0.65 则认为第一名明显领先，不打扰用户。
+     */
     private boolean confirmAmbiguity(String question, List<NodeScore> ranked) {
         double top = ranked.get(0).getScore();
         double second = ranked.get(1).getScore();
@@ -155,17 +166,20 @@ public class IntentGuidanceService {
         double threshold = guidanceProperties.getAmbiguityScoreRatio();
         double margin = guidanceProperties.getAmbiguityMargin();
 
+        // 1. 比值大于等于 0.8，直接认为歧义；
         if (ratio >= threshold) {
             log.info("分数比值(ratio={})超过阈值({}), 判定为歧义", ratio, threshold);
             return true;
         }
 
+        // 2. 在 0.65～0.8 的边界区间，再调用一次 LLM 做二次确认；
         if (ratio >= threshold - margin) {
             log.info("分数比值(ratio={})在边界区间[{}, {}), 调 LLM 确认", ratio, threshold - margin, threshold);
             return ambiguityLLMChecker.checkAmbiguity(question, ranked);
         }
 
-        // ratio < threshold - margin 但 > skipThreshold，不触发澄清
+        // 3. 低于 0.65 则认为第一名明显领先，不打扰用户。
+        // ratio < threshold - margin 不触发澄清
         return false;
     }
 

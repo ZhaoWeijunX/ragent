@@ -133,6 +133,7 @@ public class VectorSearchChannel implements SearchChannel {
         log.info("向量检索完成（定向），意图 top1={}，命中 {} 库 {} 条（最高余弦 {}），补充 {} 库 {} 条（最高余弦 {}）",
                 scope.topScore(), scope.targetCollections().size(), directed.size(), ChunkRanking.topScoreOf(directed),
                 scope.supplementCollections().size(), supplement.size(), ChunkRanking.topScoreOf(supplement));
+        // 把主路和补充路按分数重新合并
         return ChunkRanking.mergeByScore(directed, supplement);
     }
 
@@ -187,11 +188,13 @@ public class VectorSearchChannel implements SearchChannel {
             return List.of();
         }
         List<RetrievedChunk> chunks = retrieverService.supportsGlobalRetrieval()
+                // 分支一：后端支持跨库查询
                 ? retrieverService.retrieveByVector(queryVector, RetrieveRequest.builder()
                 .collectionNames(collections)
                 .query(question)
                 .topK(budget)
                 .build())
+                // 分支二：后端不支持跨库查询
                 : globalRetriever.executeParallelRetrieval(question, collections, budget, queryVector);
         return ScopeQuota.cap(ChunkRanking.sortedByScore(chunks), budget);
     }

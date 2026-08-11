@@ -117,8 +117,10 @@ public class StreamChatPipeline {
 
     private void loadMemory(StreamChatContext ctx) {
         List<ChatMessage> history = memoryService.load(ctx.getConversationId(), ctx.getUserId());
+        // 把用户问题封装成 USER 落消息表，返回 messageId
         String questionMessageId = memoryService.append(
                 ctx.getConversationId(), ctx.getUserId(), ChatMessage.user(ctx.getQuestion()));
+        // 回答生成后，ASSISTANT 通过这个消息id建立回复关系
         ctx.getCallback().onReplyToMessageId(questionMessageId);
         ctx.setHistory(history);
     }

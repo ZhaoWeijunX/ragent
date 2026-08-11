@@ -101,6 +101,11 @@ public class IntentResolver {
                 && subIntents.stream().allMatch(si -> isSystemOnly(si.nodeScores()));
     }
 
+    /**
+     * 子问题意图识别
+     * @param question 子问题
+     * @return [意图节点和对应分数] 构成的 List
+     */
     private List<NodeScore> classifyIntents(String question) {
         List<NodeScore> scores = intentClassifier.classifyTargets(question);
         return scores.stream()

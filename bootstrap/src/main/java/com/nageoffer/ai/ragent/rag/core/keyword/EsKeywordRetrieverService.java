@@ -61,6 +61,13 @@ public class EsKeywordRetrieverService implements KeywordRetrieverService {
                 : collectionNames.stream().map(FieldValue::of).toList();
 
         try {
+            /*
+             * 在 rag_keyword_store 中
+             * 查找 content 匹配 query 的文档
+             * 如果指定了 collectionNames，
+             * 再限制 collection_name 必须属于这些值
+             * 最多返回 topK 条
+             */
             SearchResponse<KeywordHitDocument> resp = esClient.search(s -> s
                             .index(index)
                             .size(topK)
@@ -83,6 +90,7 @@ public class EsKeywordRetrieverService implements KeywordRetrieverService {
                 return List.of();
             }
             return hits.stream()
+                    // 逐个转换，从 es 的 content 转换为 chunk
                     .map(this::toChunk)
                     .toList();
         } catch (Exception e) {
@@ -94,7 +102,16 @@ public class EsKeywordRetrieverService implements KeywordRetrieverService {
     private RetrievedChunk toChunk(Hit<KeywordHitDocument> hit) {
         KeywordHitDocument source = hit.source();
         String content = source == null || source.getContent() == null ? "" : source.getContent();
+        // 对缺失的 _score 做 0 分兜底
         float score = hit.score() == null ? 0f : hit.score().floatValue();
+        /*
+         * 字段对应关系如下：
+         * ES 字段	                  RetrievedChunk 字段
+         * _id	                      id
+         * _source.content	          text
+         * _source.collection_name	  collectionName
+         * ES _score	              score
+         */
         return RetrievedChunk.builder()
                 .id(hit.id())
                 .text(content)
