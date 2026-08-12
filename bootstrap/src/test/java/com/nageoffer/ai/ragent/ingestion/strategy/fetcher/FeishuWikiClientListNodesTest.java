@@ -33,6 +33,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -77,6 +79,9 @@ class FeishuWikiClientListNodesTest {
         assertEquals("docx", result.items().get(0).objType());
         assertEquals("next1", result.nextPageToken());
         assertTrue(result.hasMore());
+        verify(httpClientHelper).get(argThat((String url) ->
+                url.startsWith("https://open.feishu.cn/open-apis/wiki/v2/spaces/space1/nodes?")
+                        && url.contains("page_size=50")), any());
     }
 
     @Test
@@ -91,5 +96,9 @@ class FeishuWikiClientListNodesTest {
 
         assertTrue(result.items().isEmpty());
         assertFalse(result.hasMore());
+        verify(httpClientHelper).get(argThat((String url) ->
+                url.startsWith("https://open.feishu.cn/open-apis/wiki/v2/spaces/space1/nodes?")
+                        && url.contains("page_size=10")
+                        && url.contains("parent_node_token=parent")), any());
     }
 }

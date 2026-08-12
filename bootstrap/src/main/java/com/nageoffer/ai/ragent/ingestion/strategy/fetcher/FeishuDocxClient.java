@@ -74,7 +74,7 @@ public class FeishuDocxClient {
      * 拉取 docx 文档 Markdown 内容（docs/v1/content）
      */
     public String fetchMarkdownContent(String documentToken, Map<String, String> headers) {
-        String apiUrl = UriComponentsBuilder.fromHttpUrl(MARKDOWN_CONTENT_URL)
+        String apiUrl = UriComponentsBuilder.fromUriString(MARKDOWN_CONTENT_URL)
                 .queryParam("doc_token", documentToken)
                 .queryParam("doc_type", "docx")
                 .queryParam("content_type", "markdown")
@@ -131,7 +131,7 @@ public class FeishuDocxClient {
     }
 
     private String queryExportFileTokenOnce(String documentToken, String ticket, Map<String, String> headers) {
-        String apiUrl = UriComponentsBuilder.fromHttpUrl(EXPORT_TASKS_URL + "/" + ticket)
+        String apiUrl = UriComponentsBuilder.fromUriString(EXPORT_TASKS_URL + "/" + ticket)
                 .queryParam("token", documentToken)
                 .toUriString();
         HttpClientHelper.HttpFetchResponse resp = httpClientHelper.get(apiUrl, headers);

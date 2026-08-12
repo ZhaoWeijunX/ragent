@@ -19,7 +19,6 @@ package com.nageoffer.ai.ragent.ingestion.strategy.fetcher;
 
 import com.nageoffer.ai.ragent.framework.exception.ClientException;
 import com.nageoffer.ai.ragent.ingestion.util.HttpClientHelper;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -39,6 +38,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -54,7 +54,6 @@ class FeishuDocxClientTest {
     @InjectMocks
     private FeishuDocxClient feishuDocxClient;
 
-    @BeforeEach
     void stubPollingExecutor() {
         when(pollingExecutor.submitAndAwait(any(), any(), anyLong())).thenAnswer(invocation -> {
             FeishuExportPollingExecutor.PollAttempt attempt = invocation.getArgument(0);
@@ -132,6 +131,7 @@ class FeishuDocxClientTest {
 
     @Test
     void shouldFetchPdfContentViaExportTaskFlow() {
+        stubPollingExecutor();
         String createJson = """
                 {
                   "code": 0,
@@ -178,13 +178,14 @@ class FeishuDocxClientTest {
                 body.contains("\"file_extension\":\"pdf\"")
                         && body.contains("\"token\":\"doccnABC\"")
                         && body.contains("\"type\":\"docx\"")));
-        verify(httpClientHelper).get(argThat((String url) -> url.contains("/export_tasks/ticket123")
+        verify(httpClientHelper, times(2)).get(argThat((String url) -> url.contains("/export_tasks/ticket123")
                 && url.contains("token=doccnABC")), any());
         verify(httpClientHelper).get(argThat((String url) -> url.contains("/export_tasks/file/fileTokenABC/download")), any());
     }
 
     @Test
     void shouldRejectExportFailureStatus() {
+        stubPollingExecutor();
         String createJson = """
                 {
                   "code": 0,
@@ -214,6 +215,7 @@ class FeishuDocxClientTest {
 
     @Test
     void shouldDownloadPdfWithSizeLimit() {
+        stubPollingExecutor();
         String createJson = """
                 {
                   "code": 0,

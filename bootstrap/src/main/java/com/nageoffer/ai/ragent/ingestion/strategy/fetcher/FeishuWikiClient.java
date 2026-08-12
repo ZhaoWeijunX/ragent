@@ -58,7 +58,7 @@ public class FeishuWikiClient {
      * @param objType 云文档 token 查询时传入 docx/doc 等；wiki 节点可传 null
      */
     public WikiNodeInfo getNode(String token, String objType, Map<String, String> headers) {
-        UriComponentsBuilder builder = UriComponentsBuilder.fromHttpUrl(GET_NODE_URL)
+        UriComponentsBuilder builder = UriComponentsBuilder.fromUriString(GET_NODE_URL)
                 .queryParam("token", token);
         if (StringUtils.hasText(objType)) {
             builder.queryParam("obj_type", objType);
@@ -73,7 +73,7 @@ public class FeishuWikiClient {
     public WikiListNodesResult listNodes(String spaceId, String parentNodeToken, String pageToken,
                                          int pageSize, Map<String, String> headers) {
         UriComponentsBuilder builder = UriComponentsBuilder
-                .fromHttpUrl(String.format(LIST_NODES_URL, spaceId))
+                .fromUriString(String.format(LIST_NODES_URL, spaceId))
                 .queryParam("page_size", Math.min(Math.max(pageSize, 1), 50));
         if (StringUtils.hasText(parentNodeToken)) {
             builder.queryParam("parent_node_token", parentNodeToken);
