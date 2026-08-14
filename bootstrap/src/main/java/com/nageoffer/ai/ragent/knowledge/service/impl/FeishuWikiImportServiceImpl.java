@@ -195,7 +195,10 @@ public class FeishuWikiImportServiceImpl implements FeishuWikiImportService {
             return;
         }
 
-        markItemImporting(item.getId());
+        if (!markItemImporting(item.getId())) {
+            log.info("飞书 Wiki 导入子项已被其他消费者领取, jobId={}, itemId={}", jobId, item.getId());
+            return;
+        }
         KnowledgeDocumentUploadRequest uploadRequest = buildUploadRequest(job);
 
         try {
@@ -205,16 +208,22 @@ public class FeishuWikiImportServiceImpl implements FeishuWikiImportService {
             String itemStatus = importResult.updated()
                     ? FeishuWikiImportItemStatus.UPDATED.getCode()
                     : FeishuWikiImportItemStatus.SUCCESS.getCode();
-            markItemDone(item.getId(), itemStatus, doc.getId(), null);
-            incrementJobSuccess(jobId);
+            if (markItemDone(item.getId(), itemStatus, doc.getId(), null)) {
+                incrementJobSuccess(jobId);
 
-            if (job.getAutoChunk() != null && job.getAutoChunk() == 1) {
-                documentService.startChunk(doc.getId());
+                if (job.getAutoChunk() != null && job.getAutoChunk() == 1) {
+                    documentService.startChunk(doc.getId());
+                }
+            } else {
+                log.warn("飞书 Wiki 导入子项完成状态更新失败, jobId={}, itemId={}", jobId, item.getId());
             }
         } catch (Exception e) {
             log.warn("飞书 Wiki 页面导入失败, jobId={}, nodeToken={}", jobId, item.getNodeToken(), e);
-            markItemDone(item.getId(), FeishuWikiImportItemStatus.FAILED.getCode(), null, e.getMessage());
-            incrementJobFailed(jobId);
+            if (markItemDone(item.getId(), FeishuWikiImportItemStatus.FAILED.getCode(), null, e.getMessage())) {
+                incrementJobFailed(jobId);
+            } else {
+                log.warn("飞书 Wiki 导入子项失败状态更新失败, jobId={}, itemId={}", jobId, item.getId());
+            }
         }
 
         messageQueueProducer.send(
@@ -250,6 +259,17 @@ public class FeishuWikiImportServiceImpl implements FeishuWikiImportService {
     }
 
     private void finalizeJob(String jobId) {
+        Long activeCount = itemMapper.selectCount(
+                new LambdaQueryWrapper<FeishuWikiImportItemDO>()
+                        .eq(FeishuWikiImportItemDO::getJobId, jobId)
+                        .in(FeishuWikiImportItemDO::getStatus,
+                                FeishuWikiImportItemStatus.PENDING.getCode(),
+                                FeishuWikiImportItemStatus.IMPORTING.getCode())
+        );
+        if (activeCount != null && activeCount > 0) {
+            return;
+        }
+
         FeishuWikiImportJobDO job = jobMapper.selectById(jobId);
         if (job == null || isTerminalJobStatus(job.getStatus())) {
             return;
@@ -264,20 +284,24 @@ public class FeishuWikiImportServiceImpl implements FeishuWikiImportService {
                 .eq(FeishuWikiImportJobDO::getId, jobId));
     }
 
-    private void markItemImporting(String itemId) {
-        itemMapper.update(null, new LambdaUpdateWrapper<FeishuWikiImportItemDO>()
+    private boolean markItemImporting(String itemId) {
+        int updated = itemMapper.update(null, new LambdaUpdateWrapper<FeishuWikiImportItemDO>()
                 .set(FeishuWikiImportItemDO::getStatus, FeishuWikiImportItemStatus.IMPORTING.getCode())
                 .set(FeishuWikiImportItemDO::getUpdateTime, new Date())
-                .eq(FeishuWikiImportItemDO::getId, itemId));
+                .eq(FeishuWikiImportItemDO::getId, itemId)
+                .eq(FeishuWikiImportItemDO::getStatus, FeishuWikiImportItemStatus.PENDING.getCode()));
+        return updated == 1;
     }
 
-    private void markItemDone(String itemId, String status, String docId, String errorMessage) {
-        itemMapper.update(null, new LambdaUpdateWrapper<FeishuWikiImportItemDO>()
+    private boolean markItemDone(String itemId, String status, String docId, String errorMessage) {
+        int updated = itemMapper.update(null, new LambdaUpdateWrapper<FeishuWikiImportItemDO>()
                 .set(FeishuWikiImportItemDO::getStatus, status)
                 .set(FeishuWikiImportItemDO::getDocId, docId)
                 .set(FeishuWikiImportItemDO::getErrorMessage, errorMessage)
                 .set(FeishuWikiImportItemDO::getUpdateTime, new Date())
-                .eq(FeishuWikiImportItemDO::getId, itemId));
+                .eq(FeishuWikiImportItemDO::getId, itemId)
+                .eq(FeishuWikiImportItemDO::getStatus, FeishuWikiImportItemStatus.IMPORTING.getCode()));
+        return updated == 1;
     }
 
     private void incrementJobSuccess(String jobId) {
