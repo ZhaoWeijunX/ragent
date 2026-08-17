@@ -57,3 +57,6 @@ docs/temp
 ### Python cache ###
 __pycache__/
 *.pyc
+# Codex / OMX local workspace state
+.codex/
+.omx/
