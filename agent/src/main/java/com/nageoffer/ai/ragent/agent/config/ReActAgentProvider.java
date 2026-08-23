@@ -18,6 +18,7 @@
 package com.nageoffer.ai.ragent.agent.config;
 
 import cn.hutool.core.util.StrUtil;
+import com.nageoffer.ai.ragent.agent.memory.AgentContextCompactionMiddleware;
 import com.nageoffer.ai.ragent.agent.state.PgAgentStateStore;
 import com.nageoffer.ai.ragent.agent.tool.AgentToolCatalog;
 import com.nageoffer.ai.ragent.agent.tool.AgentToolCatalog.ResolvedCatalog;
@@ -46,6 +47,7 @@ public class ReActAgentProvider {
     private final OpenAIChatModel agentChatModel;
     private final PgAgentStateStore agentStateStore;
     private final AgentProperties agentProperties;
+    private final AgentContextCompactionMiddleware contextCompactionMiddleware;
 
     private volatile CachedAgent cached;
 
@@ -101,6 +103,7 @@ public class ReActAgentProvider {
                 .maxIters(agentProperties.getMaxIters())
                 .maxRetries(agentProperties.getMaxRetries())
                 .stateStore(agentStateStore)
+                .middleware(contextCompactionMiddleware)
                 .build();
     }
 
