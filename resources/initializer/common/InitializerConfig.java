@@ -83,6 +83,18 @@ final class InitializerConfig {
         }
     }
 
+    double getDouble(String key, double defaultValue) {
+        String value = get(key, null);
+        if (value == null || value.isBlank()) {
+            return defaultValue;
+        }
+        try {
+            return Double.parseDouble(value);
+        } catch (NumberFormatException ex) {
+            throw new IllegalArgumentException("配置项不是小数: " + key + "=" + value, ex);
+        }
+    }
+
     boolean getBoolean(String key, boolean defaultValue) {
         String value = get(key, null);
         return value == null || value.isBlank() ? defaultValue : Boolean.parseBoolean(value);

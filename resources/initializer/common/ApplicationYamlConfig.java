@@ -17,7 +17,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 
-/** Reads the small set of Spring Boot YAML values required by the standalone initializer. */
+/** Reads the small set of Spring Boot YAML values required by the standalone CLI tools. */
 final class ApplicationYamlConfig {
 
     private ApplicationYamlConfig() {
@@ -53,6 +53,17 @@ final class ApplicationYamlConfig {
 
         result.setProperty("execution.expected-vector-type", value(yaml, "rag.vector.type", ""));
         result.setProperty("execution.expected-storage-type", value(yaml, "rag.storage.type", ""));
+        result.setProperty("execution.engine-type", value(yaml, "ragent.engine.type", ""));
+
+        // 记忆回归台要在报告里同时给出「服务端在用的阈值」和「本次实测量」，阈值只能来自这一份 yaml
+        // 键名与 yaml 路径逐段对齐，摘要与长期记忆各自成段后 trigger-chars 这类同名项才不会撞在一起
+        result.setProperty("agent.memory.enabled", value(yaml, "agent.memory.enabled", "true"));
+        result.setProperty("agent.memory.tool-result.trigger-chars",
+                value(yaml, "agent.memory.tool-result.trigger-chars", "0"));
+        result.setProperty("agent.memory.tool-result.keep-recent-cycles",
+                value(yaml, "agent.memory.tool-result.keep-recent-cycles", "0"));
+        result.setProperty("agent.memory.tool-result.clear-at-least-ratio",
+                value(yaml, "agent.memory.tool-result.clear-at-least-ratio", "0"));
         return result;
     }
 

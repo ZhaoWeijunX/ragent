@@ -126,6 +126,17 @@ final class RagentHttpClient implements AutoCloseable {
         }
     }
 
+    /**
+     * 供同包内其他 CLI 复用登录态，自行发起本客户端未封装的请求（如 Agent 侧的 SSE 端点）
+     */
+    String baseUrl() {
+        return baseUrl;
+    }
+
+    String authorization() {
+        return requireToken("(caller-managed request)");
+    }
+
     static String encodeQuery(String value) {
         return URLEncoder.encode(value, StandardCharsets.UTF_8).replace("+", "%20");
     }

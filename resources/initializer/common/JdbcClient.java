@@ -64,6 +64,37 @@ final class JdbcClient implements AutoCloseable {
         }
     }
 
+    /**
+     * 查询任意结果集并按字符串取值，NULL 取空串
+     * 只给排障与回归读数用，参数拼接由调用方经 literal 转义
+     */
+    List<List<String>> queryRows(String sql) throws SQLException, IOException {
+        try (Connection connection = openConnection();
+             Statement statement = connection.createStatement()) {
+            statement.setQueryTimeout(config.getInt("database.statement-timeout-seconds", 120));
+            try (ResultSet result = statement.executeQuery(sql)) {
+                int columns = result.getMetaData().getColumnCount();
+                List<List<String>> rows = new ArrayList<>();
+                while (result.next()) {
+                    List<String> row = new ArrayList<>(columns);
+                    for (int index = 1; index <= columns; index++) {
+                        String value = result.getString(index);
+                        row.add(value == null ? "" : value);
+                    }
+                    rows.add(List.copyOf(row));
+                }
+                return List.copyOf(rows);
+            }
+        }
+    }
+
+    /**
+     * SQL 字符串字面量转义，只处理单引号，不接受反斜杠转义关闭的会话参数
+     */
+    static String literal(String value) {
+        return "'" + value.replace("'", "''") + "'";
+    }
+
     void executeScript(Path file) throws IOException, SQLException {
         if (!Files.isRegularFile(file)) {
             throw new IllegalArgumentException("SQL 文件不存在: " + file.toAbsolutePath());
