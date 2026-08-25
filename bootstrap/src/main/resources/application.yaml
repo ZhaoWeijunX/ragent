@@ -45,7 +45,7 @@ ragent:
   # 评测旁路 + 工作台（与 Chat Pipeline 隔离；生产请关闭 enabled / workbench-enabled / ragas.enabled）
   eval:
     # 旁路 GET /rag/eval；工作台双路径录制取证据依赖此开关，本地联调需 true
-    enabled: true
+    enabled: false
     # 评测工作台 Admin API / Runner / 专用线程池 / 租约回收；生产请 false
     workbench-enabled: true
     max-active-runs: 1              # 同时处于录制阶段的最大 Run 数（共享环境务必保持 1）
@@ -101,7 +101,7 @@ rag:
     type: pg  # 可选 milvus / pg
 
   keyword:
-    type: es  # 可选 none / es
+    type: none  # 可选 none / es
     es:
       uris:  http://${ragent.infra.host:localhost}:9200
       index: rag_keyword_store  # 全库共享索引，按 collection_name 字段区分知识库
@@ -109,7 +109,7 @@ rag:
       search-analyzer: ik_smart
 
   graph:
-    type: lightrag  # 图谱后端总开关，可选 none / lightrag。lightrag 即接入后端供「后台可视化 / 检索读取」；是否参与检索、是否写入分别由 rag.search.channels.graph.enabled 与下方 ingestion.enabled 独立控制
+    type: none  # 图谱后端总开关，可选 none / lightrag。lightrag 即接入后端供「后台可视化 / 检索读取」；是否参与检索、是否写入分别由 rag.search.channels.graph.enabled 与下方 ingestion.enabled 独立控制
     lightrag:
       base-url: http://${ragent.infra.host:localhost}:9621
       query-mode: hybrid
@@ -179,11 +179,11 @@ rag:
       vector:
         enabled: true       # 向量通道总开关
       keyword:
-        enabled: true      # 检索范围读引擎解析好的作用域，与向量通道同源
+        enabled: false      # 检索范围读引擎解析好的作用域，与向量通道同源
       graph:
-        enabled: true    # 图谱检索通道开关：false 不参与问答召回（后端仍在，后台可视化照常）；置 true 前需先开 rag.graph.type=lightrag
+        enabled: false    # 图谱检索通道开关：false 不参与问答召回（后端仍在，后台可视化照常）；置 true 前需先开 rag.graph.type=lightrag
       web-search:
-        enabled: true
+        enabled: false
         count: 5
         timeout-seconds: 10
         api-key: ${YDC_API_KEY:}
