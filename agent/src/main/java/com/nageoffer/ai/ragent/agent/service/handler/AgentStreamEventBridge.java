@@ -51,9 +51,8 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * AgentScope 事件流到 SSE 协议的桥：增量转发、工具进度与结果、轨迹落库与取消收尾
- * 线程模型：事件线程与取消线程会交叠，可变状态一律在 stateLock 下变更，SSE 发送在锁外
- * 三条收尾路的互斥与注销交由 AgentRunHandle
+ * AgentScope 事件流到 SSE 协议的桥：增量转发、轨迹落库与取消收尾
+ * 事件线程与取消线程交叠，可变状态在 stateLock 下变更，SSE 发送在锁外
  */
 @Slf4j
 public class AgentStreamEventBridge {
@@ -64,10 +63,13 @@ public class AgentStreamEventBridge {
     private static final String TOOL_STATUS_END = "end";
     private static final String HINT_AGENT = "AGENT_HINT";
     private static final String HINT_MAX_ITERATIONS = "MAX_ITERATIONS";
-    private static final int TOOL_RESULT_MAX_CHARS = 20_000;
+    /**
+     * 防跑飞护栏，正常不会触发
+     */
+    private static final int TOOL_RESULT_MAX_CHARS = 64_000;
     private static final String FALLBACK_CALL_KEY = "__anonymous__";
     /**
-     * 落全量时刻而非 HH:mm:ss，跨天会话回放才分得清先后；不带时区偏移沿用前端「按本地时区解析」的约定
+     * 跨天回放需全量时刻，不带时区偏移沿用前端约定
      */
     private static final DateTimeFormatter BLOCK_TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss");
 
@@ -91,7 +93,7 @@ public class AgentStreamEventBridge {
     private final Map<String, StringBuilder> toolResultBuffers = new HashMap<>();
 
     /**
-     * 当前敞开的文本块与它的增量缓冲，工具事件到来即封口，实现 reasoning / answer / tool 按事件序分段
+     * 当前文本块及缓冲，工具事件到来即封口
      */
     private AgentBlock openTextBlock;
     private StringBuilder openTextBuffer;
@@ -130,9 +132,9 @@ public class AgentStreamEventBridge {
             synchronized (stateLock) {
                 streamed = responseBuffer.toString();
             }
-            // 以流式增量为准（与用户所见一致），增量为空时回落终答消息文本
+            // 以流式增量为准，为空时回落终答消息
             String content = StrUtil.isNotBlank(streamed) ? streamed : fallbackContent();
-            // 非流式兜底路径（如熔断收尾语）没有增量，这里一次性补发
+            // 非流式兜底路径没有增量，一次性补发
             if (streamed.isEmpty() && StrUtil.isNotBlank(content)) {
                 synchronized (stateLock) {
                     appendTextBlock(DELTA_TYPE_RESPONSE, content);
@@ -155,7 +157,7 @@ public class AgentStreamEventBridge {
     }
 
     /**
-     * 取消收尾：持久化已生成内容后补发 cancel/done 并结束响应流
+     * 取消收尾：持久化已生成内容后补发 cancel/done
      */
     public void finishCancelledStream() {
         runHandle.cancel(() -> {
@@ -214,6 +216,8 @@ public class AgentStreamEventBridge {
                 .name(toolName)
                 .displayName(catalog.displayNameOf(toolName))
                 .status("running")
+                // 落真实 id 而非 callKey 的兜底值
+                .toolCallId(StrUtil.blankToDefault(event.getToolCallId(), null))
                 .build();
         synchronized (stateLock) {
             sealOpenTextBlock();
@@ -257,7 +261,7 @@ public class AgentStreamEventBridge {
     }
 
     /**
-     * 不规范端点可能不回 toolCallId，退化到单槽兜底：并发多路时轨迹会串，但不至于让空键打断整条流
+     * 端点不回 toolCallId 时退化到单槽兜底
      */
     private String callKey(String toolCallId) {
         return StrUtil.blankToDefault(toolCallId, FALLBACK_CALL_KEY);
@@ -271,14 +275,14 @@ public class AgentStreamEventBridge {
     }
 
     /**
-     * 结构化输出兜底工具是框架内部实现细节，不作为业务工具进度暴露
+     * 框架内部工具不暴露给业务
      */
     private boolean isInternalTool(String toolName) {
         return StrUtil.isBlank(toolName) || ReActAgent.STRUCTURED_OUTPUT_TOOL_NAME.equals(toolName);
     }
 
     /**
-     * 调用方需持 stateLock：增量只进缓冲，块文本到封口那一刻才定格
+     * 调用方需持 stateLock
      */
     private void appendTextBlock(String deltaType, String delta) {
         String kind = DELTA_TYPE_THINK.equals(deltaType) ? "reasoning" : "answer";
@@ -295,7 +299,7 @@ public class AgentStreamEventBridge {
     }
 
     /**
-     * 调用方需持 stateLock：逐条 setText 是 O(n²) 全量复制，攒够一次性落成 String
+     * 调用方需持 stateLock
      */
     private void sealOpenTextBlock() {
         if (openTextBlock == null) {
@@ -317,7 +321,7 @@ public class AgentStreamEventBridge {
     private String persistAssistantMessage(String content, AgentMessageStatus status) {
         String thinking;
         List<AgentBlock> settled;
-        // 思考文本与轨迹取自同一临界区，免得取消瞬间两者对不上号
+        // 思考文本与轨迹取自同一临界区
         synchronized (stateLock) {
             thinking = thinkingBuffer.toString();
             settled = settledBlocks();
@@ -332,7 +336,7 @@ public class AgentStreamEventBridge {
     }
 
     /**
-     * 调用方需持 stateLock：敞开的文本块先封口，残留 running 的工具置为 interrupted，剔除空文本块
+     * 调用方需持 stateLock：封口文本块，running 置 interrupted，剔除空块
      */
     private List<AgentBlock> settledBlocks() {
         sealOpenTextBlock();

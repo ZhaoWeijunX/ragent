@@ -56,14 +56,12 @@ final class ApplicationYamlConfig {
         result.setProperty("execution.engine-type", value(yaml, "ragent.engine.type", ""));
 
         // 记忆回归台要在报告里同时给出「服务端在用的阈值」和「本次实测量」，阈值只能来自这一份 yaml
-        // 键名与 yaml 路径逐段对齐，摘要与长期记忆各自成段后 trigger-chars 这类同名项才不会撞在一起
+        // 四道门已收敛成窗口的固定比例，这里只搬窗口本身；派生用的比例在 AgentMemoryRegressionMain 里另有一份手抄副本
         result.setProperty("agent.memory.enabled", value(yaml, "agent.memory.enabled", "true"));
-        result.setProperty("agent.memory.tool-result.trigger-chars",
-                value(yaml, "agent.memory.tool-result.trigger-chars", "0"));
-        result.setProperty("agent.memory.tool-result.keep-recent-cycles",
-                value(yaml, "agent.memory.tool-result.keep-recent-cycles", "0"));
-        result.setProperty("agent.memory.tool-result.clear-at-least-ratio",
-                value(yaml, "agent.memory.tool-result.clear-at-least-ratio", "0"));
+        result.setProperty("agent.memory.context-window-chars",
+                value(yaml, "agent.memory.context-window-chars", "0"));
+        result.setProperty("agent.memory.summary-enabled",
+                value(yaml, "agent.memory.summary-enabled", "true"));
         return result;
     }
 

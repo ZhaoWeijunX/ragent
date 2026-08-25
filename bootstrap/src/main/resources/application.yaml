@@ -49,11 +49,9 @@ agent:
   sse-timeout-ms: 900000
   memory:
     enabled: true
-    tool-result:
-      trigger-chars: 20000        # 上下文没这么大就一个字节不动，这道门管「有没有问题」；待 regression 实测回填
-      keep-recent-cycles: 2       # 从上一轮往前保几个已完成循环；本轮的与未闭合的额外全保、不占配额
-      clear-at-least-ratio: 0.2   # 回收量不到当前上下文这个比例就整次不动，这道门管「值不值得改前缀」
-      evictable-tools: [ search_knowledge ] # 白名单；MCP 工具副作用无法静态判定，不可改黑名单
+    context-window-chars: 1200000
+    summary-enabled: true
+    evictable-tools: [ search_knowledge ]
 
 rag:
   storage:

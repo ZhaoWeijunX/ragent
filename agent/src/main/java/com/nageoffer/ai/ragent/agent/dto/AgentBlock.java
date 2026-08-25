@@ -24,8 +24,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
- * Agent 运行轨迹块：一轮回复内按事件顺序排列的 reasoning / answer / tool 片段
- * 随消息落库供历史回放还原时间线
+ * Agent 运行轨迹块：按事件顺序排列的 reasoning / answer / tool 片段，随消息落库
  */
 @Data
 @NoArgsConstructor
@@ -40,8 +39,7 @@ public class AgentBlock {
     private String kind;
 
     /**
-     * 产生时刻 yyyy-MM-dd'T'HH:mm:ss，不带时区偏移按本地时区解析；展示成什么样由前端定
-     * 历史数据是 HH:mm:ss，前端两种都认
+     * 产生时刻 yyyy-MM-dd'T'HH:mm:ss，历史数据是 HH:mm:ss，前端两种都认
      */
     private String at;
 
@@ -69,4 +67,9 @@ public class AgentBlock {
      * tool 结果文本，超长截断
      */
     private String result;
+
+    /**
+     * 供应商侧的 tool_call id，与上下文里 tool_use / tool_result 同源；端点不回时留空
+     */
+    private String toolCallId;
 }

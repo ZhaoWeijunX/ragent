@@ -17,9 +17,6 @@
 
 package com.nageoffer.ai.ragent.agent.memory;
 
-import jakarta.validation.Valid;
-import jakarta.validation.constraints.DecimalMax;
-import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Min;
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -30,8 +27,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Agent 会话记忆配置（agent.memory 段）
- * 这一层只削峰不设上界：消息条数永不减少，开着也只是涨得慢一点
+ * Agent 会话记忆配置（agent.memory 段），两道门按固定比例从 contextWindowChars 派生
  */
 @Data
 @Configuration
@@ -40,47 +36,89 @@ import java.util.List;
 public class AgentMemoryProperties {
 
     /**
-     * 记忆总开关，管的是 agent.memory 整段而不只是下面这一层
+     * 裁剪门：过半即动手，只把老工具结果换成占位
+     */
+    private static final double TRIM_TRIGGER_RATIO = 0.5D;
+
+    /**
+     * 压缩门：裁剪顶不住才动手，余两成给压缩期间的模型调用
+     */
+    private static final double COMPACT_TRIGGER_RATIO = 0.8D;
+
+    /**
+     * 保留段：压缩切点之后至少留这么多原文
+     */
+    private static final double KEEP_RECENT_RATIO = 0.2D;
+
+    /**
+     * 往前保几个已完成的工具循环，本轮和未闭合的额外保护不占配额
+     */
+    private static final int KEEP_RECENT_CYCLES = 2;
+
+    /**
+     * 可回收量低于当前上下文的这个比例就不动
+     */
+    private static final double CLEAR_AT_LEAST_RATIO = 0.2D;
+
+    /**
+     * 摘要正文上限：0.1×预算 夹进 [1500, 6000]
+     * 上限受同步阻塞预算约束，六千字符折约四千 token 输出已接近 STANDARD 档时限
+     */
+    private static final double SUMMARY_MAX_RATIO = 0.1D;
+    private static final int SUMMARY_MAX_FLOOR_CHARS = 1500;
+    private static final int SUMMARY_MAX_CEIL_CHARS = 6000;
+
+    /**
+     * 记忆总开关
      */
     private boolean enabled = true;
 
     /**
-     * 嵌套约束必须在字段上级联，漏掉 @Valid 则内层 @Min 一次都不会被求值
+     * 会话上下文工程预算（字符），换模型只需要动这一个数
+     * 不是模型标称窗口：人设、工具 schema、输出预留不走这份账，填值时先扣掉固定开销
+     * 下限 8000：再小保留段装不下摘要（0.2 × 8000 > 摘要下限 1500）
      */
-    @Valid
-    private ToolResult toolResult = new ToolResult();
+    @Min(8000)
+    private int contextWindowChars = 1_200_000;
 
     /**
-     * 历史工具结果清理：占上下文字节的四成，是短期记忆唯一值得动的目标
+     * 关掉即只留裁剪层，摘要模型不可用时的运维出口
      */
-    @Data
-    public static class ToolResult {
+    private boolean summaryEnabled = true;
 
-        /**
-         * 上下文总字符数超过该值才清理；用体量而非消息条数门控，线上最长会话才十余条
-         */
-        @Min(1000)
-        private int triggerChars = 20000;
+    /**
+     * 允许清理的工具白名单；默认值须可变，绑定器直接 clear + addAll
+     */
+    private List<String> evictableTools = new ArrayList<>(List.of("search_knowledge"));
 
-        /**
-         * 保留最近若干个已完成的工具循环，未完成的循环额外全保
-         */
-        @Min(1)
-        private int keepRecentCycles = 2;
+    /**
+     * 叫 resolve 不叫 get：绑定器会把 getXxx 当成可配置项
+     */
+    public int resolveTrimTriggerChars() {
+        return (int) (contextWindowChars * TRIM_TRIGGER_RATIO);
+    }
 
-        /**
-         * 可回收量占当前上下文不足该比例就整次不动，避免每轮都改写前缀把模型侧缓存打废
-         * 用比例不用绝对字符：清理总是从最早的未保护循环下手，作废掉的是几乎整份前缀，代价随上下文体量一起涨
-         * 取值须 <1，取满等于永不裁剪，关掉这一层是 enabled 的活
-         */
-        @DecimalMin("0")
-        @DecimalMax(value = "1", inclusive = false)
-        private double clearAtLeastRatio = 0.2;
+    public int resolveCompactTriggerChars() {
+        return (int) (contextWindowChars * COMPACT_TRIGGER_RATIO);
+    }
 
-        /**
-         * 允许清理的工具白名单；MCP 工具集由意图树运行期决定，副作用无法静态判定，不可用黑名单
-         * 默认值必须可变，绑定器拿它当容器直接 clear + addAll，写成 List.of 会在启动绑定时抛出
-         */
-        private List<String> evictableTools = new ArrayList<>(List.of("search_knowledge"));
+    public int resolveKeepRecentChars() {
+        return (int) (contextWindowChars * KEEP_RECENT_RATIO);
+    }
+
+    public int resolveKeepRecentCycles() {
+        return KEEP_RECENT_CYCLES;
+    }
+
+    public double resolveClearAtLeastRatio() {
+        return CLEAR_AT_LEAST_RATIO;
+    }
+
+    /**
+     * 夹在上下限之间返回
+     */
+    public int resolveSummaryMaxChars() {
+        int derived = (int) (contextWindowChars * SUMMARY_MAX_RATIO);
+        return Math.min(Math.max(derived, SUMMARY_MAX_FLOOR_CHARS), SUMMARY_MAX_CEIL_CHARS);
     }
 }

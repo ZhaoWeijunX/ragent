@@ -472,6 +472,22 @@ CREATE TABLE t_agent_state (
 );
 COMMENT ON TABLE t_agent_state IS 'AgentScope 工作状态存储，payload 为框架自有编码的不透明 JSON';
 
+CREATE TABLE t_agent_context_compaction (
+    id                   VARCHAR(20) NOT NULL PRIMARY KEY,
+    user_id              VARCHAR(20) NOT NULL,
+    conversation_id      VARCHAR(20) NOT NULL,
+    generation           INTEGER     NOT NULL,
+    summary              TEXT,
+    material_msg_count   INTEGER     NOT NULL,
+    material_chars       INTEGER     NOT NULL,
+    summary_chars        INTEGER     NOT NULL,
+    context_chars_before INTEGER     NOT NULL,
+    context_chars_after  INTEGER     NOT NULL,
+    create_time          TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_agent_compaction_conv ON t_agent_context_compaction (conversation_id, user_id, create_time);
+COMMENT ON TABLE t_agent_context_compaction IS 'Agent 上下文压缩事件，追加型审计日志，应用侧无读路径';
+
 -- ============================================
 -- Ingestion Pipeline Tables
 -- ============================================
@@ -924,3 +940,16 @@ COMMENT ON COLUMN t_agent_state.state_key IS '状态键，AgentScope 侧固定�
 COMMENT ON COLUMN t_agent_state.payload IS '框架自有编码的状态 JSON，业务侧不解析';
 COMMENT ON COLUMN t_agent_state.create_time IS '创建时间';
 COMMENT ON COLUMN t_agent_state.update_time IS '更新时间';
+
+-- t_agent_context_compaction
+COMMENT ON COLUMN t_agent_context_compaction.id IS '主键ID';
+COMMENT ON COLUMN t_agent_context_compaction.user_id IS '用户ID';
+COMMENT ON COLUMN t_agent_context_compaction.conversation_id IS '会话ID，即 AgentScope 的 sessionId';
+COMMENT ON COLUMN t_agent_context_compaction.generation IS '同一会话内的第几代摘要，从 1 起';
+COMMENT ON COLUMN t_agent_context_compaction.summary IS '本代摘要正文，回填进上下文的那一份';
+COMMENT ON COLUMN t_agent_context_compaction.material_msg_count IS '被换出的原文消息条数';
+COMMENT ON COLUMN t_agent_context_compaction.material_chars IS '被换出的原文字符数';
+COMMENT ON COLUMN t_agent_context_compaction.summary_chars IS '摘要正文字符数';
+COMMENT ON COLUMN t_agent_context_compaction.context_chars_before IS '压缩前上下文总字符数';
+COMMENT ON COLUMN t_agent_context_compaction.context_chars_after IS '压缩后上下文总字符数';
+COMMENT ON COLUMN t_agent_context_compaction.create_time IS '创建时间';

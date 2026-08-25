@@ -22,7 +22,6 @@ import io.agentscope.core.message.ContentBlock;
 import io.agentscope.core.message.Msg;
 import io.agentscope.core.message.MsgRole;
 import io.agentscope.core.message.TextBlock;
-import io.agentscope.core.message.ThinkingBlock;
 import io.agentscope.core.message.ToolResultBlock;
 import io.agentscope.core.message.ToolUseBlock;
 import lombok.RequiredArgsConstructor;
@@ -30,6 +29,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
@@ -48,33 +48,39 @@ import java.util.Set;
 public class AgentContextTrimmer {
 
     /**
-     * 纯陈述不带祈使句：任何"需要请重新调用"都是我们往上下文里塞指令
+     * 回归台 AgentStateProbe 手抄了这个前缀，改这里必须同步
      */
     private static final String EVICTED_PREFIX = "[历史工具结果已省略，原长 ";
-    private static final String EVICTED_SUFFIX = " 字符]";
+    private static final String EVICTED_CHARS = " 字符";
+    private static final String EVICTED_INPUT = "，原入参 ";
+    private static final String EVICTED_SUFFIX = "]";
+
+    /**
+     * 长入参截断，避免占位比原文还大
+     */
+    private static final int EVICTED_INPUT_MAX_CHARS = 120;
 
     private final AgentMemoryProperties memoryProperties;
 
     /**
-     * 就地裁剪并返回替换映射，调用方据此同步本轮真正发给模型的那份列表
+     * 就地裁剪，返回替换映射供调用方同步上行列表
      */
     public TrimResult trimInPlace(List<Msg> context) {
-        if (!memoryProperties.isEnabled() || context == null || context.isEmpty()) {
+        if (context == null || context.isEmpty()) {
             return TrimResult.UNCHANGED;
         }
-        AgentMemoryProperties.ToolResult config = memoryProperties.getToolResult();
-        int totalChars = totalChars(context);
-        if (totalChars <= config.getTriggerChars()) {
+        int totalChars = AgentContextChars.total(context);
+        if (totalChars <= memoryProperties.resolveTrimTriggerChars()) {
             return TrimResult.UNCHANGED;
         }
 
         List<Cycle> cycles = splitCycles(context);
-        Set<Integer> protectedCycles = protectedCycles(context, cycles, config.getKeepRecentCycles());
-        List<Candidate> candidates = collectCandidates(context, cycles, protectedCycles, config.getEvictableTools());
+        Set<Integer> protectedCycles = protectedCycles(context, cycles, memoryProperties.resolveKeepRecentCycles());
+        List<Candidate> candidates = collectCandidates(context, cycles, protectedCycles,
+                memoryProperties.getEvictableTools());
         int reclaimable = candidates.stream().mapToInt(Candidate::reclaimable).sum();
-        // 够不着最小回收量就整次放弃：宁可这轮不省，也不为几百字符把前缀改一遍
-        // 下限按当前体量折算，日志里打折算后的绝对值，比例配置才有得对账
-        int clearAtLeast = (int) Math.ceil(totalChars * config.getClearAtLeastRatio());
+        // 可回收量不够下限就整次放弃
+        int clearAtLeast = (int) Math.ceil(totalChars * memoryProperties.resolveClearAtLeastRatio());
         if (reclaimable < clearAtLeast) {
             log.debug("上下文裁剪跳过, 总字符: {}, 可回收: {}, 下限: {}", totalChars, reclaimable, clearAtLeast);
             return TrimResult.UNCHANGED;
@@ -119,8 +125,7 @@ public class AgentContextTrimmer {
     }
 
     /**
-     * 本轮开出的循环与未闭合的循环一律保护且不占配额，keepRecentCycles 只在本轮之前计数
-     * 一个用户轮最多跑 maxIters 次推理，按「最近 N 个」计数会在模型合成答案前清掉它本轮自己查到的证据
+     * 本轮和未闭合的循环额外保护不占配额，keepRecentCycles 只在本轮之前计数
      */
     private Set<Integer> protectedCycles(List<Msg> context, List<Cycle> cycles, int keepRecentCycles) {
         int turnStart = lastUserIndex(context);
@@ -141,8 +146,7 @@ public class AgentContextTrimmer {
     }
 
     /**
-     * 末条用户消息即本轮起点；摘要消息虽然也是 USER 但挂在头部，取最后一条不会认错
-     * 取不到用户消息就返回 -1，此时全部循环落进保护区，宁可不省也不猜边界
+     * 取不到用户消息返回 -1，全部循环落保护区
      */
     private int lastUserIndex(List<Msg> context) {
         for (int i = context.size() - 1; i >= 0; i--) {
@@ -160,16 +164,19 @@ public class AgentContextTrimmer {
             if (protectedCycles.contains(c)) {
                 continue;
             }
-            for (int msgIndex : cycles.get(c).toolIndexes()) {
+            Cycle cycle = cycles.get(c);
+            Map<String, String> inputs = toolInputs(context.get(cycle.startIndex()));
+            for (int msgIndex : cycle.toolIndexes()) {
                 for (ToolResultBlock block : blocks(context.get(msgIndex), ToolResultBlock.class)) {
-                    // 框架的 CallExecution.buildErrorToolResult 只 set id/output/state，工具名为空即框架级错误结果，判空顺带把它排除在外
+                    // 工具名为空即框架级错误结果，跳过
                     if (block.getName() == null || !evictableTools.contains(block.getName()) || isEvicted(block)) {
                         continue;
                     }
-                    int originChars = outputChars(block);
-                    int reclaimable = originChars - previewChars(originChars);
+                    String input = inputs.get(block.getId());
+                    int originChars = AgentContextChars.ofOutput(block);
+                    int reclaimable = originChars - previewChars(originChars, input);
                     if (reclaimable > 0) {
-                        candidates.add(new Candidate(msgIndex, block, originChars, reclaimable));
+                        candidates.add(new Candidate(msgIndex, block, originChars, reclaimable, input));
                     }
                 }
             }
@@ -178,8 +185,27 @@ public class AgentContextTrimmer {
     }
 
     /**
-     * 等长原位替换：只 set 不删不加，破坏性写留给真正做压缩的那一层
-     * 先全部重建再统一提交，重建阶段抛异常时 context 一个字节都没动，不会留下「库里是占位、模型看到的是原文」
+     * 按 tool_use id 配对取入参，整个打平不按工具名解析
+     */
+    private Map<String, String> toolInputs(Msg msg) {
+        Map<String, String> inputs = new HashMap<>();
+        for (ToolUseBlock block : blocks(msg, ToolUseBlock.class)) {
+            inputs.put(block.getId(), clipInput(String.valueOf(block.getInput())));
+        }
+        return inputs;
+    }
+
+    private String clipInput(String input) {
+        if (input == null || input.isBlank() || "null".equals(input)) {
+            return null;
+        }
+        return input.length() <= EVICTED_INPUT_MAX_CHARS
+                ? input
+                : input.substring(0, EVICTED_INPUT_MAX_CHARS) + "…";
+    }
+
+    /**
+     * 原位替换：先全部重建再统一 set，中途异常不改 context
      */
     private Map<Msg, Msg> apply(List<Msg> context, List<Candidate> candidates) {
         Map<ToolResultBlock, Candidate> hit = new IdentityHashMap<>();
@@ -206,29 +232,36 @@ public class AgentContextTrimmer {
     }
 
     /**
-     * 重建必须带全 id / name / metadata / state，漏掉 state 会把工具的挂起与失败状态洗成默认值
+     * 重建带全 id/name/metadata/state，漏 state 会把挂起/失败洗成默认值
      */
     private ToolResultBlock evict(Candidate candidate) {
         ToolResultBlock origin = candidate.block();
         return ToolResultBlock.builder()
                 .id(origin.getId())
                 .name(origin.getName())
-                .output(TextBlock.builder().text(preview(candidate.originChars())).build())
+                .output(TextBlock.builder().text(preview(candidate.originChars(), candidate.input())).build())
                 .metadata(origin.getMetadata())
                 .state(origin.getState())
                 .build();
     }
 
-    private String preview(int originChars) {
-        return EVICTED_PREFIX + originChars + EVICTED_SUFFIX;
+    /**
+     * 占位带原入参，让模型知道当时问的是什么
+     */
+    private String preview(int originChars, String input) {
+        StringBuilder text = new StringBuilder(EVICTED_PREFIX).append(originChars).append(EVICTED_CHARS);
+        if (input != null) {
+            text.append(EVICTED_INPUT).append(input);
+        }
+        return text.append(EVICTED_SUFFIX).toString();
     }
 
-    private int previewChars(int originChars) {
-        return preview(originChars).length();
+    private int previewChars(int originChars, String input) {
+        return preview(originChars, input).length();
     }
 
     /**
-     * 靠占位文案自身识别已清理块：换成自定义 metadata 就要赌它能穿过状态序列化，前缀判定不依赖任何外部约定
+     * 靠占位前缀识别已清理块，不依赖 metadata
      */
     private boolean isEvicted(ToolResultBlock block) {
         List<ContentBlock> output = block.getOutput();
@@ -237,56 +270,8 @@ public class AgentContextTrimmer {
                 && text.getText() != null && text.getText().startsWith(EVICTED_PREFIX);
     }
 
-    private int totalChars(List<Msg> context) {
-        int sum = 0;
-        for (Msg msg : context) {
-            if (msg.getContent() == null) {
-                continue;
-            }
-            for (ContentBlock block : msg.getContent()) {
-                sum += charsOf(block);
-            }
-        }
-        return sum;
-    }
-
-    /**
-     * 字符数只作为 token 的粗代理，非文本块按零计，图片音视频不在裁剪目标内
-     */
-    private int charsOf(ContentBlock block) {
-        if (block instanceof TextBlock text) {
-            return length(text.getText());
-        }
-        if (block instanceof ThinkingBlock thinking) {
-            return length(thinking.getThinking());
-        }
-        if (block instanceof ToolUseBlock toolUse) {
-            return length(toolUse.getName())
-                    + (toolUse.getInput() == null ? 0 : toolUse.getInput().toString().length());
-        }
-        if (block instanceof ToolResultBlock result) {
-            return outputChars(result);
-        }
-        return 0;
-    }
-
-    private int outputChars(ToolResultBlock block) {
-        if (block.getOutput() == null) {
-            return 0;
-        }
-        int sum = 0;
-        for (ContentBlock nested : block.getOutput()) {
-            sum += charsOf(nested);
-        }
-        return sum;
-    }
-
     private <T extends ContentBlock> List<T> blocks(Msg msg, Class<T> type) {
         return msg.getContent() == null ? List.of() : msg.getContentBlocks(type);
-    }
-
-    private int length(String value) {
-        return value == null ? 0 : value.length();
     }
 
     /**
@@ -304,6 +289,6 @@ public class AgentContextTrimmer {
     private record Cycle(int startIndex, List<Integer> toolIndexes, Set<String> pendingIds) {
     }
 
-    private record Candidate(int msgIndex, ToolResultBlock block, int originChars, int reclaimable) {
+    private record Candidate(int msgIndex, ToolResultBlock block, int originChars, int reclaimable, String input) {
     }
 }
