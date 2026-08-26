@@ -27,7 +27,7 @@ import {
   pageDatasets,
   pageRuns
 } from "@/services/evaluationService";
-import { getErrorMessage } from "@/utils/error";
+import { getEvalWorkbenchErrorMessage as getErrorMessage } from "@/utils/error";
 
 const PAGE_SIZE = 10;
 const DUAL_PATH_HINT =

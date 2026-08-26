@@ -26,7 +26,7 @@ import { RelativeTime } from "@/components/RelativeTime";
 import { EvalStatusBadge } from "@/pages/admin/evaluations/EvalStatusBadge";
 import type { EvalDataset, PageResult } from "@/services/evaluationService";
 import { createDataset, deleteDataset, pageDatasets, updateDataset } from "@/services/evaluationService";
-import { getErrorMessage } from "@/utils/error";
+import { getEvalWorkbenchErrorMessage as getErrorMessage } from "@/utils/error";
 
 const PAGE_SIZE = 10;
 const EMPTY_FORM = { name: "", description: "", domain: "" };
