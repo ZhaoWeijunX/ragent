@@ -36,7 +36,7 @@ import {
   resumeRun,
   rerunRecord
 } from "@/services/evaluationService";
-import { getErrorMessage } from "@/utils/error";
+import { getEvalWorkbenchErrorMessage as getErrorMessage } from "@/utils/error";
 
 const PAGE_SIZE = 20;
 const ACTIVE = new Set(["PENDING", "RECORDING", "DETERMINISTIC_SCORING", "RAGAS_SCORING", "REPORTING"]);

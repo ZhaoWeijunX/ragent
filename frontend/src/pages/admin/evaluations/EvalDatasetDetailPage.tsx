@@ -29,7 +29,7 @@ import {
   listVersions,
   unarchiveVersion
 } from "@/services/evaluationService";
-import { getErrorMessage } from "@/utils/error";
+import { getEvalWorkbenchErrorMessage as getErrorMessage } from "@/utils/error";
 
 export function EvalDatasetDetailPage() {
   const { datasetId = "" } = useParams();

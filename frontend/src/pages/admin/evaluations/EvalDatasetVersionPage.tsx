@@ -40,7 +40,7 @@ import {
   updateCase,
   validateVersion
 } from "@/services/evaluationService";
-import { getErrorMessage } from "@/utils/error";
+import { getEvalWorkbenchErrorMessage as getErrorMessage } from "@/utils/error";
 import { cn } from "@/lib/utils";
 import { EvalStatusBadge } from "@/pages/admin/evaluations/EvalStatusBadge";
 

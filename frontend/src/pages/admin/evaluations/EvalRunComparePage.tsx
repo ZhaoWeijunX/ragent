@@ -14,7 +14,7 @@ import type {
   EvalRunCompare
 } from "@/services/evaluationService";
 import { compareRuns } from "@/services/evaluationService";
-import { getErrorMessage } from "@/utils/error";
+import { getEvalWorkbenchErrorMessage as getErrorMessage } from "@/utils/error";
 
 const DETERMINISTIC_LABELS: Record<string, string> = {
   intent_top1: "意图 Top-1 准确率",
