@@ -271,8 +271,10 @@ public class LightRagClient {
             }
             ObjectNode body = objectMapper.createObjectNode();
             body.set("doc_ids", objectMapper.valueToTree(docIds));
+            // TODO：LightRAG 删除的【异步】语义存在问题
             delete("/documents/delete_document", body);
         } catch (Exception e) {
+            // TODO：best-effort策略掩盖了错误，删除错误前台无感知，且无回滚
             log.warn("LightRAG 文档删除失败 {}: {}", logKey, e.getMessage());
         }
     }
