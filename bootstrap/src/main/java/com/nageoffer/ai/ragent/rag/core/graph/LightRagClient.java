@@ -203,6 +203,7 @@ public class LightRagClient {
                 body.put("file_source", fileSource);
             }
             post("/documents/text", body);
+            log.info("LightRAG 文档写入成功, file_source={}, textChars={}", fileSource, text.length());
         } catch (Exception e) {
             log.warn("LightRAG 文档写入失败 file_source={}: {}", fileSource, e.getMessage());
         }
