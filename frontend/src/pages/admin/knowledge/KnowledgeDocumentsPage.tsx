@@ -951,13 +951,36 @@ export function KnowledgeDocumentsPage() {
       <UploadDialog
         open={uploadOpen}
         onOpenChange={setUploadOpen}
-        onSubmit={async (payload) => {
+        onSubmit={async (payloads) => {
           if (!kbId) return;
-          await uploadDocument(kbId, payload);
-          toast.success("上传成功");
-          setUploadOpen(false);
-          setCurrent(1);
-          await loadDocuments(1, statusFilter, keyword);
+          let successCount = 0;
+          const failures: string[] = [];
+          for (const payload of payloads) {
+            try {
+              await uploadDocument(kbId, payload);
+              successCount++;
+            } catch (error) {
+              const name = payload.file?.name || payload.sourceLocation || "文档";
+              failures.push(`${name}：${getErrorMessage(error, "上传失败")}`);
+            }
+          }
+
+          if (successCount > 0) {
+            setCurrent(1);
+            await loadDocuments(1, statusFilter, keyword);
+          }
+
+          if (failures.length === 0) {
+            toast.success(`成功导入 ${successCount} 个文件`);
+            setUploadOpen(false);
+          } else if (successCount > 0) {
+            const detail = failures.slice(0, 3).join("；");
+            const suffix = failures.length > 3 ? "；其余失败文件请查看服务端日志" : "";
+            toast.warning(`批量导入完成：成功 ${successCount} 个，失败 ${failures.length} 个。${detail}${suffix}`);
+            setUploadOpen(false);
+          } else {
+            toast.error(`批量导入失败：${failures.slice(0, 3).join("；")}`);
+          }
         }}
       />
 
@@ -1384,7 +1407,7 @@ export function KnowledgeDocumentsPage() {
 interface UploadDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSubmit: (payload: KnowledgeDocumentUploadPayload) => Promise<void>;
+  onSubmit: (payloads: KnowledgeDocumentUploadPayload[]) => Promise<void>;
 }
 
 const uploadSchema = z
@@ -1472,7 +1495,7 @@ type UploadFormValues = z.output<typeof uploadSchema>;
 type BudgetFieldName = "maxChars" | "overlapChars" | "rowsPerChunk" | "toleranceFactor";
 
 function UploadDialog({ open, onOpenChange, onSubmit }: UploadDialogProps) {
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [saving, setSaving] = useState(false);
@@ -1507,11 +1530,14 @@ function UploadDialog({ open, onOpenChange, onSubmit }: UploadDialogProps) {
   const isPipelineMode = processMode === "pipeline";
 
   // 格式判定的唯一依据：本地文件取文件名后缀，远程来源取链接路径后缀
-  const fileExt = isUrlSource ? extOfUrl(sourceLocation) : extOf(file?.name);
+  const localFileExts = files.map((selectedFile) => extOf(selectedFile.name));
+  const fileExt = isUrlSource ? extOfUrl(sourceLocation) : localFileExts[0];
   // 表格类：配置面板切到表格专属项
-  const isTableType = isTableExt(fileExt);
+  const isTableType = isUrlSource ? isTableExt(fileExt) : localFileExts.some((ext) => isTableExt(ext));
   // 档位选项：只对两档确实命中不同解析器的格式展示
-  const showParseProfile = hasParseProfileChoice(specSchema, fileExt);
+  const showParseProfile = isUrlSource
+    ? hasParseProfileChoice(specSchema, fileExt)
+    : localFileExts.some((ext) => hasParseProfileChoice(specSchema, ext));
 
   // 预算字段：表格类才需要"每块行数"
   const budgetFields = (specSchema?.budgetFields ?? [])
@@ -1532,7 +1558,7 @@ function UploadDialog({ open, onOpenChange, onSubmit }: UploadDialogProps) {
 
   useEffect(() => {
     if (open) {
-      setFile(null);
+      setFiles([]);
       form.reset({
         sourceType: "file",
         sourceLocation: "",
@@ -1555,7 +1581,7 @@ function UploadDialog({ open, onOpenChange, onSubmit }: UploadDialogProps) {
 
   useEffect(() => {
     if (isUrlSource) {
-      setFile(null);
+      setFiles([]);
     }
   }, [isUrlSource]);
 
@@ -1572,13 +1598,18 @@ function UploadDialog({ open, onOpenChange, onSubmit }: UploadDialogProps) {
   const handleNoChunkToggle = () => setNoChunk(prev => !prev);
 
   const handleSubmit = async (values: UploadFormValues) => {
-    if (values.sourceType === "file" && !file) {
+    if (values.sourceType === "file" && files.length === 0) {
       toast.error("请选择文件");
       return;
     }
-    if (values.sourceType === "file" && file && file.size > maxFileSize) {
+    const oversizedFiles = values.sourceType === "file"
+      ? files.filter((selectedFile) => selectedFile.size > maxFileSize)
+      : [];
+    if (oversizedFiles.length > 0) {
       const sizeMB = Math.floor(maxFileSize / 1024 / 1024);
-      toast.error(`上传文件大小超过限制，最大允许 ${sizeMB}MB`);
+      const names = oversizedFiles.slice(0, 3).map((selectedFile) => selectedFile.name).join("、");
+      const suffix = oversizedFiles.length > 3 ? "等" : "";
+      toast.error(`${names}${suffix}超过文件大小限制，最大允许 ${sizeMB}MB`);
       return;
     }
 
@@ -1594,9 +1625,8 @@ function UploadDialog({ open, onOpenChange, onSubmit }: UploadDialogProps) {
 
     setSaving(true);
     try {
-      const payload: KnowledgeDocumentUploadPayload = {
+      const basePayload = {
         sourceType: values.sourceType,
-        file: values.sourceType === "file" ? file : null,
         sourceLocation: values.sourceType === "url" ? values.sourceLocation.trim() : null,
         scheduleEnabled: values.sourceType === "url" ? values.scheduleEnabled : false,
         scheduleCron:
@@ -1607,7 +1637,10 @@ function UploadDialog({ open, onOpenChange, onSubmit }: UploadDialogProps) {
         ingestionSpec: ingestionSpec ?? null,
         pipelineId: values.processMode === "pipeline" ? values.pipelineId : null
       };
-      await onSubmit(payload);
+      const payloads: KnowledgeDocumentUploadPayload[] = values.sourceType === "file"
+        ? files.map((selectedFile) => ({ ...basePayload, file: selectedFile }))
+        : [{ ...basePayload, file: null }];
+      await onSubmit(payloads);
     } catch (error) {
       toast.error(getErrorMessage(error, "上传失败"));
       console.error(error);
@@ -1685,7 +1718,7 @@ function UploadDialog({ open, onOpenChange, onSubmit }: UploadDialogProps) {
                     className={cn(
                       "flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed p-6 cursor-pointer transition-colors select-none",
                       isDragging ? "border-primary bg-primary/5" : "border-muted-foreground/25 hover:border-primary/50 hover:bg-muted/50",
-                      file && !isDragging && "border-primary/40 bg-muted/30"
+                      files.length > 0 && !isDragging && "border-primary/40 bg-muted/30"
                     )}
                     onClick={() => fileInputRef.current?.click()}
                     onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
@@ -1693,28 +1726,34 @@ function UploadDialog({ open, onOpenChange, onSubmit }: UploadDialogProps) {
                     onDrop={(e) => {
                       e.preventDefault();
                       setIsDragging(false);
-                      const dropped = e.dataTransfer.files[0];
-                      if (dropped) setFile(dropped);
+                      const dropped = Array.from(e.dataTransfer.files);
+                      if (dropped.length > 0) setFiles(dropped);
                     }}
                   >
                     <input
                       ref={fileInputRef}
                       type="file"
                       className="hidden"
+                      multiple
                       accept=".pdf,.md,.markdown,.doc,.docx,.txt,.xlsx,.xls,.csv,.png,.jpg,.jpeg,.svg"
-                      onChange={(e) => setFile(e.target.files?.[0] || null)}
+                      onChange={(e) => setFiles(Array.from(e.target.files ?? []))}
                     />
-                    {file ? (
+                    {files.length > 0 ? (
                       <>
                         <FileUp className="h-7 w-7 text-primary" />
-                        <div className="text-sm font-medium text-center break-all px-2">{file.name}</div>
-                        <div className="text-xs text-muted-foreground">{formatSize(file.size)}</div>
+                        <div className="text-sm font-medium text-center break-all px-2">
+                          已选择 {files.length} 个文件，共 {formatSize(files.reduce((total, selectedFile) => total + selectedFile.size, 0))}
+                        </div>
+                        <div className="max-w-full text-xs text-muted-foreground text-center break-all px-2">
+                          {files.slice(0, 3).map((selectedFile) => selectedFile.name).join("、")}
+                          {files.length > 3 ? ` 等 ${files.length} 个文件` : ""}
+                        </div>
                         <Button
                           type="button"
                           variant="ghost"
                           size="sm"
                           className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
-                          onClick={(e) => { e.stopPropagation(); setFile(null); if (fileInputRef.current) fileInputRef.current.value = ""; }}
+                          onClick={(e) => { e.stopPropagation(); setFiles([]); if (fileInputRef.current) fileInputRef.current.value = ""; }}
                         >
                           <X className="h-3 w-3 mr-1" />
                           重新选择
