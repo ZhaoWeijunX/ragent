@@ -104,6 +104,7 @@ export const MessageItem = React.memo(function MessageItem({ message }: MessageI
               content={message.content}
               messageId={message.id}
               sources={message.sources}
+              renderMermaid={message.status !== "streaming"}
             />
           ) : null}
           {message.status === "error" ? (

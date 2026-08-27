@@ -15,6 +15,7 @@ import { oneDark, oneLight } from "react-syntax-highlighter/dist/esm/styles/pris
 import "katex/dist/katex.min.css";
 
 import { Button } from "@/components/ui/button";
+import { MermaidDiagram } from "@/components/chat/MermaidDiagram";
 import { SourceCitation } from "@/components/chat/SourceCitation";
 import { cn } from "@/lib/utils";
 import { useThemeStore } from "@/stores/themeStore";
@@ -84,6 +85,7 @@ interface MarkdownRendererProps {
   content: string;
   messageId?: string;
   sources?: SourceRef[];
+  renderMermaid?: boolean;
 }
 
 // 标题字号更大 中线更高 角标要比正文多抬一点 左侧也留稍多的气口
@@ -309,7 +311,7 @@ function resolveCitationIndexes(content: string, sources?: SourceRef[]) {
   return [...result];
 }
 
-export function MarkdownRenderer({ content, messageId, sources }: MarkdownRendererProps) {
+export function MarkdownRenderer({ content, messageId, sources, renderMermaid = true }: MarkdownRendererProps) {
   const theme = useThemeStore((state) => state.theme);
   const normalizedContent = React.useMemo(() => normalizeCitationMarkup(content), [content]);
   const citationIndexes = React.useMemo(
@@ -337,6 +339,11 @@ export function MarkdownRenderer({ content, messageId, sources }: MarkdownRender
           const match = /language-(\w+)/.exec(className || "");
           const language = match?.[1] || "text";
           const value = String(children).replace(/\n$/, "");
+
+          // Mermaid 必须在“单行代码等同于 inline”的兜底前处理，例如 `flowchart LR` 只有一行时。
+          if (language.toLowerCase() === "mermaid") {
+            return <MermaidDiagram source={value} theme={theme} enabled={renderMermaid} />;
+          }
 
           // 判断是否为内联代码：inline 为 true 或者没有换行符
           if (inline || !value.includes('\n')) {
