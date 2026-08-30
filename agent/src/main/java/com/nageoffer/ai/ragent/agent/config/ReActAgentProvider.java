@@ -19,6 +19,7 @@ package com.nageoffer.ai.ragent.agent.config;
 
 import cn.hutool.core.util.StrUtil;
 import com.nageoffer.ai.ragent.agent.memory.AgentContextCompactionMiddleware;
+import com.nageoffer.ai.ragent.agent.memory.AgentUserMemoryMiddleware;
 import com.nageoffer.ai.ragent.agent.state.PgAgentStateStore;
 import com.nageoffer.ai.ragent.agent.tool.AgentToolCatalog;
 import com.nageoffer.ai.ragent.agent.tool.AgentToolCatalog.ResolvedCatalog;
@@ -47,6 +48,7 @@ public class ReActAgentProvider {
     private final OpenAIChatModel agentChatModel;
     private final PgAgentStateStore agentStateStore;
     private final AgentProperties agentProperties;
+    private final AgentUserMemoryMiddleware userMemoryMiddleware;
     private final AgentContextCompactionMiddleware contextCompactionMiddleware;
 
     private volatile CachedAgent cached;
@@ -80,6 +82,7 @@ public class ReActAgentProvider {
      * 驱逐单个会话的内存状态：只作用于已构建的实例，清理动作不该顺手把 Agent 建起来
      * 仅本节点有效，多节点各持一份缓存，需要时经 Redis 广播补齐
      */
+    @SuppressWarnings("resource")
     public void evictStateCache(String userId, String sessionId) {
         CachedAgent current = cached;
         if (current == null) {
@@ -103,6 +106,8 @@ public class ReActAgentProvider {
                 .maxIters(agentProperties.getMaxIters())
                 .maxRetries(agentProperties.getMaxRetries())
                 .stateStore(agentStateStore)
+                // 先注册即外层：记忆块插在人设与会话之间，压缩中间件的 offset 比对自然吸收这一条
+                .middleware(userMemoryMiddleware)
                 .middleware(contextCompactionMiddleware)
                 .build();
     }

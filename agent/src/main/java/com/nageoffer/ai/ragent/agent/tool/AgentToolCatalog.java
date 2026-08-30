@@ -19,6 +19,8 @@ package com.nageoffer.ai.ragent.agent.tool;
 
 import cn.hutool.core.util.StrUtil;
 import com.nageoffer.ai.ragent.agent.config.ConditionalOnAgentEngine;
+import com.nageoffer.ai.ragent.agent.memory.AgentMemoryPipeline;
+import com.nageoffer.ai.ragent.agent.memory.AgentMemoryProperties;
 import com.nageoffer.ai.ragent.agent.service.AgentConversationService;
 import com.nageoffer.ai.ragent.rag.core.intent.IntentNode;
 import com.nageoffer.ai.ragent.rag.core.intent.IntentNodeRegistry;
@@ -54,6 +56,8 @@ public class AgentToolCatalog {
     private final IntentNodeRegistry intentNodeRegistry;
     private final McpToolRegistry mcpToolRegistry;
     private final AgentPromptResolver agentPromptResolver;
+    private final AgentMemoryProperties memoryProperties;
+    private final AgentMemoryPipeline memoryPipeline;
 
     /**
      * 把注册表与提示词解析一次并定格：同一次请求的指纹与 Toolkit 都从这份快照派生
@@ -61,7 +65,8 @@ public class AgentToolCatalog {
     public ResolvedCatalog resolve() {
         List<String> unavailableToolIds = new ArrayList<>();
         List<McpToolBinding> bindings = resolveMcpToolBindings(unavailableToolIds);
-        return new ResolvedCatalog(resolveKnowledgeToolDescription(), bindings, unavailableToolIds);
+        return new ResolvedCatalog(resolveKnowledgeToolDescription(), resolveMemoryToolDescription(),
+                bindings, unavailableToolIds);
     }
 
     /**
@@ -71,6 +76,11 @@ public class AgentToolCatalog {
         Toolkit toolkit = new Toolkit();
         toolkit.registerAgentTool(new KnowledgeSearchTool(
                 catalog.knowledgeToolDescription, knowledgeSearchFacade, conversationService));
+        if (catalog.memoryToolDescription != null) {
+            toolkit.registerAgentTool(new MemoryFlushTool(catalog.memoryToolDescription, memoryPipeline));
+        } else if (memoryProperties.isLongTermEnabled()) {
+            log.warn("AGENT_MEMORY_TOOL_DESCRIPTION 提示词为空, 本次不挂载 {}", MemoryFlushTool.TOOL_NAME);
+        }
         catalog.bindings.forEach(binding -> toolkit.registerAgentTool(
                 new McpToolBridge(binding.executor(), binding.description())));
         // 不可用只在重建这一刻报：解析每请求都走，放解析里会刷屏
@@ -93,6 +103,17 @@ public class AgentToolCatalog {
             throw new IllegalStateException("KNOWLEDGE_TOOL_DESCRIPTION 提示词不允许为空");
         }
         return description;
+    }
+
+    /**
+     * 开关关闭或槽位为空返回 null，与知识库工具不同这里不抛异常
+     */
+    private String resolveMemoryToolDescription() {
+        if (!memoryProperties.isLongTermEnabled()) {
+            return null;
+        }
+        String description = agentPromptResolver.resolve(AgentPromptSlot.AGENT_MEMORY_TOOL_DESCRIPTION);
+        return StrUtil.isBlank(description) ? null : description;
     }
 
     /**
@@ -151,6 +172,12 @@ public class AgentToolCatalog {
     public static final class ResolvedCatalog {
 
         private final String knowledgeToolDescription;
+
+        /**
+         * null 表示本次目录不含记忆整理工具；它进指纹，开关翻面下一请求即重建实例
+         */
+        private final String memoryToolDescription;
+
         private final List<McpToolBinding> bindings;
         private final List<String> unavailableToolIds;
         private final Map<String, String> displayNames;
@@ -158,23 +185,29 @@ public class AgentToolCatalog {
 
         public ResolvedCatalog(
                 String knowledgeToolDescription,
+                String memoryToolDescription,
                 List<McpToolBinding> bindings,
                 List<String> unavailableToolIds) {
             this.knowledgeToolDescription = knowledgeToolDescription;
+            this.memoryToolDescription = memoryToolDescription;
             this.bindings = List.copyOf(bindings);
             this.unavailableToolIds = List.copyOf(unavailableToolIds);
 
             Map<String, String> names = new LinkedHashMap<>();
             names.put(KnowledgeSearchTool.TOOL_NAME, KnowledgeSearchTool.DISPLAY_NAME);
+            if (memoryToolDescription != null) {
+                names.put(MemoryFlushTool.TOOL_NAME, MemoryFlushTool.DISPLAY_NAME);
+            }
             this.bindings.forEach(binding -> names.put(binding.toolId(), binding.displayName()));
             this.displayNames = Map.copyOf(names);
-            this.fingerprint = new ToolCatalogFingerprint(knowledgeToolDescription, this.bindings.stream()
-                    .map(binding -> new McpToolFingerprint(
-                            binding.toolId(),
-                            binding.displayName(),
-                            binding.description(),
-                            binding.executor().getToolDefinition()))
-                    .toList());
+            this.fingerprint = new ToolCatalogFingerprint(knowledgeToolDescription, memoryToolDescription,
+                    this.bindings.stream()
+                            .map(binding -> new McpToolFingerprint(
+                                    binding.toolId(),
+                                    binding.displayName(),
+                                    binding.description(),
+                                    binding.executor().getToolDefinition()))
+                            .toList());
         }
 
         public ToolCatalogFingerprint fingerprint() {
@@ -191,6 +224,7 @@ public class AgentToolCatalog {
 
     public record ToolCatalogFingerprint(
             String knowledgeToolDescription,
+            String memoryToolDescription,
             List<McpToolFingerprint> mcpTools) {
 
         public ToolCatalogFingerprint {

@@ -89,6 +89,18 @@ final class JdbcClient implements AutoCloseable {
     }
 
     /**
+     * 执行一条写语句并返回影响行数
+     * 只给机制回归造现场用：翻开关、推水位、灌语料都得动库，参数拼接同样经 literal 转义
+     */
+    int update(String sql) throws SQLException, IOException {
+        try (Connection connection = openConnection();
+             Statement statement = connection.createStatement()) {
+            statement.setQueryTimeout(config.getInt("database.statement-timeout-seconds", 120));
+            return statement.executeUpdate(sql);
+        }
+    }
+
+    /**
      * SQL 字符串字面量转义，只处理单引号，不接受反斜杠转义关闭的会话参数
      */
     static String literal(String value) {

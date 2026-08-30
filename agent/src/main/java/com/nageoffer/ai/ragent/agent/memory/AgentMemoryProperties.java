@@ -69,13 +69,26 @@ public class AgentMemoryProperties {
     private static final int SUMMARY_MAX_CEIL_CHARS = 6000;
 
     /**
-     * 记忆总开关
+     * 长期记忆注入块上限：0.005×预算 夹进 [1500, 6000]，全量注入因此同时是记忆总量的硬上界
      */
-    private boolean enabled = true;
+    private static final double MEMORY_MAX_RATIO = 0.005D;
+    private static final int MEMORY_MAX_FLOOR_CHARS = 1500;
+    private static final int MEMORY_MAX_CEIL_CHARS = 6000;
+
+    /**
+     * 后台抽取门槛：待处理用户消息够这么多条才值得叫一次模型，flush 不受它挡
+     */
+    private static final int MEMORY_EXTRACT_MIN_TURNS = 3;
+
+    /**
+     * 受限合并压到这个比例即停，留出余量防边界抖动；容量淘汰拿它当下限，不当目标
+     */
+    private static final double CONSOLIDATION_STOP_RATIO = 0.75D;
 
     /**
      * 会话上下文工程预算（字符），换模型只需要动这一个数
      * 不是模型标称窗口：人设、工具 schema、输出预留不走这份账，填值时先扣掉固定开销
+     * 长期记忆注入块（上限见 resolveMemoryMaxChars）同样不走这份账，填值时一并扣掉
      * 下限 8000：再小保留段装不下摘要（0.2 × 8000 > 摘要下限 1500）
      */
     @Min(8000)
@@ -85,6 +98,11 @@ public class AgentMemoryProperties {
      * 关掉即只留裁剪层，摘要模型不可用时的运维出口
      */
     private boolean summaryEnabled = true;
+
+    /**
+     * 关掉即停抽取与注入，已沉淀的条目原样保留；与 summaryEnabled 同性质的运维出口
+     */
+    private boolean longTermEnabled = true;
 
     /**
      * 允许清理的工具白名单；默认值须可变，绑定器直接 clear + addAll
@@ -120,5 +138,24 @@ public class AgentMemoryProperties {
     public int resolveSummaryMaxChars() {
         int derived = (int) (contextWindowChars * SUMMARY_MAX_RATIO);
         return Math.min(Math.max(derived, SUMMARY_MAX_FLOOR_CHARS), SUMMARY_MAX_CEIL_CHARS);
+    }
+
+    /**
+     * 长期记忆注入块上限，同样夹在上下限之间返回
+     */
+    public int resolveMemoryMaxChars() {
+        int derived = (int) (contextWindowChars * MEMORY_MAX_RATIO);
+        return Math.min(Math.max(derived, MEMORY_MAX_FLOOR_CHARS), MEMORY_MAX_CEIL_CHARS);
+    }
+
+    public int resolveExtractMinTurns() {
+        return MEMORY_EXTRACT_MIN_TURNS;
+    }
+
+    /**
+     * 受限合并的停手水位，兼任容量淘汰的硬下限
+     */
+    public int resolveConsolidationStopChars() {
+        return (int) (resolveMemoryMaxChars() * CONSOLIDATION_STOP_RATIO);
     }
 }

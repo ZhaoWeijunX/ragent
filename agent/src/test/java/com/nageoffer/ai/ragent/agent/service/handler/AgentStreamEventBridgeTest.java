@@ -165,7 +165,7 @@ class AgentStreamEventBridgeTest {
         return new AgentStreamEventBridge(AgentStreamEventBridge.Params.builder()
                 .runHandle(new AgentRunHandle(TASK_ID, sender, taskManager))
                 .conversationService(conversationService)
-                .catalog(new ResolvedCatalog("知识库工具描述", List.of(), List.of()))
+                .catalog(new ResolvedCatalog("知识库工具描述", null, List.of(), List.of()))
                 .conversationId(CONVERSATION_ID)
                 .userId(USER_ID)
                 .title("会话标题")

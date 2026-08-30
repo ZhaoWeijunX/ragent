@@ -27,6 +27,7 @@ final class RegressionContext implements AutoCloseable {
     private final JdbcClient jdbc;
     private final AgentChatClient chat;
     private final AgentStateProbe probe;
+    private final AgentMemoryProbe memory;
     private final Map<String, String> arguments;
 
     private String userId;
@@ -39,6 +40,7 @@ final class RegressionContext implements AutoCloseable {
         this.jdbc = new JdbcClient(config);
         this.chat = new AgentChatClient(http, config);
         this.probe = new AgentStateProbe(jdbc);
+        this.memory = new AgentMemoryProbe(jdbc);
     }
 
     static RegressionContext load(String[] args) throws IOException {
@@ -89,6 +91,10 @@ final class RegressionContext implements AutoCloseable {
 
     AgentStateProbe probe() {
         return probe;
+    }
+
+    AgentMemoryProbe memory() {
+        return memory;
     }
 
     String argument(String name, String defaultValue) {

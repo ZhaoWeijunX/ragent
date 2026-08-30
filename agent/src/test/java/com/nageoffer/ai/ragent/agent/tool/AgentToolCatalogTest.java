@@ -17,6 +17,8 @@
 
 package com.nageoffer.ai.ragent.agent.tool;
 
+import com.nageoffer.ai.ragent.agent.memory.AgentMemoryPipeline;
+import com.nageoffer.ai.ragent.agent.memory.AgentMemoryProperties;
 import com.nageoffer.ai.ragent.agent.service.AgentConversationService;
 import com.nageoffer.ai.ragent.rag.core.intent.IntentNode;
 import com.nageoffer.ai.ragent.rag.core.intent.IntentNodeRegistry;
@@ -61,7 +63,9 @@ class AgentToolCatalogTest {
                 mock(AgentConversationService.class),
                 intentNodeRegistry,
                 mcpToolRegistry,
-                agentPromptResolver);
+                agentPromptResolver,
+                memoryProperties(false),
+                mock(AgentMemoryPipeline.class));
 
         AgentToolCatalog.ResolvedCatalog resolved = catalog.resolve();
         Toolkit toolkit = catalog.buildToolkit(resolved);
@@ -103,6 +107,43 @@ class AgentToolCatalogTest {
         assertThat(toolkit.getTool("write_query").isReadOnly()).isFalse();
     }
 
+    /**
+     * 工具进指纹是重建时机的前提：开关翻面不改指纹，实例就会一直挂着旧目录
+     */
+    @Test
+    void shouldRegisterMemoryFlushToolAndCountItIntoFingerprint() {
+        AgentToolCatalog catalog = catalogWithMemory(true, "需要记住或忘掉用户信息时调用");
+        AgentToolCatalog.ResolvedCatalog resolved = catalog.resolve();
+        Toolkit toolkit = catalog.buildToolkit(resolved);
+
+        assertThat(toolkit.getToolNames())
+                .containsExactlyInAnyOrder(KnowledgeSearchTool.TOOL_NAME, MemoryFlushTool.TOOL_NAME);
+        assertThat(toolkit.getTool(MemoryFlushTool.TOOL_NAME).getDescription())
+                .isEqualTo("需要记住或忘掉用户信息时调用");
+        // 无参：给了参数就等于把内容写入权交给模型
+        assertThat(toolkit.getTool(MemoryFlushTool.TOOL_NAME).getParameters())
+                .containsEntry("properties", Map.of());
+        assertThat(toolkit.getTool(MemoryFlushTool.TOOL_NAME).isReadOnly()).isFalse();
+        assertThat(resolved.displayNameOf(MemoryFlushTool.TOOL_NAME)).isEqualTo(MemoryFlushTool.DISPLAY_NAME);
+        assertThat(resolved.fingerprint().memoryToolDescription()).isEqualTo("需要记住或忘掉用户信息时调用");
+        assertThat(resolved.fingerprint())
+                .isNotEqualTo(catalogWithMemory(false, "需要记住或忘掉用户信息时调用").resolve().fingerprint());
+    }
+
+    /**
+     * 槽位缺失只卸掉这把工具，不该把整个对话一起带走
+     */
+    @Test
+    void shouldSkipMemoryFlushToolWhenSlotBlank() {
+        AgentToolCatalog catalog = catalogWithMemory(true, "  ");
+        AgentToolCatalog.ResolvedCatalog resolved = catalog.resolve();
+
+        assertThat(catalog.buildToolkit(resolved).getToolNames())
+                .containsExactly(KnowledgeSearchTool.TOOL_NAME);
+        assertThat(resolved.fingerprint().memoryToolDescription()).isNull();
+        assertThat(resolved.displayNameOf(MemoryFlushTool.TOOL_NAME)).isEqualTo(MemoryFlushTool.TOOL_NAME);
+    }
+
     private Toolkit buildToolkitFor(McpToolExecutor... executors) {
         List<McpToolExecutor> executorList = List.of(executors);
         IntentNodeRegistry intentNodeRegistry = mock(IntentNodeRegistry.class);
@@ -121,8 +162,40 @@ class AgentToolCatalogTest {
                 mock(AgentConversationService.class),
                 intentNodeRegistry,
                 mcpToolRegistry,
-                agentPromptResolver);
+                agentPromptResolver,
+                memoryProperties(false),
+                mock(AgentMemoryPipeline.class));
         return catalog.buildToolkit(catalog.resolve());
+    }
+
+    /**
+     * 长期记忆挂载与卸载都由开关和槽位决定，两者都要能改变指纹
+     */
+    private AgentToolCatalog catalogWithMemory(boolean longTermEnabled, String slotContent) {
+        IntentNodeRegistry intentNodeRegistry = mock(IntentNodeRegistry.class);
+        when(intentNodeRegistry.listMcpToolNodes()).thenReturn(List.of());
+        McpToolRegistry mcpToolRegistry = mock(McpToolRegistry.class);
+        when(mcpToolRegistry.listAllExecutors()).thenReturn(List.of());
+        AgentPromptResolver agentPromptResolver = mock(AgentPromptResolver.class);
+        when(agentPromptResolver.resolve(AgentPromptSlot.KNOWLEDGE_TOOL_DESCRIPTION))
+                .thenReturn("当前 Agent 的知识库工具描述");
+        when(agentPromptResolver.resolve(AgentPromptSlot.AGENT_MEMORY_TOOL_DESCRIPTION))
+                .thenReturn(slotContent);
+
+        return new AgentToolCatalog(
+                mock(KnowledgeSearchFacade.class),
+                mock(AgentConversationService.class),
+                intentNodeRegistry,
+                mcpToolRegistry,
+                agentPromptResolver,
+                memoryProperties(longTermEnabled),
+                mock(AgentMemoryPipeline.class));
+    }
+
+    private AgentMemoryProperties memoryProperties(boolean longTermEnabled) {
+        AgentMemoryProperties properties = new AgentMemoryProperties();
+        properties.setLongTermEnabled(longTermEnabled);
+        return properties;
     }
 
     private ToolAnnotations readOnlyHint(boolean readOnly) {

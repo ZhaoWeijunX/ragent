@@ -19,6 +19,10 @@ package com.nageoffer.ai.ragent.agent.service.impl;
 
 import com.nageoffer.ai.ragent.agent.config.ReActAgentProvider;
 import com.nageoffer.ai.ragent.agent.config.ReActAgentProvider.ActiveAgent;
+import com.nageoffer.ai.ragent.agent.enums.AgentMemoryTriggerType;
+import com.nageoffer.ai.ragent.agent.memory.AgentMemoryOutcome;
+import com.nageoffer.ai.ragent.agent.memory.AgentMemoryPipeline;
+import com.nageoffer.ai.ragent.agent.memory.AgentMemoryProperties;
 import com.nageoffer.ai.ragent.agent.service.AgentConversationService;
 import com.nageoffer.ai.ragent.agent.service.handler.AgentRunGate;
 import com.nageoffer.ai.ragent.agent.tool.AgentToolCatalog.ResolvedCatalog;
@@ -32,12 +36,16 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import reactor.core.publisher.Flux;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -45,6 +53,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -61,6 +70,8 @@ class AgentChatServiceImplTest {
     private AgentConversationService conversationService;
     private StreamTaskManager taskManager;
     private AgentRunGate runGate;
+    private AgentMemoryProperties memoryProperties;
+    private AgentMemoryPipeline memoryPipeline;
     private AtomicInteger gateReleased;
     private ReActAgent agent;
     private AgentChatServiceImpl service;
@@ -72,14 +83,20 @@ class AgentChatServiceImplTest {
         taskManager = mock(StreamTaskManager.class);
         runGate = mock(AgentRunGate.class);
         agent = mock(ReActAgent.class);
-        service = new AgentChatServiceImpl(agentProvider, conversationService, taskManager, runGate);
+        memoryProperties = new AgentMemoryProperties();
+        memoryPipeline = mock(AgentMemoryPipeline.class);
+        service = new AgentChatServiceImpl(agentProvider, conversationService, taskManager, runGate,
+                memoryProperties, memoryPipeline);
 
         gateReleased = new AtomicInteger();
         when(runGate.acquire(anyString(), anyString(), anyString())).thenReturn(gateReleased::incrementAndGet);
         when(agentProvider.getAgent()).thenReturn(new ActiveAgent(
-                agent, new ResolvedCatalog("知识库工具描述", List.of(), List.of())));
+                agent, new ResolvedCatalog("知识库工具描述", null, List.of(), List.of())));
         when(conversationService.touchConversation(anyString(), anyString(), anyString())).thenReturn("会话标题");
         when(conversationService.addUserMessage(anyString(), anyString(), anyString())).thenReturn("m-3003");
+        // 每轮收尾都会调一次，不给默认结局其余用例会在后台线程上吃 NPE
+        when(memoryPipeline.extract(anyString(), anyString(), any(AgentMemoryTriggerType.class)))
+                .thenReturn(new AgentMemoryOutcome(AgentMemoryOutcome.Status.BELOW_THRESHOLD, 0, 1, false));
         UserContext.set(LoginUser.builder().userId(USER_ID).username("tester").build());
     }
 
@@ -96,6 +113,57 @@ class AgentChatServiceImplTest {
 
         // 不驱逐则每个 (用户, 会话) 的全量记忆在单例 Agent 里常驻到进程重启
         verify(agentProvider).evictStateCache(USER_ID, CONVERSATION_ID);
+    }
+
+    /**
+     * 轮次收尾触发抽取，且必须离开请求线程
+     */
+    @Test
+    void shouldTriggerBackgroundExtractionOffTheRequestThread() throws Exception {
+        CountDownLatch extracted = new CountDownLatch(1);
+        AtomicReference<Thread> extractThread = new AtomicReference<>();
+        AtomicInteger releasedWhenExtracting = new AtomicInteger(-1);
+        when(memoryPipeline.extract(USER_ID, CONVERSATION_ID, AgentMemoryTriggerType.BACKGROUND))
+                .thenAnswer(invocation -> {
+                    extractThread.set(Thread.currentThread());
+                    releasedWhenExtracting.set(gateReleased.get());
+                    extracted.countDown();
+                    return new AgentMemoryOutcome(AgentMemoryOutcome.Status.WRITTEN, 1, 3, true);
+                });
+        when(agent.streamEvents(anyString(), any(RuntimeContext.class))).thenReturn(Flux.empty());
+
+        service.streamChat("问题", CONVERSATION_ID, new SseEmitter());
+
+        assertThat(extracted.await(5, TimeUnit.SECONDS)).isTrue();
+        assertThat(extractThread.get()).isNotSameAs(Thread.currentThread());
+        assertThat(releasedWhenExtracting.get()).isEqualTo(1);
+    }
+
+    /**
+     * 控制行建行时刻是抽取下界，必须先于本轮消息落库：反过来首条消息成「历史」，永久漏出抽取范围
+     */
+    @Test
+    void shouldEnsureBaselineBeforeSavingUserMessage() {
+        when(agent.streamEvents(anyString(), any(RuntimeContext.class))).thenReturn(Flux.empty());
+
+        service.streamChat("我对花生严重过敏", CONVERSATION_ID, new SseEmitter());
+
+        InOrder inOrder = inOrder(memoryPipeline, conversationService);
+        inOrder.verify(memoryPipeline).ensureExtractionBaseline(USER_ID);
+        inOrder.verify(conversationService).addUserMessage(CONVERSATION_ID, USER_ID, "我对花生严重过敏");
+    }
+
+    /**
+     * 关掉开关连异步线程都不该起
+     */
+    @Test
+    void shouldSkipBackgroundExtractionWhenLongTermDisabled() {
+        memoryProperties.setLongTermEnabled(false);
+        when(agent.streamEvents(anyString(), any(RuntimeContext.class))).thenReturn(Flux.empty());
+
+        service.streamChat("问题", CONVERSATION_ID, new SseEmitter());
+
+        verifyNoInteractions(memoryPipeline);
     }
 
     @Test

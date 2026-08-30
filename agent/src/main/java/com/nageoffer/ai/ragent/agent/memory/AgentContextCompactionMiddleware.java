@@ -69,7 +69,7 @@ public class AgentContextCompactionMiddleware implements MiddlewareBase {
             log.warn("会话状态取不到, 本轮按原列表推理, sessionId: {}", sessionId(runtimeContext), e);
             return next.apply(input);
         }
-        if (context == null || !memoryProperties.isEnabled()) {
+        if (context == null) {
             return next.apply(input);
         }
         if (!memoryProperties.isSummaryEnabled() || !shouldCompact(context)) {

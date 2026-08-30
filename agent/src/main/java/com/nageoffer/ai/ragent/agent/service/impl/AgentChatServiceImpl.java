@@ -23,7 +23,11 @@ import com.nageoffer.ai.ragent.agent.config.ConditionalOnAgentEngine;
 import com.nageoffer.ai.ragent.agent.config.ReActAgentProvider;
 import com.nageoffer.ai.ragent.agent.config.ReActAgentProvider.ActiveAgent;
 import com.nageoffer.ai.ragent.agent.dto.AgentMetaPayload;
+import com.nageoffer.ai.ragent.agent.enums.AgentMemoryTriggerType;
 import com.nageoffer.ai.ragent.agent.enums.AgentSSEEventType;
+import com.nageoffer.ai.ragent.agent.memory.AgentMemoryOutcome;
+import com.nageoffer.ai.ragent.agent.memory.AgentMemoryPipeline;
+import com.nageoffer.ai.ragent.agent.memory.AgentMemoryProperties;
 import com.nageoffer.ai.ragent.agent.service.AgentChatService;
 import com.nageoffer.ai.ragent.agent.service.AgentConversationService;
 import com.nageoffer.ai.ragent.agent.service.handler.AgentRunGate;
@@ -41,6 +45,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import reactor.core.Disposable;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -58,6 +64,8 @@ public class AgentChatServiceImpl implements AgentChatService {
     private final AgentConversationService conversationService;
     private final StreamTaskManager taskManager;
     private final AgentRunGate runGate;
+    private final AgentMemoryProperties memoryProperties;
+    private final AgentMemoryPipeline memoryPipeline;
 
     @Override
     public void streamChat(String question, String conversationId, SseEmitter emitter) {
@@ -89,6 +97,10 @@ public class AgentChatServiceImpl implements AgentChatService {
         sender.sendEvent(AgentSSEEventType.META.value(), new AgentMetaPayload(conversationId, taskId));
 
         String title = conversationService.touchConversation(conversationId, userId, question);
+        // 下界先于消息：控制行建晚一步，本轮这句话就被划成「历史」永久漏抽，时钟口径见 ensureControl
+        if (memoryProperties.isLongTermEnabled()) {
+            memoryPipeline.ensureExtractionBaseline(userId);
+        }
         String questionMessageId = conversationService.addUserMessage(conversationId, userId, question);
 
         AgentRunHandle runHandle = new AgentRunHandle(taskId, sender, taskManager);
@@ -96,6 +108,8 @@ public class AgentChatServiceImpl implements AgentChatService {
         // 记忆常驻内存是确定性泄漏，流一结束就驱逐：三条收尾路都会执行，换来内存上界
         // 状态已在框架侧随本轮落库（正常完成与打断各自 save 后才发终答），下一轮从 PG 读回，代价是一次反序列化
         runHandle.onRelease(() -> agentProvider.evictStateCache(userId, conversationId));
+        // 登记在闸门钩子之后：钩子按序跑，此时名额已归还
+        runHandle.onRelease(() -> scheduleMemoryExtraction(userId, conversationId));
         bindEmitterLifecycle(emitter, runHandle, taskId);
         // 实例与目录快照成对取出：事件展示名与 Toolkit 出自同一次解析
         ActiveAgent activeAgent = agentProvider.getAgent();
@@ -121,6 +135,31 @@ public class AgentChatServiceImpl implements AgentChatService {
         // 取消动作先断流再置中断旗标，收尾（落库 + cancel/done 事件）由 finalizer 完成
         runHandle.bindStream(disposable, () -> agent.interrupt(userId, conversationId));
         taskManager.bindHandle(taskId, runHandle::interruptUpstream);
+    }
+
+    /**
+     * 轮次收尾后异步抽取长期记忆，三条收尾路（正常/取消/失败）都会走到
+     */
+    private void scheduleMemoryExtraction(String userId, String conversationId) {
+        if (!memoryProperties.isLongTermEnabled()) {
+            return;
+        }
+        Mono.fromCallable(() -> memoryPipeline.extract(userId, conversationId, AgentMemoryTriggerType.BACKGROUND))
+                .subscribeOn(Schedulers.boundedElastic())
+                .subscribe(outcome -> logExtraction(userId, conversationId, outcome),
+                        // 用户已经拿到答复了，这里再炸也没人可通知，留痕即止
+                        e -> log.error("轮次结束后台记忆抽取异常, userId: {}, conversationId: {}",
+                                userId, conversationId, e));
+    }
+
+    private void logExtraction(String userId, String conversationId, AgentMemoryOutcome outcome) {
+        if (outcome.idle()) {
+            log.debug("轮次结束未触发记忆抽取, conversationId: {}, 结局: {}, 待处理: {}",
+                    conversationId, outcome.status(), outcome.pending());
+            return;
+        }
+        log.info("轮次结束后台记忆抽取完成, userId: {}, conversationId: {}, 结局: {}, 落库: {}",
+                userId, conversationId, outcome.status(), outcome.applied());
     }
 
     /**
