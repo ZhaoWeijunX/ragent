@@ -1,7 +1,7 @@
 import { Navigate, createBrowserRouter } from "react-router-dom";
 
 import { LoginPage } from "@/pages/LoginPage";
-import { ChatPage } from "@/pages/ChatPage";
+import { EngineGate } from "@/components/common/EngineGate";
 import { ChangeLogsPage } from "@/pages/ChangeLogsPage";
 import { DocPreviewPage } from "@/pages/DocPreviewPage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
@@ -79,7 +79,7 @@ export const router = createBrowserRouter([
     path: "/chat",
     element: (
       <RequireAuth>
-        <ChatPage />
+        <EngineGate />
       </RequireAuth>
     )
   },
@@ -87,7 +87,7 @@ export const router = createBrowserRouter([
     path: "/chat/:sessionId",
     element: (
       <RequireAuth>
-        <ChatPage />
+        <EngineGate />
       </RequireAuth>
     )
   },

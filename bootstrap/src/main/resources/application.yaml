@@ -4,9 +4,6 @@ server:
     context-path: /api/ragent
 
 spring:
-  config:
-    import: optional:classpath:application-local.yaml
-
   application:
     name: ragent${unique-name:}-service
 
@@ -20,7 +17,7 @@ spring:
     type: com.zaxxer.hikari.HikariDataSource
     username: postgres
     password: postgres
-    url: jdbc:postgresql://${ragent.infra.host:localhost}:5432/ragent?client_encoding=UTF8
+    url: jdbc:postgresql://127.0.0.1:5432/ragent?client_encoding=UTF8
     hikari:
       connection-timeout: 5000
       idle-timeout: 600000
@@ -31,19 +28,13 @@ spring:
 
   data:
     redis:
-      host: ${ragent.infra.host:localhost}
+      host: 127.0.0.1
       port: 6379
       password: 123456
 
-rocketmq:
-  name-server: ${ragent.infra.host:localhost}:9876
-  producer:
-    group: ragent-producer${unique-name:}_pg
-    send-message-timeout: 2000
-
 ragent:
   engine:
-    type: workflow  # 执行架构档位，可选 workflow（v1 编排管线）/ agent（v2 ReAct 架构，RAG 管线降级为主 Agent 的一个 Tool）
+    type: agent  # 执行架构档位，可选 workflow（v1 编排管线）/ agent（v2 ReAct 架构，RAG 管线降级为主 Agent 的一个 Tool）
   demo-mode: false
   eval:
     enabled: true
@@ -51,11 +42,16 @@ ragent:
 # Agent 执行架构（ragent.engine.type=agent 时生效）；单模型无 fallback，供应商可用性由 provider 侧保障
 agent:
   chat:
-    provider: bailian   # 引用 ai.providers 下的供应商，取其 url / api-key / endpoints.chat
-    model: qwen3-max    # 直接传给 OpenAI 兼容端点的模型名
+    provider: siliconflow   # 引用 ai.providers 下的供应商，取其 url / api-key / endpoints.chat
+    model: deepseek-ai/DeepSeek-V4-Pro    # 直接传给 OpenAI 兼容端点的模型名
   max-iters: 10         # ReAct 循环上限，超出后熔断收尾
   max-retries: 2        # 单次模型调用失败重试次数
-  sse-timeout-ms: 300000
+  sse-timeout-ms: 900000
+  memory:
+    enabled: true
+    context-window-chars: 1200000
+    summary-enabled: true
+    evictable-tools: [ search_knowledge ]
 
 rag:
   storage:
@@ -63,7 +59,7 @@ rag:
     kb-bucket: ragent-sources        # 全局知识库桶（私有），所有知识库文档按 collectionName 目录隔离；OSS 桶名全局唯一，生产需按部署覆盖
     asset-bucket: ragent-assets # 多模态资产桶（公共读），PDF 抽出的图片等供浏览器匿名直连预览
     s3:
-      endpoint: http://${ragent.infra.host:localhost}:9000
+      endpoint: http://localhost:9000
       access-key: rustfsadmin
       secret-key: rustfsadmin
       region: us-east-1
@@ -175,6 +171,9 @@ rag:
         keyword: 1.0
         graph: 0.8
         web-search: 0.5
+    # 证据相关性闸门：检索只保证返回最像的 N 条，库里没答案时照样满额返回，这里补一道相关度下限
+    evidence:
+      min-rerank-score: 0.2   # 整批最高精排分低于此值则整批丢弃，0=关闭；随 reranker 而变，换模型看「检索归因 - 精排分布」重测
 
   trace:
     enabled: true
@@ -205,6 +204,7 @@ ai:
       endpoints:
         chat: /compatible-mode/v1/chat/completions
         rerank: /api/v1/services/rerank/text-rerank/text-rerank
+        embedding: /compatible-mode/v1/embeddings
     aihubmix:
       url: https://aihubmix.com
       api-key: ${AIHUBMIX_API_KEY:}
@@ -240,13 +240,13 @@ ai:
         provider: bailian
         model: qwen3-max
         supports-thinking: true
-      - id: glm-4.7
-        provider: siliconflow
-        model: Pro/zai-org/GLM-4.7
-        supports-thinking: true
       - id: gpt-5.4
         provider: aihubmix
         model: gpt-5.4
+      - id: deepseekv4pro
+        provider: siliconflow
+        model: deepseek-ai/DeepSeek-V4-Pro
+        supports-thinking: true
 
     default-tier: standard
     deep-thinking-tier: deep
@@ -257,17 +257,17 @@ ai:
         timeout-ms: 5000
       standard:
         candidates: [ qwen3-max, qwen-plus, qwen3-local, gpt-5.4 ]
-        timeout-ms: 30000
-      deep:
-        candidates: [ qwen3-max, glm-4.7 ]
         timeout-ms: 120000
+      deep:
+        candidates: [ qwen3-max, deepseekv4pro ]
+        timeout-ms: 180000
 
   embedding:
     default-model: qwen-emb-8b
     candidates:
       - id: qwen-emb-8b
-        provider: siliconflow
-        model: Qwen/Qwen3-Embedding-8B
+        provider: bailian
+        model: text-embedding-v4
         dimension: ${rag.default.dimension}
         priority: 1
       - id: qwen-emb-local
@@ -323,6 +323,12 @@ sa-token:
   token-style: simple-uuid
   is-log: false
   is-print: false
+
+rocketmq:
+  name-server: 127.0.0.1:9876
+  producer:
+    group: ragent-producer${unique-name:}_pg
+    send-message-timeout: 2000
 
 milvus:
   uri: http://localhost:19530

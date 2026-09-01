@@ -33,40 +33,59 @@ import java.util.Set;
 @Getter
 public enum AgentPromptSlot {
 
-    SYSTEM_CHAT("闲聊 / 关于助手", Group.WORKFLOW,
+    SYSTEM_CHAT("闲聊应答", Group.WORKFLOW,
             Set.of(OrchestrationMode.WORKFLOW),
             "Agent 模式下由主 Agent 直接应答",
             Set.of()),
 
-    MCP_ANSWER("MCP 问答", Group.WORKFLOW,
+    MCP_ANSWER("MCP数据应答", Group.WORKFLOW,
             Set.of(OrchestrationMode.WORKFLOW),
             "Agent 模式下改用原生工具调用，无独立的数据合成环节",
             Set.of()),
 
-    MIXED_ANSWER("混合问答", Group.WORKFLOW,
+    MIXED_ANSWER("混合来源应答", Group.WORKFLOW,
             Set.of(OrchestrationMode.WORKFLOW),
             "Agent 模式下由主 Agent 综合多个工具的结果",
             Set.of()),
 
-    AGENT_MAIN("Agent 人设", Group.AGENT,
+    AGENT_MAIN("Agent人设", Group.AGENT,
             Set.of(OrchestrationMode.AGENT),
             "WorkFlow 模式不经过 ReAct 架构",
             Set.of()),
 
     /**
+     * 唯一一个不进对话消息的槽位：它随工具定义下发，模型在调用前就要读懂
+     */
+    KNOWLEDGE_TOOL_DESCRIPTION("知识库工具声明", Group.AGENT,
+            Set.of(OrchestrationMode.AGENT),
+            "WorkFlow 模式不注册原生知识库工具",
+            Set.of(),
+            "模型靠它判断要不要查知识库，此时还看不到检索结果；写清这个库覆盖哪类问题，不必在这里规定回答风格"),
+
+    AGENT_CONTEXT_COMPACTION("Agent上下文压缩", Group.AGENT,
+            Set.of(OrchestrationMode.AGENT),
+            "WorkFlow 模式不做上下文压缩，长会话走「历史对话摘要」",
+            Set.of("{summary_max_chars}"),
+            "产物会以历史消息的身份回填进后续每一轮，而被它替代的原文届时已经删除；"
+                    + "要求写清调用过哪些工具、得到什么结论、还剩什么没做，不必在这里规定回答风格"),
+
+    /**
      * 两种架构共用：WorkFlow 下由主链路合成，Agent 下由 RAG Tool 内部合成
      */
-    KB_ANSWER("知识库问答", Group.COMMON,
+    KB_ANSWER("知识库应答", Group.COMMON,
             Set.of(OrchestrationMode.WORKFLOW, OrchestrationMode.AGENT),
             null,
             Set.of()),
 
-    CONVERSATION_SUMMARY("会话压缩", Group.COMMON,
-            Set.of(OrchestrationMode.WORKFLOW, OrchestrationMode.AGENT),
-            null,
+    /**
+     * 与「Agent 上下文压缩」不可合并：这份是话题索引不含结论，那份必须留结论
+     */
+    CONVERSATION_SUMMARY("历史对话摘要", Group.WORKFLOW,
+            Set.of(OrchestrationMode.WORKFLOW),
+            "Agent 模式的长会话改由「Agent 上下文压缩」承接",
             Set.of("{summary_max_chars}")),
 
-    RECOMMENDED_QUESTIONS("推荐问题", Group.COMMON,
+    RECOMMENDED_QUESTIONS("追问推荐", Group.COMMON,
             Set.of(OrchestrationMode.WORKFLOW, OrchestrationMode.AGENT),
             null,
             Set.of("{chunks}", "{count}", "{question}", "{answer}"));
@@ -87,13 +106,24 @@ public enum AgentPromptSlot {
      */
     private final Set<String> requiredPlaceholders;
 
+    /**
+     * 编辑器上方的写法提醒，仅当这段文字的用法不同于普通提示词时才写，其余槽位为 null
+     */
+    private final String editorHint;
+
     AgentPromptSlot(String displayName, Group group, Set<OrchestrationMode> effectiveModes,
                     String inactiveReason, Set<String> requiredPlaceholders) {
+        this(displayName, group, effectiveModes, inactiveReason, requiredPlaceholders, null);
+    }
+
+    AgentPromptSlot(String displayName, Group group, Set<OrchestrationMode> effectiveModes,
+                    String inactiveReason, Set<String> requiredPlaceholders, String editorHint) {
         this.displayName = displayName;
         this.group = group;
         this.effectiveModes = effectiveModes;
         this.inactiveReason = inactiveReason;
         this.requiredPlaceholders = requiredPlaceholders;
+        this.editorHint = editorHint;
     }
 
     public boolean isEffectiveIn(OrchestrationMode mode) {
@@ -121,8 +151,8 @@ public enum AgentPromptSlot {
     @Getter
     public enum Group {
 
-        WORKFLOW("WorkFlow 专属"),
-        AGENT("Agent 专属"),
+        WORKFLOW("WorkFlow专属"),
+        AGENT("Agent专属"),
         COMMON("通用");
 
         private final String displayName;

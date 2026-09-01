@@ -426,6 +426,69 @@ CREATE INDEX idx_agent_prompt_agent ON t_agent_prompt (agent_id);
 COMMENT ON TABLE t_agent_prompt IS '智能体提示词槽位表';
 
 -- ============================================
+-- Agent Engine Tables (v2 ReAct，与 workflow 会话两套分立)
+-- ============================================
+
+CREATE TABLE t_agent_conversation (
+    id              VARCHAR(20) NOT NULL PRIMARY KEY,
+    conversation_id VARCHAR(20) NOT NULL,
+    user_id         VARCHAR(20) NOT NULL,
+    title           VARCHAR(128) NOT NULL,
+    last_time       TIMESTAMP,
+    create_time     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    update_time     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    deleted         SMALLINT    DEFAULT 0
+);
+-- 部分唯一索引：逻辑删的旧行不再占用唯一键，否则删除后同 ID 重开会话必撞约束
+CREATE UNIQUE INDEX uk_agent_conversation_user ON t_agent_conversation (conversation_id, user_id) WHERE deleted = 0;
+CREATE INDEX idx_agent_conv_user_time ON t_agent_conversation (user_id, last_time);
+COMMENT ON TABLE t_agent_conversation IS 'Agent 会话列表';
+
+CREATE TABLE t_agent_message (
+    id                  VARCHAR(20) NOT NULL PRIMARY KEY,
+    conversation_id     VARCHAR(20) NOT NULL,
+    user_id             VARCHAR(20) NOT NULL,
+    role                VARCHAR(16) NOT NULL,
+    content             TEXT,
+    thinking_content    TEXT,
+    blocks              JSONB,
+    reply_to_message_id VARCHAR(20),
+    message_status      VARCHAR(16) NOT NULL DEFAULT 'NORMAL',
+    create_time         TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    update_time         TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    deleted             SMALLINT    DEFAULT 0
+);
+CREATE INDEX idx_agent_msg_conv ON t_agent_message (conversation_id, user_id, create_time);
+COMMENT ON TABLE t_agent_message IS 'Agent 消息记录';
+
+CREATE TABLE t_agent_state (
+    user_id     VARCHAR(64) NOT NULL,
+    session_id  VARCHAR(64) NOT NULL,
+    state_key   VARCHAR(64) NOT NULL,
+    payload     JSONB,
+    create_time TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    update_time TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (user_id, session_id, state_key)
+);
+COMMENT ON TABLE t_agent_state IS 'AgentScope 工作状态存储，payload 为框架自有编码的不透明 JSON';
+
+CREATE TABLE t_agent_context_compaction (
+    id                   VARCHAR(20) NOT NULL PRIMARY KEY,
+    user_id              VARCHAR(20) NOT NULL,
+    conversation_id      VARCHAR(20) NOT NULL,
+    generation           INTEGER     NOT NULL,
+    summary              TEXT,
+    material_msg_count   INTEGER     NOT NULL,
+    material_chars       INTEGER     NOT NULL,
+    summary_chars        INTEGER     NOT NULL,
+    context_chars_before INTEGER     NOT NULL,
+    context_chars_after  INTEGER     NOT NULL,
+    create_time          TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_agent_compaction_conv ON t_agent_context_compaction (conversation_id, user_id, create_time);
+COMMENT ON TABLE t_agent_context_compaction IS 'Agent 上下文压缩事件，追加型审计日志，应用侧无读路径';
+
+-- ============================================
 -- Ingestion Pipeline Tables
 -- ============================================
 
@@ -845,3 +908,48 @@ COMMENT ON COLUMN t_agent_prompt.update_by IS '更新人';
 COMMENT ON COLUMN t_agent_prompt.create_time IS '创建时间';
 COMMENT ON COLUMN t_agent_prompt.update_time IS '更新时间';
 COMMENT ON COLUMN t_agent_prompt.deleted IS '是否删除 0：正常 1：删除';
+
+-- t_agent_conversation
+COMMENT ON COLUMN t_agent_conversation.id IS '主键ID';
+COMMENT ON COLUMN t_agent_conversation.conversation_id IS '会话ID';
+COMMENT ON COLUMN t_agent_conversation.user_id IS '用户ID';
+COMMENT ON COLUMN t_agent_conversation.title IS '会话标题';
+COMMENT ON COLUMN t_agent_conversation.last_time IS '最后活动时间';
+COMMENT ON COLUMN t_agent_conversation.create_time IS '创建时间';
+COMMENT ON COLUMN t_agent_conversation.update_time IS '更新时间';
+COMMENT ON COLUMN t_agent_conversation.deleted IS '是否删除 0：正常 1：删除';
+
+-- t_agent_message
+COMMENT ON COLUMN t_agent_message.id IS '主键ID';
+COMMENT ON COLUMN t_agent_message.conversation_id IS '会话ID';
+COMMENT ON COLUMN t_agent_message.user_id IS '用户ID';
+COMMENT ON COLUMN t_agent_message.role IS '角色 user：用户 assistant：助手';
+COMMENT ON COLUMN t_agent_message.content IS '消息正文';
+COMMENT ON COLUMN t_agent_message.thinking_content IS '思考内容';
+COMMENT ON COLUMN t_agent_message.blocks IS '运行轨迹块（reasoning/answer/tool 有序序列），回放还原时间线';
+COMMENT ON COLUMN t_agent_message.reply_to_message_id IS '回复的用户消息ID';
+COMMENT ON COLUMN t_agent_message.message_status IS '消息终态 NORMAL：正常 INTERRUPTED：用户中断';
+COMMENT ON COLUMN t_agent_message.create_time IS '创建时间';
+COMMENT ON COLUMN t_agent_message.update_time IS '更新时间';
+COMMENT ON COLUMN t_agent_message.deleted IS '是否删除 0：正常 1：删除';
+
+-- t_agent_state
+COMMENT ON COLUMN t_agent_state.user_id IS '用户ID，匿名会话为 __anon__';
+COMMENT ON COLUMN t_agent_state.session_id IS '会话ID，即 AgentScope 的 sessionId';
+COMMENT ON COLUMN t_agent_state.state_key IS '状态键，AgentScope 侧固定传 agent_state';
+COMMENT ON COLUMN t_agent_state.payload IS '框架自有编码的状态 JSON，业务侧不解析';
+COMMENT ON COLUMN t_agent_state.create_time IS '创建时间';
+COMMENT ON COLUMN t_agent_state.update_time IS '更新时间';
+
+-- t_agent_context_compaction
+COMMENT ON COLUMN t_agent_context_compaction.id IS '主键ID';
+COMMENT ON COLUMN t_agent_context_compaction.user_id IS '用户ID';
+COMMENT ON COLUMN t_agent_context_compaction.conversation_id IS '会话ID，即 AgentScope 的 sessionId';
+COMMENT ON COLUMN t_agent_context_compaction.generation IS '同一会话内的第几代摘要，从 1 起';
+COMMENT ON COLUMN t_agent_context_compaction.summary IS '本代摘要正文，回填进上下文的那一份';
+COMMENT ON COLUMN t_agent_context_compaction.material_msg_count IS '被换出的原文消息条数';
+COMMENT ON COLUMN t_agent_context_compaction.material_chars IS '被换出的原文字符数';
+COMMENT ON COLUMN t_agent_context_compaction.summary_chars IS '摘要正文字符数';
+COMMENT ON COLUMN t_agent_context_compaction.context_chars_before IS '压缩前上下文总字符数';
+COMMENT ON COLUMN t_agent_context_compaction.context_chars_after IS '压缩后上下文总字符数';
+COMMENT ON COLUMN t_agent_context_compaction.create_time IS '创建时间';

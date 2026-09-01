@@ -232,7 +232,7 @@ export function IntentTreePage() {
   useEffect(() => {
     loadTree();
     loadKnowledgeBases();
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!focusIntentCode) return;

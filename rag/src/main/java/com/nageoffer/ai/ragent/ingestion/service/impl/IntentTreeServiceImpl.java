@@ -148,7 +148,7 @@ public class IntentTreeServiceImpl implements IntentTreeService {
                 .level(requestParam.getLevel())
                 .parentCode(requestParam.getParentCode())
                 .description(requestParam.getDescription())
-                .mcpToolId(requestParam.getMcpToolId())
+                .mcpToolId(StrUtil.trim(requestParam.getMcpToolId()))
                 .examples(
                         requestParam.getExamples() == null ? null : GSON.toJson(requestParam.getExamples())
                 )
@@ -209,6 +209,9 @@ public class IntentTreeServiceImpl implements IntentTreeService {
         if (req.getExamples() != null) {
             node.setExamples(GSON.toJson(req.getExamples()));
         }
+        if (req.getMcpToolId() != null) {
+            node.setMcpToolId(StrUtil.trim(req.getMcpToolId()));
+        }
 
         CollectionBinding collectionBinding = null;
         if (req.getCollectionNames() != null) {
@@ -226,6 +229,9 @@ public class IntentTreeServiceImpl implements IntentTreeService {
         }
         if (req.getKind() != null) {
             node.setKind(req.getKind());
+        }
+        if (!Objects.equals(node.getKind(), IntentKind.MCP.getCode())) {
+            node.setMcpToolId(null);
         }
         if (!Objects.equals(node.getKind(), IntentKind.KB.getCode())) {
             applyCollectionBinding(node, CollectionBinding.empty());

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Boxes,
   Check,
@@ -441,7 +441,7 @@ export function BizChangeLogPage() {
   const rangeStart = total === 0 ? 0 : (current - 1) * pageSize + 1;
   const rangeEnd = total === 0 ? 0 : Math.min((current - 1) * pageSize + records.length, total);
 
-  const loadData = async (currentPage = pageNo, nextQuery = query, size = pageSize) => {
+  const loadData = useCallback(async (currentPage = pageNo, nextQuery = query, size = pageSize) => {
     try {
       setLoading(true);
       const result = await getBizChangeLogsPage({
@@ -462,11 +462,11 @@ export function BizChangeLogPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [pageNo, pageSize, query]);
 
   useEffect(() => {
     loadData(pageNo, query, pageSize);
-  }, [pageNo, query, pageSize]);
+  }, [loadData, pageNo, query, pageSize]);
 
   const handleSearch = () => {
     setPageNo(1);
