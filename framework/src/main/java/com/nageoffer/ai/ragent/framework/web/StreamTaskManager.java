@@ -115,9 +115,13 @@ public class StreamTaskManager {
 
     /**
      * 绑定上游流的中断动作，取消时先于收尾回调执行
+     * 任务已结算注销时不再创建记录，否则会留下一条无人触发的幽灵任务
      */
     public void bindHandle(String taskId, Runnable cancelAction) {
-        StreamTaskInfo taskInfo = getOrCreate(taskId);
+        StreamTaskInfo taskInfo = tasks.getIfPresent(taskId);
+        if (taskInfo == null) {
+            return;
+        }
         taskInfo.cancelAction = cancelAction;
         if (taskInfo.cancelled.get() && cancelAction != null) {
             cancelAction.run();

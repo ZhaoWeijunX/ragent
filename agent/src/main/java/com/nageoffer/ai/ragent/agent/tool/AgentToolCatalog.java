@@ -30,12 +30,14 @@ import com.nageoffer.ai.ragent.rag.core.prompt.AgentPromptResolver;
 import com.nageoffer.ai.ragent.rag.core.prompt.AgentPromptSlot;
 import com.nageoffer.ai.ragent.rag.service.KnowledgeSearchFacade;
 import io.agentscope.core.tool.Toolkit;
+import io.modelcontextprotocol.spec.McpSchema.JsonSchema;
 import io.modelcontextprotocol.spec.McpSchema.Tool;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -60,7 +62,7 @@ public class AgentToolCatalog {
     private final AgentMemoryPipeline memoryPipeline;
 
     /**
-     * 把注册表与提示词解析一次并定格：同一次请求的指纹与 Toolkit 都从这份快照派生
+     * 解析当前可用工具并生成快照，同一请求内指纹与 Toolkit 都从此快照派生
      */
     public ResolvedCatalog resolve() {
         List<String> unavailableToolIds = new ArrayList<>();
@@ -70,7 +72,7 @@ public class AgentToolCatalog {
     }
 
     /**
-     * 按快照构建全新 Toolkit：过程中不再回读注册表，结果与快照指纹必然一致
+     * 根据快照构建 Toolkit
      */
     public Toolkit buildToolkit(ResolvedCatalog catalog) {
         Toolkit toolkit = new Toolkit();
@@ -81,17 +83,15 @@ public class AgentToolCatalog {
         } else if (memoryProperties.isLongTermEnabled()) {
             log.warn("AGENT_MEMORY_TOOL_DESCRIPTION 提示词为空, 本次不挂载 {}", MemoryFlushTool.TOOL_NAME);
         }
-        catalog.bindings.forEach(binding -> toolkit.registerAgentTool(
-                new McpToolBridge(binding.executor(), binding.description())));
-        // 不可用只在重建这一刻报：解析每请求都走，放解析里会刷屏
+        catalog.bindings.forEach(binding -> toolkit.registerAgentTool(new McpToolBridge(binding)));
+        // 不可用工具只在构建 Toolkit 时报一次，避免每次解析都刷日志
         catalog.unavailableToolIds.forEach(toolId ->
                 log.warn("意图树配置的 MCP 工具当前不可用, toolId: {}", toolId));
         return toolkit;
     }
 
     /**
-     * 意图树已配置且 MCP 注册表当前可用的工具数，meta 探活据此报告 MCP 配置状态
-     * 不走整份解析：探活不该被知识库工具声明缺失连坐
+     * 当前可用的 MCP 工具数量，用于 meta 探活接口
      */
     public int mcpToolCount() {
         return resolveMcpToolBindings(new ArrayList<>()).size();
@@ -106,7 +106,7 @@ public class AgentToolCatalog {
     }
 
     /**
-     * 开关关闭或槽位为空返回 null，与知识库工具不同这里不抛异常
+     * 长期记忆关闭或提示词为空时返回 null
      */
     private String resolveMemoryToolDescription() {
         if (!memoryProperties.isLongTermEnabled()) {
@@ -117,7 +117,7 @@ public class AgentToolCatalog {
     }
 
     /**
-     * 意图树配置与 MCP 注册表求交集，配了但当前没执行器的工具 ID 收进 unavailableToolIds
+     * 意图树配置与 MCP 注册表取交集，有配置但无执行器的记入 unavailableToolIds
      */
     private List<McpToolBinding> resolveMcpToolBindings(List<String> unavailableToolIds) {
         Map<String, List<IntentNode>> nodesByToolId = intentNodeRegistry.listMcpToolNodes().stream()
@@ -155,32 +155,35 @@ public class AgentToolCatalog {
                 .filter(StrUtil::isNotBlank)
                 .distinct()
                 .collect(Collectors.joining("\n"));
-        return new McpToolBinding(toolId, displayName, description, executor);
+        // 同一工具挂在多个意图下，任一节点勾选即需确认
+        boolean requireConfirm = nodes.stream().anyMatch(IntentNode::isRequireConfirm);
+        return new McpToolBinding(toolId, displayName, description, requireConfirm, executor);
     }
 
     public record McpToolBinding(
             String toolId,
             String displayName,
             String description,
+            boolean requireConfirm,
             McpToolExecutor executor) {
     }
 
     /**
-     * 一次解析定格的工具目录，指纹与展示名在构造时算好
-     * 快照随 Agent 实例一起缓存，重建之前所有请求看到的都是同一份
+     * 工具目录快照，展示名、入参标签和指纹在构造时一次算好
      */
     public static final class ResolvedCatalog {
 
         private final String knowledgeToolDescription;
 
         /**
-         * null 表示本次目录不含记忆整理工具；它进指纹，开关翻面下一请求即重建实例
+         * null 表示本次不挂载记忆整理工具
          */
         private final String memoryToolDescription;
 
         private final List<McpToolBinding> bindings;
         private final List<String> unavailableToolIds;
         private final Map<String, String> displayNames;
+        private final Map<String, Map<String, String>> fieldLabels;
         private final ToolCatalogFingerprint fingerprint;
 
         public ResolvedCatalog(
@@ -198,14 +201,20 @@ public class AgentToolCatalog {
             if (memoryToolDescription != null) {
                 names.put(MemoryFlushTool.TOOL_NAME, MemoryFlushTool.DISPLAY_NAME);
             }
-            this.bindings.forEach(binding -> names.put(binding.toolId(), binding.displayName()));
+            Map<String, Map<String, String>> labels = new LinkedHashMap<>();
+            this.bindings.forEach(binding -> {
+                names.put(binding.toolId(), binding.displayName());
+                labels.put(binding.toolId(), fieldLabels(binding.executor().getToolDefinition()));
+            });
             this.displayNames = Map.copyOf(names);
+            this.fieldLabels = Collections.unmodifiableMap(labels);
             this.fingerprint = new ToolCatalogFingerprint(knowledgeToolDescription, memoryToolDescription,
                     this.bindings.stream()
                             .map(binding -> new McpToolFingerprint(
                                     binding.toolId(),
                                     binding.displayName(),
                                     binding.description(),
+                                    binding.requireConfirm(),
                                     binding.executor().getToolDefinition()))
                             .toList());
         }
@@ -215,10 +224,35 @@ public class AgentToolCatalog {
         }
 
         /**
-         * SSE 工具进度事件的展示名，未收录的工具回落原始名
+         * 工具展示名，未收录的返回原始名
          */
         public String displayNameOf(String toolName) {
             return displayNames.getOrDefault(toolName, toolName);
+        }
+
+        /**
+         * 确认卡的入参标签（schema 声明序），未收录的返回空 Map
+         */
+        public Map<String, String> fieldLabelsOf(String toolName) {
+            return fieldLabels.getOrDefault(toolName, Map.of());
+        }
+
+        /**
+         * 从 schema 提取字段标签，用 LinkedHashMap 保持声明序
+         */
+        private static Map<String, String> fieldLabels(Tool tool) {
+            JsonSchema schema = tool == null ? null : tool.inputSchema();
+            if (schema == null || schema.properties() == null) {
+                return Map.of();
+            }
+            Map<String, String> labels = new LinkedHashMap<>();
+            schema.properties().forEach((field, spec) -> labels.put(field, titleOf(spec, field)));
+            return Collections.unmodifiableMap(labels);
+        }
+
+        private static String titleOf(Object spec, String field) {
+            return spec instanceof Map<?, ?> node && node.get("title") instanceof String title
+                    && StrUtil.isNotBlank(title) ? title : field;
         }
     }
 
@@ -236,6 +270,7 @@ public class AgentToolCatalog {
             String toolId,
             String displayName,
             String description,
+            boolean requireConfirm,
             Tool definition) {
     }
 }

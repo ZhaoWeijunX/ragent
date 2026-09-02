@@ -15,35 +15,14 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.rag.controller.request;
+package com.nageoffer.ai.ragent.agent.controller.request;
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-
-import java.util.List;
-
-@Data
-@NoArgsConstructor
-@AllArgsConstructor
-@Builder
-public class IntentNodeUpdateRequest {
-
-    private String name;
-    private Integer level;
-    private String parentCode;
-    private String description;
-    private List<String> examples;
-    private String mcpToolId;
-    private Integer requireConfirm;
-    private String collectionName;
-    private List<String> collectionNames;
-    private Integer topK;
-    private Integer kind;
-    private Integer sortOrder;
-    private Integer enabled;
-    private String promptSnippet;
-    private String promptTemplate;
-    private String paramPromptTemplate;
+/**
+ * 确认请求入参
+ *
+ * @param conversationId 会话ID
+ * @param messageId      消息ID
+ * @param approved       是否批准
+ */
+public record ConfirmRequest(String conversationId, String messageId, boolean approved) {
 }

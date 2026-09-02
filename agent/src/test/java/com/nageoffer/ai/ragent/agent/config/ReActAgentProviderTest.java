@@ -17,6 +17,7 @@
 
 package com.nageoffer.ai.ragent.agent.config;
 
+import com.nageoffer.ai.ragent.agent.confirm.AgentConfirmDenialMiddleware;
 import com.nageoffer.ai.ragent.agent.memory.AgentContextCompactionMiddleware;
 import com.nageoffer.ai.ragent.agent.memory.AgentMemoryPipeline;
 import com.nageoffer.ai.ragent.agent.memory.AgentMemoryProperties;
@@ -87,7 +88,8 @@ class ReActAgentProviderTest {
                 mock(PgAgentStateStore.class),
                 agentProperties,
                 mock(AgentUserMemoryMiddleware.class),
-                mock(AgentContextCompactionMiddleware.class));
+                mock(AgentContextCompactionMiddleware.class),
+                mock(AgentConfirmDenialMiddleware.class));
     }
 
     @Test

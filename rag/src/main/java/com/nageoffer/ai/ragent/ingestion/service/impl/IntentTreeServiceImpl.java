@@ -149,6 +149,7 @@ public class IntentTreeServiceImpl implements IntentTreeService {
                 .parentCode(requestParam.getParentCode())
                 .description(requestParam.getDescription())
                 .mcpToolId(StrUtil.trim(requestParam.getMcpToolId()))
+                .requireConfirm(normalizeRequireConfirm(requestParam.getRequireConfirm(), kind))
                 .examples(
                         requestParam.getExamples() == null ? null : GSON.toJson(requestParam.getExamples())
                 )
@@ -230,8 +231,12 @@ public class IntentTreeServiceImpl implements IntentTreeService {
         if (req.getKind() != null) {
             node.setKind(req.getKind());
         }
+        if (req.getRequireConfirm() != null) {
+            node.setRequireConfirm(normalizeRequireConfirm(req.getRequireConfirm(), node.getKind()));
+        }
         if (!Objects.equals(node.getKind(), IntentKind.MCP.getCode())) {
             node.setMcpToolId(null);
+            node.setRequireConfirm(0);
         }
         if (!Objects.equals(node.getKind(), IntentKind.KB.getCode())) {
             applyCollectionBinding(node, CollectionBinding.empty());
@@ -427,6 +432,7 @@ public class IntentTreeServiceImpl implements IntentTreeService {
                     .topK(normalizeTopK(node.getTopK()))
                     .kind(mapKind(node.getKind()))
                     .mcpToolId(node.getMcpToolId())
+                    .requireConfirm(node.isRequireConfirm() ? 1 : 0)
                     .sortOrder(sort++)
                     .enabled(1)
                     .promptTemplate(node.getPromptTemplate())
@@ -501,6 +507,16 @@ public class IntentTreeServiceImpl implements IntentTreeService {
             throw new ClientException("节点级 TopK 必须大于 0");
         }
         return topK;
+    }
+
+    /**
+     * 非 MCP 节点一律落 0：确认标志只在工具调用链路上被读取，留在别的类型上是无效数据
+     */
+    private Integer normalizeRequireConfirm(Integer requireConfirm, Integer kind) {
+        if (!Objects.equals(kind, IntentKind.MCP.getCode())) {
+            return 0;
+        }
+        return Objects.equals(requireConfirm, 1) ? 1 : 0;
     }
 
     /**

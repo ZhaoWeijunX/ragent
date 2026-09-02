@@ -5,6 +5,7 @@ import { format } from "date-fns";
 import type {
   AgentBlockUI,
   AgentCompletionPayload,
+  AgentConfirmPayload,
   AgentHintPayload,
   AgentMessage,
   AgentMessageDelta,
@@ -45,7 +46,8 @@ interface AgentChatState {
   // 原始帧抽屉：本次连接收到的全部 SSE 帧 换会话即清
   frames: AgentRawFrame[];
   loadSessions: () => Promise<void>;
-  loadMessages: (sessionId: string) => Promise<void>;
+  // force 用于回查：绕开「已在本会话且有消息就不拉」的早退，拿服务端的说法覆盖本地
+  loadMessages: (sessionId: string, force?: boolean) => Promise<void>;
   renameSession: (sessionId: string, title: string) => Promise<void>;
   deleteSession: (sessionId: string) => Promise<void>;
   batchDeleteSessions: (sessionIds: string[]) => Promise<void>;
@@ -54,7 +56,14 @@ interface AgentChatState {
   setDraft: (text: string) => void;
   toggleBlockOpen: (messageId: string, blockId: number) => void;
   sendMessage: (question: string) => Promise<void>;
+  confirmPendingTool: (messageId: string, blockId: number, approved: boolean) => Promise<void>;
   cancelGeneration: () => void;
+}
+
+// 挂起中的会话只有确认与取消两条出路 新提问会被后端挡下 前端先自查免得白跑一趟
+export function awaitingConfirm(messages: AgentMessage[]): boolean {
+  const last = messages[messages.length - 1];
+  return last?.role === "assistant" && last.messageStatus === "AWAITING_CONFIRM";
 }
 
 let blockSeq = 0;
@@ -109,11 +118,13 @@ function sealOpenBlock(blocks: AgentBlockUI[], openBlockId: number | null) {
 }
 
 // 收尾：残留 running 工具置为给定终态 敞开思考块折叠 未封口块补实测耗时
-function settleBlocks(blocks: AgentBlockUI[] | undefined, toolStatus: "done" | "interrupted") {
+function settleBlocks(blocks: AgentBlockUI[] | undefined, toolStatus: "done" | "interrupted" | "awaiting") {
   if (!blocks) return blocks;
   return blocks.map((block) => {
     let next = block;
-    if (next.startMs != null && next.durationMs == null) {
+    const parked = next.kind === "tool" && next.status === "running" && toolStatus === "awaiting";
+    // 没执行就没有执行耗时 挂个秒数会被读成它跑了这么久（后端落库也不带耗时 刷新前后才是同一句话）
+    if (!parked && next.startMs != null && next.durationMs == null) {
       next = { ...next, durationMs: Date.now() - next.startMs };
     }
     if (next.kind === "tool" && next.status === "running") {
@@ -124,6 +135,39 @@ function settleBlocks(blocks: AgentBlockUI[] | undefined, toolStatus: "done" | "
     }
     return next;
   });
+}
+
+// 一次流跑完要归零的全部流态 少归零一个字段 下一次提问就会被当成上一次的续播
+const STREAM_IDLE = {
+  isStreaming: false,
+  streamTaskId: null,
+  streamAbort: null,
+  streamingMessageId: null,
+  streamOpenBlockId: null,
+  cancelRequested: false
+} as const;
+
+// 起流前先摆好的空助手消息 流式增量随后逐块落进它的 blocks
+function newAssistantMessage(assistantId: string): AgentMessage {
+  return {
+    id: assistantId,
+    role: "assistant",
+    content: "",
+    blocks: [],
+    status: "streaming",
+    createdAt: new Date().toISOString()
+  };
+}
+
+// 与 STREAM_IDLE 对称的起流置位 少置一个字段 新流就会带着上一次的残态跑
+function streamStartPatch(assistantId: string) {
+  return {
+    isStreaming: true,
+    streamingMessageId: assistantId,
+    streamOpenBlockId: null,
+    streamTaskId: null,
+    cancelRequested: false
+  } as const;
 }
 
 // 回放轮次总耗时：assistant 落库时刻减去前一条 user 的落库时刻
@@ -175,6 +219,323 @@ export const useAgentChatStore = create<AgentChatState>((set, get) => {
     });
   };
 
+  // 改写确认卡状态；带上 messageStatus 时一并落定挂起态，卡片有了裁决这条消息就不该再拦住新提问
+  const setConfirmStatus = (
+    messageId: string,
+    blockId: number,
+    status: "submitting" | "approved" | "denied",
+    messageStatus?: "NORMAL"
+  ) => {
+    set((state) => ({
+      messages: state.messages.map((message) =>
+        message.id === messageId && message.blocks
+          ? {
+              ...message,
+              ...(messageStatus ? { messageStatus } : {}),
+              blocks: message.blocks.map((block) =>
+                block.id === blockId ? { ...block, status } : block
+              )
+            }
+          : message
+      )
+    }));
+  };
+
+  /**
+   * 首问与确认续跑共用的一次连接：事件处理全在这里 两边只负责把助手消息先摆好
+   * startedMs 是本段的计时起点 续跑那段从点确认起算 不与挂起前那段合并
+   * 返回是否收到过 meta —— 调用方据此判断这一轮后端到底受理没有
+   */
+  const runStream = async (params: {
+    url: string;
+    body?: unknown;
+    assistantId: string;
+    startedMs: number;
+  }) => {
+    const { url, body, assistantId, startedMs } = params;
+    const token = storage.getToken();
+    // meta 是后端受理这一轮的第一帧：收到它才算请求确实送达，没收到就不知道断在哪一侧
+    let delivered = false;
+
+    const handlers = {
+      // 每一条 SSE 帧原样进抽屉 供深度核对
+      onEvent: (event: string, payload: unknown) => {
+        set((state) => ({
+          frames: [
+            ...(state.frames.length >= MAX_FRAMES ? state.frames.slice(1) : state.frames),
+            { id: ++frameSeq, ts: format(new Date(), "HH:mm:ss"), name: event, data: payload }
+          ]
+        }));
+      },
+      onMeta: (payload: AgentMetaPayload) => {
+        delivered = true;
+        if (get().streamingMessageId !== assistantId) return;
+        const nextId = payload.conversationId || get().currentSessionId;
+        if (!nextId) return;
+        const lastTime = new Date().toISOString();
+        const existing = get().sessions.find((session) => session.id === nextId);
+        set((state) => ({
+          currentSessionId: nextId,
+          isCreatingNew: false,
+          streamTaskId: payload.taskId,
+          sessions: upsertSession(state.sessions, {
+            id: nextId,
+            title: existing?.title || "新对话",
+            lastTime
+          })
+        }));
+        // meta 前用户已点停止：此刻才拿到 taskId 补发停止指令
+        if (get().cancelRequested) {
+          stopAgentTask(payload.taskId).catch(() => null);
+        }
+      },
+      onMessage: (payload: AgentMessageDelta) => {
+        if (!payload || typeof payload !== "object") return;
+        if (payload.type !== "response") return;
+        if (get().streamingMessageId !== assistantId) return;
+        appendText("answer", payload.delta);
+      },
+      onThinking: (payload: AgentMessageDelta) => {
+        if (!payload || typeof payload !== "object") return;
+        if (payload.type !== "think") return;
+        if (get().streamingMessageId !== assistantId) return;
+        appendText("reasoning", payload.delta);
+      },
+      onTool: (payload: AgentToolProgress) => {
+        if (!payload || typeof payload !== "object" || !payload.name) return;
+        if (get().streamingMessageId !== assistantId) return;
+        set((state) => ({
+          // 任何工具事件都封口当前文本块 与后端分段规则保持一致
+          streamOpenBlockId: null,
+          messages: state.messages.map((message) => {
+            if (message.id !== state.streamingMessageId) return message;
+            if (message.status === "cancelled" || message.status === "error") return message;
+            const blocks = sealOpenBlock([...(message.blocks ?? [])], state.streamOpenBlockId);
+            if (payload.status === "start") {
+              blocks.push({
+                id: nextBlockId(),
+                kind: "tool",
+                at: nowHms(),
+                startMs: Date.now(),
+                name: payload.name,
+                displayName: payload.displayName || payload.name,
+                toolCallId: payload.toolCallId ?? undefined,
+                status: "running"
+              });
+              return { ...message, blocks };
+            }
+            // 有 toolCallId 就按它配对 同名工具并发两次时按名字猜会配错块
+            // 端点不回 id 才回落名字 后进先出闭合最近未完成的同名调用
+            for (let i = blocks.length - 1; i >= 0; i -= 1) {
+              const block = blocks[i];
+              if (block.kind !== "tool" || block.status !== "running") continue;
+              const hit = payload.toolCallId
+                ? block.toolCallId === payload.toolCallId
+                : block.name === payload.name;
+              if (!hit) continue;
+              blocks[i] = {
+                ...block,
+                // ok 缺省视为成功 兼容旧后端事件
+                status: payload.ok === false ? "failed" : "done",
+                durationMs: block.startMs != null ? Date.now() - block.startMs : undefined,
+                result: payload.result ?? undefined
+              };
+              return { ...message, blocks };
+            }
+            // 确认后续跑的工具是上一轮开的头 这一轮只有结束事件 不就地补一行 页面上就看不到它执行过
+            // 不带耗时：这一轮没经手它的开始时刻 与后端落库同口径
+            blocks.push({
+              id: nextBlockId(),
+              kind: "tool",
+              at: nowHms(),
+              name: payload.name,
+              displayName: payload.displayName || payload.name,
+              toolCallId: payload.toolCallId ?? undefined,
+              status: payload.ok === false ? "failed" : "done",
+              result: payload.result ?? undefined
+            });
+            return { ...message, blocks };
+          })
+        }));
+      },
+      // 运行提示（如迭代熔断预告）单独成行 不落库 回放自然消失
+      onHint: (payload: AgentHintPayload) => {
+        if (!payload?.text) return;
+        if (get().streamingMessageId !== assistantId) return;
+        set((state) => ({
+          streamOpenBlockId: null,
+          messages: state.messages.map((message) => {
+            if (message.id !== state.streamingMessageId) return message;
+            if (message.status === "cancelled" || message.status === "error") return message;
+            const blocks = sealOpenBlock([...(message.blocks ?? [])], state.streamOpenBlockId);
+            blocks.push({ id: nextBlockId(), kind: "hint", at: nowHms(), text: payload.text });
+            return { ...message, blocks };
+          })
+        }));
+      },
+      // 挂起在写操作确认上：这轮没有终答 卡片带着落库 id 等用户裁决
+      onConfirm: (payload: AgentConfirmPayload) => {
+        if (get().streamingMessageId !== assistantId) return;
+        if (!payload?.calls?.length) return;
+        const currentId = get().currentSessionId;
+        if (currentId && payload.title) {
+          get().updateSessionTitle(currentId, payload.title);
+        }
+        set((state) => ({
+          streamOpenBlockId: null,
+          messages: state.messages.map((message) => {
+            if (message.id !== state.streamingMessageId) return message;
+            // 停在卡片上的这个工具正是还没跑的那个：说完成是在用户点头前就宣布办完了
+            // 说中断也不对，用户什么都还没做；它只是没执行，与后端挂起时的落库口径一致
+            const blocks = settleBlocks(message.blocks, "awaiting") ?? [];
+            blocks.push({
+              id: nextBlockId(),
+              kind: "confirm",
+              at: nowHms(),
+              status: "pending",
+              calls: payload.calls
+            });
+            return {
+              ...message,
+              id: payload.messageId ? String(payload.messageId) : message.id,
+              status: "done" as const,
+              blocks,
+              elapsedMs: Date.now() - startedMs,
+              messageStatus: "AWAITING_CONFIRM" as const
+            };
+          })
+        }));
+      },
+      onFinish: (payload: AgentCompletionPayload) => {
+        if (get().streamingMessageId !== assistantId) return;
+        if (!payload) return;
+        const currentId = get().currentSessionId;
+        if (currentId) {
+          const lastTime = new Date().toISOString();
+          const existingTitle =
+            get().sessions.find((session) => session.id === currentId)?.title || "新对话";
+          const nextTitle = payload.title || existingTitle;
+          // 本地即时更新轮数徽标 与服务端 user 消息计数同口径
+          const turns = get().messages.filter((message) => message.role === "user").length;
+          set((state) => ({
+            sessions: upsertSession(state.sessions, {
+              id: currentId,
+              title: nextTitle,
+              lastTime,
+              turns
+            })
+          }));
+        }
+        set((state) => ({
+          streamOpenBlockId: null,
+          messages: state.messages.map((message) =>
+            message.id === state.streamingMessageId
+              ? {
+                  ...message,
+                  id: payload.messageId ? String(payload.messageId) : message.id,
+                  status: "done",
+                  // 后端把这一轮标成中断 说明开着的工具没等到结果 替它宣布完成就是编一个它没给过的结论
+                  blocks: settleBlocks(
+                    message.blocks,
+                    payload.messageStatus === "INTERRUPTED" ? "awaiting" : "done"
+                  ),
+                  elapsedMs: Date.now() - startedMs,
+                  messageStatus: payload.messageStatus ?? "NORMAL"
+                }
+              : message
+          )
+        }));
+      },
+      onCancel: (payload: AgentCompletionPayload) => {
+        if (get().streamingMessageId !== assistantId) return;
+        if (payload?.title && get().currentSessionId) {
+          get().updateSessionTitle(get().currentSessionId as string, payload.title);
+        }
+        set((state) => ({
+          messages: state.messages.map((message) => {
+            if (message.id !== state.streamingMessageId) return message;
+            const suffix = message.content.includes("（已停止生成）") ? "" : "\n\n（已停止生成）";
+            const nextId = payload?.messageId ? String(payload.messageId) : message.id;
+            let blocks = settleBlocks(message.blocks, "interrupted") ?? [];
+            if (suffix) {
+              let appended = false;
+              for (let i = blocks.length - 1; i >= 0; i -= 1) {
+                if (blocks[i].kind === "answer") {
+                  blocks = [...blocks];
+                  blocks[i] = { ...blocks[i], text: (blocks[i].text ?? "") + suffix };
+                  appended = true;
+                  break;
+                }
+              }
+              if (!appended) {
+                blocks = [
+                  ...blocks,
+                  { id: nextBlockId(), kind: "answer", at: nowHms(), text: "（已停止生成）" }
+                ];
+              }
+            }
+            return {
+              ...message,
+              id: nextId,
+              content: message.content + suffix,
+              blocks,
+              status: "cancelled" as const,
+              elapsedMs: Date.now() - startedMs,
+              messageStatus: payload?.messageStatus ?? "INTERRUPTED"
+            };
+          }),
+          ...STREAM_IDLE
+        }));
+      },
+      onDone: () => {
+        if (get().streamingMessageId !== assistantId) return;
+        set({ ...STREAM_IDLE });
+      },
+      onError: (error: Error) => {
+        if (get().streamingMessageId !== assistantId) return;
+        set((state) => ({
+          ...STREAM_IDLE,
+          // 这里读的是本次更新前的旧值 与上面清空 streamingMessageId 不冲突
+          messages: state.messages.map((message) =>
+            message.id === state.streamingMessageId
+              ? {
+                  ...message,
+                  status: "error" as const,
+                  blocks: settleBlocks(message.blocks, "interrupted")
+                }
+              : message
+          )
+        }));
+        toast.error(error.message || "生成失败");
+      }
+    };
+
+    const { start, cancel } = createAgentStreamResponse(
+      {
+        url,
+        body,
+        headers: token ? { Authorization: token } : undefined,
+        retryCount: 1
+      },
+      handlers
+    );
+
+    set({ streamAbort: cancel });
+
+    try {
+      await start();
+    } catch (error) {
+      if ((error as Error).name !== "AbortError") {
+        handlers.onError?.(error as Error);
+      }
+    } finally {
+      if (get().streamingMessageId === assistantId) {
+        set({ ...STREAM_IDLE });
+      }
+    }
+    return delivered;
+  };
+
   return {
     sessions: [],
     currentSessionId: null,
@@ -214,9 +575,9 @@ export const useAgentChatStore = create<AgentChatState>((set, get) => {
         set({ isLoading: false, sessionsLoaded: true });
       }
     },
-    loadMessages: async (sessionId) => {
+    loadMessages: async (sessionId, force) => {
       if (!sessionId) return;
-      if (get().currentSessionId === sessionId && get().messages.length > 0) return;
+      if (!force && get().currentSessionId === sessionId && get().messages.length > 0) return;
       if (get().isStreaming) {
         get().cancelGeneration();
       }
@@ -224,7 +585,8 @@ export const useAgentChatStore = create<AgentChatState>((set, get) => {
         isLoading: true,
         currentSessionId: sessionId,
         isCreatingNew: false,
-        frames: []
+        // 回查是接着上一次连接排障，帧留着；换会话才清
+        frames: force ? get().frames : []
       });
       try {
         const data = await listAgentMessages(sessionId);
@@ -247,6 +609,8 @@ export const useAgentChatStore = create<AgentChatState>((set, get) => {
                 displayName: block.displayName ?? undefined,
                 status: block.status ?? (block.kind === "tool" ? "done" : undefined),
                 result: block.result ?? undefined,
+                toolCallId: block.toolCallId ?? undefined,
+                calls: block.calls ?? undefined,
                 open: false
               }));
             } else {
@@ -283,6 +647,10 @@ export const useAgentChatStore = create<AgentChatState>((set, get) => {
         });
         set({ messages: mapped });
       } catch (error) {
+        // 回查失败要让调用方接住：那边正等着服务端表态，吞掉就只能一直「提交中」
+        if (force) {
+          throw error;
+        }
         toast.error((error as Error).message || "加载消息失败");
       } finally {
         if (get().currentSessionId !== sessionId) {
@@ -390,6 +758,10 @@ export const useAgentChatStore = create<AgentChatState>((set, get) => {
       const trimmed = question.trim();
       if (!trimmed) return;
       if (get().isStreaming) return;
+      if (awaitingConfirm(get().messages)) {
+        toast.error("上一步操作还在等你确认，请先确认或取消");
+        return;
+      }
       const inputFocusKey = Date.now();
       // 轮次计时起点 收尾时实测总耗时
       const startedMs = Date.now();
@@ -402,23 +774,11 @@ export const useAgentChatStore = create<AgentChatState>((set, get) => {
         createdAt: new Date().toISOString()
       };
       const assistantId = `assistant-${Date.now()}`;
-      const assistantMessage: AgentMessage = {
-        id: assistantId,
-        role: "assistant",
-        content: "",
-        blocks: [],
-        status: "streaming",
-        createdAt: new Date().toISOString()
-      };
 
       set((state) => ({
-        messages: [...state.messages, userMessage, assistantMessage],
-        isStreaming: true,
-        streamingMessageId: assistantId,
-        streamOpenBlockId: null,
+        messages: [...state.messages, userMessage, newAssistantMessage(assistantId)],
         inputFocusKey,
-        streamTaskId: null,
-        cancelRequested: false
+        ...streamStartPatch(assistantId)
       }));
 
       const conversationId = get().currentSessionId;
@@ -427,250 +787,47 @@ export const useAgentChatStore = create<AgentChatState>((set, get) => {
         conversationId: conversationId || undefined
       });
       const url = `${API_BASE_URL}/agent/v1/chat${query}`;
-      const token = storage.getToken();
 
-      const handlers = {
-        // 每一条 SSE 帧原样进抽屉 供深度核对
-        onEvent: (event: string, payload: unknown) => {
-          set((state) => ({
-            frames: [
-              ...(state.frames.length >= MAX_FRAMES ? state.frames.slice(1) : state.frames),
-              { id: ++frameSeq, ts: format(new Date(), "HH:mm:ss"), name: event, data: payload }
-            ]
-          }));
-        },
-        onMeta: (payload: AgentMetaPayload) => {
-          if (get().streamingMessageId !== assistantId) return;
-          const nextId = payload.conversationId || get().currentSessionId;
-          if (!nextId) return;
-          const lastTime = new Date().toISOString();
-          const existing = get().sessions.find((session) => session.id === nextId);
-          set((state) => ({
-            currentSessionId: nextId,
-            isCreatingNew: false,
-            streamTaskId: payload.taskId,
-            sessions: upsertSession(state.sessions, {
-              id: nextId,
-              title: existing?.title || "新对话",
-              lastTime
-            })
-          }));
-          // meta 前用户已点停止：此刻才拿到 taskId 补发停止指令
-          if (get().cancelRequested) {
-            stopAgentTask(payload.taskId).catch(() => null);
-          }
-        },
-        onMessage: (payload: AgentMessageDelta) => {
-          if (!payload || typeof payload !== "object") return;
-          if (payload.type !== "response") return;
-          if (get().streamingMessageId !== assistantId) return;
-          appendText("answer", payload.delta);
-        },
-        onThinking: (payload: AgentMessageDelta) => {
-          if (!payload || typeof payload !== "object") return;
-          if (payload.type !== "think") return;
-          if (get().streamingMessageId !== assistantId) return;
-          appendText("reasoning", payload.delta);
-        },
-        onTool: (payload: AgentToolProgress) => {
-          if (!payload || typeof payload !== "object" || !payload.name) return;
-          if (get().streamingMessageId !== assistantId) return;
-          set((state) => ({
-            // 任何工具事件都封口当前文本块 与后端分段规则保持一致
-            streamOpenBlockId: null,
-            messages: state.messages.map((message) => {
-              if (message.id !== state.streamingMessageId) return message;
-              if (message.status === "cancelled" || message.status === "error") return message;
-              const blocks = sealOpenBlock([...(message.blocks ?? [])], state.streamOpenBlockId);
-              if (payload.status === "start") {
-                blocks.push({
-                  id: nextBlockId(),
-                  kind: "tool",
-                  at: nowHms(),
-                  startMs: Date.now(),
-                  name: payload.name,
-                  displayName: payload.displayName || payload.name,
-                  status: "running"
-                });
-                return { ...message, blocks };
-              }
-              // 无 toolCallId 按名字配对 后进先出闭合最近未完成的同名调用
-              for (let i = blocks.length - 1; i >= 0; i -= 1) {
-                const block = blocks[i];
-                if (block.kind === "tool" && block.name === payload.name && block.status === "running") {
-                  blocks[i] = {
-                    ...block,
-                    // ok 缺省视为成功 兼容旧后端事件
-                    status: payload.ok === false ? "failed" : "done",
-                    durationMs: block.startMs != null ? Date.now() - block.startMs : undefined,
-                    result: payload.result ?? undefined
-                  };
-                  return { ...message, blocks };
-                }
-              }
-              return { ...message, blocks };
-            })
-          }));
-        },
-        // 运行提示（如迭代熔断预告）单独成行 不落库 回放自然消失
-        onHint: (payload: AgentHintPayload) => {
-          if (!payload?.text) return;
-          if (get().streamingMessageId !== assistantId) return;
-          set((state) => ({
-            streamOpenBlockId: null,
-            messages: state.messages.map((message) => {
-              if (message.id !== state.streamingMessageId) return message;
-              if (message.status === "cancelled" || message.status === "error") return message;
-              const blocks = sealOpenBlock([...(message.blocks ?? [])], state.streamOpenBlockId);
-              blocks.push({ id: nextBlockId(), kind: "hint", at: nowHms(), text: payload.text });
-              return { ...message, blocks };
-            })
-          }));
-        },
-        onFinish: (payload: AgentCompletionPayload) => {
-          if (get().streamingMessageId !== assistantId) return;
-          if (!payload) return;
-          const currentId = get().currentSessionId;
-          if (currentId) {
-            const lastTime = new Date().toISOString();
-            const existingTitle =
-              get().sessions.find((session) => session.id === currentId)?.title || "新对话";
-            const nextTitle = payload.title || existingTitle;
-            // 本地即时更新轮数徽标 与服务端 user 消息计数同口径
-            const turns = get().messages.filter((message) => message.role === "user").length;
-            set((state) => ({
-              sessions: upsertSession(state.sessions, {
-                id: currentId,
-                title: nextTitle,
-                lastTime,
-                turns
-              })
-            }));
-          }
-          set((state) => ({
-            streamOpenBlockId: null,
-            messages: state.messages.map((message) =>
-              message.id === state.streamingMessageId
-                ? {
-                    ...message,
-                    id: payload.messageId ? String(payload.messageId) : message.id,
-                    status: "done",
-                    blocks: settleBlocks(message.blocks, "done"),
-                    elapsedMs: Date.now() - startedMs,
-                    messageStatus: payload.messageStatus ?? "NORMAL"
-                  }
-                : message
-            )
-          }));
-        },
-        onCancel: (payload: AgentCompletionPayload) => {
-          if (get().streamingMessageId !== assistantId) return;
-          if (payload?.title && get().currentSessionId) {
-            get().updateSessionTitle(get().currentSessionId as string, payload.title);
-          }
-          set((state) => ({
-            messages: state.messages.map((message) => {
-              if (message.id !== state.streamingMessageId) return message;
-              const suffix = message.content.includes("（已停止生成）") ? "" : "\n\n（已停止生成）";
-              const nextId = payload?.messageId ? String(payload.messageId) : message.id;
-              let blocks = settleBlocks(message.blocks, "interrupted") ?? [];
-              if (suffix) {
-                let appended = false;
-                for (let i = blocks.length - 1; i >= 0; i -= 1) {
-                  if (blocks[i].kind === "answer") {
-                    blocks = [...blocks];
-                    blocks[i] = { ...blocks[i], text: (blocks[i].text ?? "") + suffix };
-                    appended = true;
-                    break;
-                  }
-                }
-                if (!appended) {
-                  blocks = [
-                    ...blocks,
-                    { id: nextBlockId(), kind: "answer", at: nowHms(), text: "（已停止生成）" }
-                  ];
-                }
-              }
-              return {
-                ...message,
-                id: nextId,
-                content: message.content + suffix,
-                blocks,
-                status: "cancelled",
-                elapsedMs: Date.now() - startedMs,
-                messageStatus: payload?.messageStatus ?? "INTERRUPTED"
-              };
-            }),
-            isStreaming: false,
-            streamTaskId: null,
-            streamAbort: null,
-            streamingMessageId: null,
-            streamOpenBlockId: null,
-            cancelRequested: false
-          }));
-        },
-        onDone: () => {
-          if (get().streamingMessageId !== assistantId) return;
-          set({
-            isStreaming: false,
-            streamTaskId: null,
-            streamAbort: null,
-            streamingMessageId: null,
-            streamOpenBlockId: null,
-            cancelRequested: false
-          });
-        },
-        onError: (error: Error) => {
-          if (get().streamingMessageId !== assistantId) return;
-          set((state) => ({
-            isStreaming: false,
-            streamTaskId: null,
-            streamAbort: null,
-            streamOpenBlockId: null,
-            cancelRequested: false,
-            messages: state.messages.map((message) =>
-              message.id === state.streamingMessageId
-                ? {
-                    ...message,
-                    status: "error",
-                    blocks: settleBlocks(message.blocks, "interrupted")
-                  }
-                : message
-            )
-          }));
-          toast.error(error.message || "生成失败");
-        }
-      };
+      await runStream({ url, assistantId, startedMs });
+    },
+    confirmPendingTool: async (messageId, blockId, approved) => {
+      const conversationId = get().currentSessionId;
+      if (!conversationId || get().isStreaming) return;
+      // 先只标「提交中」：这一刻我们只知道自己点了，还不知道后端收没收到
+      // 直接落成已同意，断网时页面会替后端说一句它没说过的话，而工具到底跑没跑用户无从得知
+      setConfirmStatus(messageId, blockId, "submitting");
 
-      const { start, cancel } = createAgentStreamResponse(
-        {
-          url,
-          headers: token ? { Authorization: token } : undefined,
-          retryCount: 1
-        },
-        handlers
-      );
+      const startedMs = Date.now();
+      const assistantId = `assistant-${Date.now()}`;
+      set((state) => ({
+        messages: [...state.messages, newAssistantMessage(assistantId)],
+        ...streamStartPatch(assistantId)
+      }));
 
-      set({ streamAbort: cancel });
+      const delivered = await runStream({
+        url: `${API_BASE_URL}/agent/v1/chat/confirm`,
+        body: { conversationId, messageId, approved },
+        assistantId,
+        startedMs
+      });
 
+      if (delivered) {
+        // 后端已受理，卡片这才落定；此后即使流中途断了，裁决在库里也是实的
+        setConfirmStatus(messageId, blockId, approved ? "approved" : "denied", "NORMAL");
+        return;
+      }
+      // 没收到 meta：可能压根没发出去，也可能发出去了只是回程断了，猜不得——回查一次以服务端为准
       try {
-        await start();
-      } catch (error) {
-        if ((error as Error).name === "AbortError") {
-          return;
-        }
-        handlers.onError?.(error as Error);
-      } finally {
-        if (get().streamingMessageId === assistantId) {
-          set({
-            isStreaming: false,
-            streamTaskId: null,
-            streamAbort: null,
-            streamingMessageId: null,
-            streamOpenBlockId: null,
-            cancelRequested: false
-          });
-        }
+        await get().loadMessages(conversationId, true);
+      } catch {
+        toast.error("网络不通，这一步是否已提交无法确认，恢复后请刷新页面");
+        return;
+      }
+      // 回查回来仍是待批，说明这一次点击后端没收到；按钮已随之复原，明说一句免得用户干等
+      const refreshed = get().messages.find((message) => message.id === messageId);
+      const confirmBlock = refreshed?.blocks?.find((block) => block.kind === "confirm");
+      if (confirmBlock?.status === "pending") {
+        toast.error("网络不稳，这一步没提交成功，请重新确认");
       }
     },
     cancelGeneration: () => {

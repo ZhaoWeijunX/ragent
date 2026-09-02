@@ -1,5 +1,6 @@
 import type {
   AgentCompletionPayload,
+  AgentConfirmPayload,
   AgentHintPayload,
   AgentMessageDelta,
   AgentMetaPayload,
@@ -12,6 +13,7 @@ export interface AgentStreamHandlers {
   onThinking?: (payload: AgentMessageDelta) => void;
   onTool?: (payload: AgentToolProgress) => void;
   onHint?: (payload: AgentHintPayload) => void;
+  onConfirm?: (payload: AgentConfirmPayload) => void;
   onFinish?: (payload: AgentCompletionPayload) => void;
   onDone?: () => void;
   onCancel?: (payload: AgentCompletionPayload) => void;
@@ -25,6 +27,8 @@ export interface AgentStreamOptions {
   signal?: AbortSignal;
   retryCount?: number;
   retryDelayMs?: number;
+  // 带 body 即走 POST：确认裁决是有副作用的动作 不该塞进 query 让浏览器随手重发
+  body?: unknown;
 }
 
 // 幂等提交被拒等业务错误：重试只会再次被拒或触发重复生成 故直接抛出
@@ -82,6 +86,9 @@ async function readSseStream(
       case "hint":
         handlers.onHint?.(payload as AgentHintPayload);
         break;
+      case "confirm":
+        handlers.onConfirm?.(payload as AgentConfirmPayload);
+        break;
       case "finish":
         handlers.onFinish?.(payload as AgentCompletionPayload);
         break;
@@ -138,19 +145,22 @@ async function streamWithRetry(
   options: AgentStreamOptions,
   handlers: AgentStreamHandlers
 ): Promise<void> {
-  const { url, headers, signal } = options;
+  const { url, headers, signal, body } = options;
   const retryCount = options.retryCount ?? 2;
   const retryDelayMs = options.retryDelayMs ?? 600;
+  const post = body !== undefined;
 
   let attempt = 0;
   while (attempt <= retryCount) {
     try {
       const response = await fetch(url, {
-        method: "GET",
+        method: post ? "POST" : "GET",
         headers: {
           Accept: "text/event-stream",
+          ...(post ? { "Content-Type": "application/json" } : {}),
           ...headers
         },
+        body: post ? JSON.stringify(body) : undefined,
         signal
       });
 
@@ -161,8 +171,8 @@ async function streamWithRetry(
       // @IdempotentSubmit 拦截时返回 200 + JSON 体而非事件流
       const contentType = response.headers.get("content-type") || "";
       if (!contentType.includes("text/event-stream")) {
-        const body = (await response.json().catch(() => null)) as { message?: string } | null;
-        throw new AgentStreamRejectionError(body?.message || "请求失败");
+        const errBody = (await response.json().catch(() => null)) as { message?: string } | null;
+        throw new AgentStreamRejectionError(errBody?.message || "请求失败");
       }
 
       await readSseStream(response, handlers, signal);

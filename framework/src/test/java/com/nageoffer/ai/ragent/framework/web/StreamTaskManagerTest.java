@@ -183,6 +183,21 @@ class StreamTaskManagerTest {
         assertThat(finalized.get()).isOne();
     }
 
+    @Test
+    void shouldNotResurrectTaskAfterUnregister() {
+        AtomicInteger cancelled = new AtomicInteger();
+        taskManager.register(TASK_ID, OWNER_ID, () -> {
+        });
+        taskManager.unregister(TASK_ID);
+
+        // 流同步结束时 unregister 先于 bindHandle 执行，这里不该无中生有造一条幽灵任务
+        taskManager.bindHandle(TASK_ID, cancelled::incrementAndGet);
+        captureListener().onMessage(CANCEL_TOPIC, TASK_ID + "|__system__");
+
+        assertThat(taskManager.isCancelled(TASK_ID)).isFalse();
+        assertThat(cancelled.get()).isZero();
+    }
+
     /**
      * 取回订阅时注册的监听器，用它模拟一条到达本节点的取消广播
      */

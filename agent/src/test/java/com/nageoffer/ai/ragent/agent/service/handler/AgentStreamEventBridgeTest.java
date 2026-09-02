@@ -18,25 +18,38 @@
 package com.nageoffer.ai.ragent.agent.service.handler;
 
 import com.nageoffer.ai.ragent.agent.dto.AgentBlock;
+import com.nageoffer.ai.ragent.agent.dto.AgentConfirmField;
+import com.nageoffer.ai.ragent.agent.dto.AgentToolProgress;
 import com.nageoffer.ai.ragent.agent.service.AgentConversationService;
+import com.nageoffer.ai.ragent.agent.tool.AgentToolCatalog.McpToolBinding;
 import com.nageoffer.ai.ragent.agent.tool.AgentToolCatalog.ResolvedCatalog;
 import com.nageoffer.ai.ragent.framework.web.SseEmitterSender;
 import com.nageoffer.ai.ragent.framework.web.StreamTaskManager;
+import com.nageoffer.ai.ragent.rag.core.mcp.McpToolExecutor;
+import io.agentscope.core.event.RequireUserConfirmEvent;
 import io.agentscope.core.event.TextBlockDeltaEvent;
 import io.agentscope.core.event.ToolCallStartEvent;
 import io.agentscope.core.event.ToolResultEndEvent;
 import io.agentscope.core.event.ToolResultTextDeltaEvent;
 import io.agentscope.core.message.ToolResultState;
+import io.agentscope.core.message.ToolUseBlock;
+import io.modelcontextprotocol.spec.McpSchema.CallToolResult;
+import io.modelcontextprotocol.spec.McpSchema.JsonSchema;
+import io.modelcontextprotocol.spec.McpSchema.Tool;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -153,6 +166,84 @@ class AgentStreamEventBridgeTest {
         assertThat(LocalDateTime.parse(at).toLocalDate()).isEqualTo(LocalDate.now());
     }
 
+    @Test
+    void shouldNotSendConfirmCardWhenPersistFails() {
+        when(conversationService.addAssistantMessage(any(), any(), any(), any(), any(), any(), any()))
+                .thenThrow(new IllegalStateException("连接池打满"));
+
+        bridge.onEvent(new ToolCallStartEvent("r-1", "call-1", "leave_submit"));
+        bridge.onEvent(new RequireUserConfirmEvent("r-1", List.of(
+                ToolUseBlock.builder().id("call-1").name("leave_submit").input(Map.of("day", "9-14")).build())));
+        bridge.onComplete();
+
+        // 卡片凭 messageId 续跑，没落库就没有这个凭据，发出去用户点了也结算不了
+        verify(sender, never()).sendEvent(eq("confirm"), any());
+        verify(sender).sendEvent(eq("finish"), any());
+        verify(sender).sendEvent(eq("hint"), any());
+    }
+
+    /**
+     * 前端靠 toolCallId 把结束事件配回开头那块，同名工具并发两次时按名字猜会配错
+     */
+    @Test
+    void shouldCarryToolCallIdOnToolEvents() {
+        bridge.onEvent(new ToolCallStartEvent("r-1", "call-7", "leave_submit"));
+        bridge.onEvent(new ToolResultEndEvent("r-1", "call-7", "leave_submit", ToolResultState.SUCCESS));
+
+        ArgumentCaptor<AgentToolProgress> captor = ArgumentCaptor.forClass(AgentToolProgress.class);
+        verify(sender, times(2)).sendEvent(eq("tool"), captor.capture());
+        assertThat(captor.getAllValues())
+                .extracting(AgentToolProgress::toolCallId, AgentToolProgress::status)
+                .containsExactly(tuple("call-7", "start"), tuple("call-7", "end"));
+    }
+
+    @Test
+    void shouldLabelConfirmArgumentsBySchemaDeclarationOrder() {
+        AgentStreamEventBridge labeled = newBridge(leaveCatalog());
+        Map<String, Object> input = new LinkedHashMap<>();
+        input.put("reason", "回老家");
+        input.put("leaveType", "年假");
+        input.put("note", "模型多给的");
+
+        labeled.onEvent(new RequireUserConfirmEvent("r-1", List.of(
+                ToolUseBlock.builder().id("call-1").name("leave_submit").input(input).build())));
+        labeled.onComplete();
+
+        // 顺序跟 schema 走而不是跟模型输出走，标签只管展示，前端比对差异认的是 name
+        // schema 里没声明的参数照样露出来，授权界面不能把参数漏在视野外
+        assertThat(capturedBlocks().get(0).getCalls().get(0).getFields())
+                .extracting(AgentConfirmField::getName, AgentConfirmField::getLabel, AgentConfirmField::getValue)
+                .containsExactly(
+                        tuple("leaveType", "假期类型", "年假"),
+                        tuple("reason", "请假事由", "回老家"),
+                        tuple("note", "note", "模型多给的"));
+    }
+
+    private ResolvedCatalog leaveCatalog() {
+        Map<String, Object> properties = new LinkedHashMap<>();
+        properties.put("leaveType", Map.of("type", "string", "title", "假期类型"));
+        properties.put("reason", Map.of("type", "string", "title", "请假事由"));
+        Tool tool = Tool.builder()
+                .name("leave_submit")
+                .description("提交请假申请")
+                .inputSchema(new JsonSchema("object", properties, List.of(), null, null, null))
+                .build();
+        McpToolExecutor executor = new McpToolExecutor() {
+            @Override
+            public Tool getToolDefinition() {
+                return tool;
+            }
+
+            @Override
+            public CallToolResult execute(Map<String, Object> parameters) {
+                return null;
+            }
+        };
+        return new ResolvedCatalog("知识库工具描述", null,
+                List.of(new McpToolBinding("leave_submit", "请假申请", "提交请假申请", true, executor)),
+                List.of());
+    }
+
     @SuppressWarnings("unchecked")
     private List<AgentBlock> capturedBlocks() {
         ArgumentCaptor<List<AgentBlock>> captor = ArgumentCaptor.forClass(List.class);
@@ -162,10 +253,14 @@ class AgentStreamEventBridgeTest {
     }
 
     private AgentStreamEventBridge newBridge() {
+        return newBridge(new ResolvedCatalog("知识库工具描述", null, List.of(), List.of()));
+    }
+
+    private AgentStreamEventBridge newBridge(ResolvedCatalog catalog) {
         return new AgentStreamEventBridge(AgentStreamEventBridge.Params.builder()
                 .runHandle(new AgentRunHandle(TASK_ID, sender, taskManager))
                 .conversationService(conversationService)
-                .catalog(new ResolvedCatalog("知识库工具描述", null, List.of(), List.of()))
+                .catalog(catalog)
                 .conversationId(CONVERSATION_ID)
                 .userId(USER_ID)
                 .title("会话标题")

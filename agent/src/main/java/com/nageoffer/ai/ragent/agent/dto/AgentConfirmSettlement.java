@@ -15,35 +15,10 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.rag.controller.request;
+package com.nageoffer.ai.ragent.agent.dto;
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-
-import java.util.List;
-
-@Data
-@NoArgsConstructor
-@AllArgsConstructor
-@Builder
-public class IntentNodeUpdateRequest {
-
-    private String name;
-    private Integer level;
-    private String parentCode;
-    private String description;
-    private List<String> examples;
-    private String mcpToolId;
-    private Integer requireConfirm;
-    private String collectionName;
-    private List<String> collectionNames;
-    private Integer topK;
-    private Integer kind;
-    private Integer sortOrder;
-    private Integer enabled;
-    private String promptSnippet;
-    private String promptTemplate;
-    private String paramPromptTemplate;
+/**
+ * 确认卡片结算后传递给后续执行的上下文：会话标题与原始提问消息 ID
+ */
+public record AgentConfirmSettlement(String title, String replyToMessageId) {
 }

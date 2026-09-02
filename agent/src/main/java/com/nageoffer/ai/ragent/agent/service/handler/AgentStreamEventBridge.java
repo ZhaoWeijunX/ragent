@@ -18,8 +18,12 @@
 package com.nageoffer.ai.ragent.agent.service.handler;
 
 import cn.hutool.core.util.StrUtil;
+import cn.hutool.json.JSONUtil;
 import com.nageoffer.ai.ragent.agent.dto.AgentBlock;
 import com.nageoffer.ai.ragent.agent.dto.AgentCompletionPayload;
+import com.nageoffer.ai.ragent.agent.dto.AgentConfirmCall;
+import com.nageoffer.ai.ragent.agent.dto.AgentConfirmField;
+import com.nageoffer.ai.ragent.agent.dto.AgentConfirmPayload;
 import com.nageoffer.ai.ragent.agent.dto.AgentHintPayload;
 import com.nageoffer.ai.ragent.agent.dto.AgentMessageDelta;
 import com.nageoffer.ai.ragent.agent.dto.AgentToolProgress;
@@ -32,6 +36,7 @@ import io.agentscope.core.ReActAgent;
 import io.agentscope.core.event.AgentEvent;
 import io.agentscope.core.event.AgentResultEvent;
 import io.agentscope.core.event.HintBlockEvent;
+import io.agentscope.core.event.RequireUserConfirmEvent;
 import io.agentscope.core.event.TextBlockDeltaEvent;
 import io.agentscope.core.event.ThinkingBlockDeltaEvent;
 import io.agentscope.core.event.ToolCallStartEvent;
@@ -39,6 +44,7 @@ import io.agentscope.core.event.ToolResultEndEvent;
 import io.agentscope.core.event.ToolResultTextDeltaEvent;
 import io.agentscope.core.message.Msg;
 import io.agentscope.core.message.ToolResultState;
+import io.agentscope.core.message.ToolUseBlock;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
@@ -47,12 +53,13 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
- * AgentScope 事件流到 SSE 协议的桥：增量转发、轨迹落库与取消收尾
- * 事件线程与取消线程交叠，可变状态在 stateLock 下变更，SSE 发送在锁外
+ * AgentScope 事件流 → SSE 协议转换，负责增量转发、轨迹落库与取消收尾
  */
 @Slf4j
 public class AgentStreamEventBridge {
@@ -64,12 +71,18 @@ public class AgentStreamEventBridge {
     private static final String HINT_AGENT = "AGENT_HINT";
     private static final String HINT_MAX_ITERATIONS = "MAX_ITERATIONS";
     /**
-     * 防跑飞护栏，正常不会触发
+     * 工具结果截断上限
      */
     private static final int TOOL_RESULT_MAX_CHARS = 64_000;
     private static final String FALLBACK_CALL_KEY = "__anonymous__";
     /**
-     * 跨天回放需全量时刻，不带时区偏移沿用前端约定
+     * 中断时的用户提示，执行过工具时提醒核对
+     */
+    private static final String NOTICE_TOOL_EXECUTED =
+            "回复到这里中断了。上面列出的操作已经提交出去，是否生效请到对应业务系统核对，不要直接再提交一次";
+    private static final String NOTICE_PLAIN = "回复到这里中断了，你可以重新问一次";
+    /**
+     * 块时间戳格式，沿用前端约定不带时区
      */
     private static final DateTimeFormatter BLOCK_TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss");
 
@@ -93,7 +106,12 @@ public class AgentStreamEventBridge {
     private final Map<String, StringBuilder> toolResultBuffers = new HashMap<>();
 
     /**
-     * 当前文本块及缓冲，工具事件到来即封口
+     * 待用户确认的工具调用，非 null 表示本轮挂起等待确认
+     */
+    private List<AgentConfirmCall> pendingConfirmCalls;
+
+    /**
+     * 当前未封口的文本块，工具事件到来时封口
      */
     private AgentBlock openTextBlock;
     private StringBuilder openTextBuffer;
@@ -121,20 +139,29 @@ public class AgentStreamEventBridge {
             case EXCEED_MAX_ITERS -> sender.sendEvent(AgentSSEEventType.HINT.value(),
                     new AgentHintPayload(HINT_MAX_ITERATIONS, "已达到最大迭代次数，正在生成当前执行结果的总结"));
             case AGENT_RESULT -> onAgentResult(((AgentResultEvent) event).getResult());
+            case REQUIRE_USER_CONFIRM -> onRequireUserConfirm((RequireUserConfirmEvent) event);
             default -> {
             }
         }
     }
 
     public void onComplete() {
+        // 被取消的轮次框架也会触发 onComplete，由 finishCancelledStream 统一收尾
+        if (runHandle.isCancelled()) {
+            return;
+        }
         runHandle.complete(() -> {
+            // 有待确认的工具时走确认流程，不发 finish
+            if (settleAwaitingConfirm()) {
+                return;
+            }
             String streamed;
             synchronized (stateLock) {
                 streamed = responseBuffer.toString();
             }
-            // 以流式增量为准，为空时回落终答消息
+            // 优先用流式增量，为空时回退到终答消息
             String content = StrUtil.isNotBlank(streamed) ? streamed : fallbackContent();
-            // 非流式兜底路径没有增量，一次性补发
+            // 非流式场景没有增量，一次性补发
             if (streamed.isEmpty() && StrUtil.isNotBlank(content)) {
                 synchronized (stateLock) {
                     appendTextBlock(DELTA_TYPE_RESPONSE, content);
@@ -149,18 +176,41 @@ public class AgentStreamEventBridge {
     }
 
     public void onError(Throwable throwable) {
-        // dispose 引发的信号中断不算错误，取消收尾由 finalizer 负责
+        // 取消导致的信号中断不算错误，由 finishCancelledStream 收尾
         if (runHandle.isCancelled()) {
             return;
         }
-        runHandle.fail(throwable, () -> log.error("Agent 流式会话异常, taskId: {}", runHandle.getTaskId(), throwable));
+        runHandle.fail(throwable, () -> {
+            log.error("Agent 流式会话异常, taskId: {}", runHandle.getTaskId(), throwable);
+            // 出错也落库留痕，否则已执行的工具操作在历史里查不到
+            persistAssistantMessage(interruptedContent(), AgentMessageStatus.INTERRUPTED);
+        });
     }
 
     /**
-     * 取消收尾：持久化已生成内容后补发 cancel/done
+     * 拼接中断提示，执行过工具时提醒用户核对
+     */
+    private String interruptedContent() {
+        String streamed;
+        boolean toolExecuted;
+        synchronized (stateLock) {
+            streamed = responseBuffer.toString();
+            toolExecuted = blocks.stream().anyMatch(block -> "tool".equals(block.getKind())
+                    && ("done".equals(block.getStatus()) || "failed".equals(block.getStatus())));
+        }
+        String notice = toolExecuted ? NOTICE_TOOL_EXECUTED : NOTICE_PLAIN;
+        return StrUtil.isBlank(streamed) ? notice : streamed + "\n\n" + notice;
+    }
+
+    /**
+     * 取消后收尾：持久化已生成内容，发 cancel/done 事件
      */
     public void finishCancelledStream() {
         runHandle.cancel(() -> {
+            // 取消时如果有待确认的工具，走确认流程而非中断
+            if (settleAwaitingConfirm()) {
+                return;
+            }
             String content;
             boolean tracked;
             synchronized (stateLock) {
@@ -205,6 +255,105 @@ public class AgentStreamEventBridge {
         }
     }
 
+    /**
+     * 收到确认事件：封装 confirm 块等待用户确认，参数仅用于展示，确认后从 Agent 状态重取
+     */
+    private void onRequireUserConfirm(RequireUserConfirmEvent event) {
+        List<AgentConfirmCall> calls = event.getToolCalls().stream()
+                .filter(toolCall -> !isInternalTool(toolCall.getName()))
+                .map(this::toConfirmCall)
+                .toList();
+        if (calls.isEmpty()) {
+            return;
+        }
+        AgentBlock block = AgentBlock.builder()
+                .kind("confirm")
+                .at(LocalDateTime.now().format(BLOCK_TIME))
+                .status("pending")
+                .calls(calls)
+                .build();
+        synchronized (stateLock) {
+            sealOpenTextBlock();
+            // 待确认的工具块还是 running，改成 awaiting 表示等待用户裁决
+            for (AgentConfirmCall call : calls) {
+                AgentBlock opened = openToolBlocks.get(callKey(call.getToolCallId()));
+                if (opened != null && "running".equals(opened.getStatus())) {
+                    opened.setStatus("awaiting");
+                }
+            }
+            blocks.add(block);
+            pendingConfirmCalls = calls;
+        }
+    }
+
+    private AgentConfirmCall toConfirmCall(ToolUseBlock toolCall) {
+        Map<String, Object> input = toolCall.getInput();
+        return AgentConfirmCall.builder()
+                .toolCallId(toolCall.getId())
+                .name(toolCall.getName())
+                .displayName(catalog.displayNameOf(toolCall.getName()))
+                .fields(toConfirmFields(toolCall.getName(), input))
+                .arguments(input == null || input.isEmpty() ? null : JSONUtil.toJsonPrettyStr(input))
+                .build();
+    }
+
+    /**
+     * 字段按 schema 声明序排列，schema 未声明的附在后面，确保所有参数可见
+     */
+    private List<AgentConfirmField> toConfirmFields(String toolName, Map<String, Object> input) {
+        if (input == null || input.isEmpty()) {
+            return null;
+        }
+        Map<String, String> labels = catalog.fieldLabelsOf(toolName);
+        Set<String> ordered = new LinkedHashSet<>(labels.keySet());
+        ordered.addAll(input.keySet());
+        List<AgentConfirmField> fields = ordered.stream()
+                .map(field -> AgentConfirmField.builder()
+                        .name(field)
+                        .label(labels.getOrDefault(field, field))
+                        .value(StrUtil.trim(StrUtil.toStringOrNull(input.get(field))))
+                        .build())
+                // 过滤掉模型未填的可选参数
+                .filter(field -> StrUtil.isNotEmpty(field.getValue()))
+                .toList();
+        return fields.isEmpty() ? null : fields;
+    }
+
+    /**
+     * 有待确认工具时走此分支：以 AWAITING_CONFIRM 落库并发 confirm 事件
+     */
+    private boolean settleAwaitingConfirm() {
+        List<AgentConfirmCall> pending;
+        String streamed;
+        synchronized (stateLock) {
+            if (pendingConfirmCalls == null) {
+                return false;
+            }
+            pending = pendingConfirmCalls;
+            streamed = responseBuffer.toString();
+        }
+        String messageId = persistAssistantMessage(streamed, AgentMessageStatus.AWAITING_CONFIRM);
+        if (messageId == null) {
+            settleUnpersistedConfirm();
+            return true;
+        }
+        sender.sendEvent(AgentSSEEventType.CONFIRM.value(), new AgentConfirmPayload(messageId, title, pending));
+        sender.sendEvent(AgentSSEEventType.DONE.value(), "[DONE]");
+        return true;
+    }
+
+    /**
+     * 确认消息落库失败：没有 messageId 无法结算，提示用户新建会话
+     */
+    private void settleUnpersistedConfirm() {
+        log.error("待确认消息落库失败, 本轮改为中断收尾, conversationId: {}", conversationId);
+        sender.sendEvent(AgentSSEEventType.HINT.value(),
+                new AgentHintPayload(HINT_AGENT, "系统繁忙，这一步没有执行；这条会话已无法继续，请新建会话重试"));
+        sender.sendEvent(AgentSSEEventType.FINISH.value(),
+                new AgentCompletionPayload(null, title, AgentMessageStatus.INTERRUPTED.name()));
+        sender.sendEvent(AgentSSEEventType.DONE.value(), "[DONE]");
+    }
+
     private void onToolStart(ToolCallStartEvent event) {
         String toolName = event.getToolCallName();
         if (isInternalTool(toolName)) {
@@ -216,7 +365,7 @@ public class AgentStreamEventBridge {
                 .name(toolName)
                 .displayName(catalog.displayNameOf(toolName))
                 .status("running")
-                // 落真实 id 而非 callKey 的兜底值
+                // 记录真实 id，空值不落
                 .toolCallId(StrUtil.blankToDefault(event.getToolCallId(), null))
                 .build();
         synchronized (stateLock) {
@@ -224,8 +373,8 @@ public class AgentStreamEventBridge {
             blocks.add(block);
             openToolBlocks.put(callKey(event.getToolCallId()), block);
         }
-        sender.sendEvent(AgentSSEEventType.TOOL.value(),
-                new AgentToolProgress(toolName, block.getDisplayName(), TOOL_STATUS_START, null, null));
+        sender.sendEvent(AgentSSEEventType.TOOL.value(), new AgentToolProgress(block.getToolCallId(),
+                toolName, block.getDisplayName(), TOOL_STATUS_START, null, null));
     }
 
     private void onToolResultDelta(ToolResultTextDeltaEvent event) {
@@ -244,6 +393,7 @@ public class AgentStreamEventBridge {
             return;
         }
         boolean ok = event.getState() == ToolResultState.SUCCESS;
+        String toolCallId = StrUtil.blankToDefault(event.getToolCallId(), null);
         String result;
         synchronized (stateLock) {
             sealOpenTextBlock();
@@ -251,17 +401,26 @@ public class AgentStreamEventBridge {
             StringBuilder buffer = toolResultBuffers.remove(callKey);
             result = buffer == null ? null : StrUtil.sub(buffer.toString(), 0, TOOL_RESULT_MAX_CHARS);
             AgentBlock block = openToolBlocks.remove(callKey);
-            if (block != null) {
-                block.setStatus(ok ? "done" : "failed");
-                block.setResult(result);
+            if (block == null) {
+                // 确认后继续执行的工具在上一轮已开头，框架只补发结束事件，这里补建块以便落库
+                block = AgentBlock.builder()
+                        .kind("tool")
+                        .at(LocalDateTime.now().format(BLOCK_TIME))
+                        .name(toolName)
+                        .displayName(catalog.displayNameOf(toolName))
+                        .toolCallId(toolCallId)
+                        .build();
+                blocks.add(block);
             }
+            block.setStatus(ok ? "done" : "failed");
+            block.setResult(result);
         }
-        sender.sendEvent(AgentSSEEventType.TOOL.value(),
-                new AgentToolProgress(toolName, catalog.displayNameOf(toolName), TOOL_STATUS_END, result, ok));
+        sender.sendEvent(AgentSSEEventType.TOOL.value(), new AgentToolProgress(toolCallId,
+                toolName, catalog.displayNameOf(toolName), TOOL_STATUS_END, result, ok));
     }
 
     /**
-     * 端点不回 toolCallId 时退化到单槽兜底
+     * toolCallId 为空时用固定 key 兜底
      */
     private String callKey(String toolCallId) {
         return StrUtil.blankToDefault(toolCallId, FALLBACK_CALL_KEY);
@@ -275,7 +434,7 @@ public class AgentStreamEventBridge {
     }
 
     /**
-     * 框架内部工具不暴露给业务
+     * 框架内部工具不展示给用户
      */
     private boolean isInternalTool(String toolName) {
         return StrUtil.isBlank(toolName) || ReActAgent.STRUCTURED_OUTPUT_TOOL_NAME.equals(toolName);
@@ -321,7 +480,7 @@ public class AgentStreamEventBridge {
     private String persistAssistantMessage(String content, AgentMessageStatus status) {
         String thinking;
         List<AgentBlock> settled;
-        // 思考文本与轨迹取自同一临界区
+        // 思考文本与块列表在同一个锁内取快照
         synchronized (stateLock) {
             thinking = thinkingBuffer.toString();
             settled = settledBlocks();
@@ -336,13 +495,14 @@ public class AgentStreamEventBridge {
     }
 
     /**
-     * 调用方需持 stateLock：封口文本块，running 置 interrupted，剔除空块
+     * 调用方需持 stateLock：封口文本块、running 改 interrupted、剔除空文本块
      */
     private List<AgentBlock> settledBlocks() {
         sealOpenTextBlock();
         List<AgentBlock> settled = new ArrayList<>(blocks.size());
         for (AgentBlock block : blocks) {
-            if (!"tool".equals(block.getKind()) && StrUtil.isBlank(block.getText())) {
+            boolean textual = !"tool".equals(block.getKind()) && !"confirm".equals(block.getKind());
+            if (textual && StrUtil.isBlank(block.getText())) {
                 continue;
             }
             if ("running".equals(block.getStatus())) {

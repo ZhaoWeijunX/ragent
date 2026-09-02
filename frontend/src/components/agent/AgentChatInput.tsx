@@ -2,15 +2,17 @@ import * as React from "react";
 
 import { ArrowUp, Square } from "lucide-react";
 
-import { useAgentChatStore } from "@/stores/agentChatStore";
+import { awaitingConfirm, useAgentChatStore } from "@/stores/agentChatStore";
 
 // 无深度思考开关：Agent 自主规划是否思考
 export function AgentChatInput() {
   const [value, setValue] = React.useState("");
   const isComposingRef = React.useRef(false);
   const textareaRef = React.useRef<HTMLTextAreaElement | null>(null);
-  const { sendMessage, isStreaming, cancelGeneration, inputFocusKey, draft } =
+  const { sendMessage, isStreaming, cancelGeneration, inputFocusKey, draft, messages } =
     useAgentChatStore();
+  // 挂起在写操作确认上时输入条让位：这会儿只有卡片上那两枚钮是有效的下一步
+  const awaiting = awaitingConfirm(messages);
 
   const focusInput = React.useCallback(() => {
     textareaRef.current?.focus({ preventScroll: true });
@@ -40,7 +42,7 @@ export function AgentChatInput() {
   }, [draft, focusInput]);
 
   const submit = async () => {
-    if (!value.trim() || isStreaming) return;
+    if (!value.trim() || isStreaming || awaiting) return;
     const next = value;
     setValue("");
     focusInput();
@@ -58,7 +60,7 @@ export function AgentChatInput() {
           className="agent-composer-input"
           value={value}
           rows={1}
-          placeholder="给 RagentAI 发送消息"
+          placeholder={awaiting ? "请先在上方确认或取消该操作" : "给 RagentAI 发送消息"}
           onChange={(event) => setValue(event.target.value)}
           onCompositionStart={() => {
             isComposingRef.current = true;
@@ -101,7 +103,7 @@ export function AgentChatInput() {
             aria-label="发送"
             title="发送（Enter）"
             onClick={() => void submit()}
-            disabled={value.trim() === ""}
+            disabled={value.trim() === "" || awaiting}
           >
             <ArrowUp className="h-4 w-4" strokeWidth={2.5} />
           </button>

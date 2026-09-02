@@ -15,35 +15,34 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.rag.controller.request;
+package com.nageoffer.ai.ragent.agent.dto;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.util.List;
-
+/**
+ * 确认卡片上的一项入参
+ */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class IntentNodeUpdateRequest {
+public class AgentConfirmField {
 
+    /**
+     * 原始字段名
+     */
     private String name;
-    private Integer level;
-    private String parentCode;
-    private String description;
-    private List<String> examples;
-    private String mcpToolId;
-    private Integer requireConfirm;
-    private String collectionName;
-    private List<String> collectionNames;
-    private Integer topK;
-    private Integer kind;
-    private Integer sortOrder;
-    private Integer enabled;
-    private String promptSnippet;
-    private String promptTemplate;
-    private String paramPromptTemplate;
+
+    /**
+     * 展示标签，取自 schema title，未声明时等于 name
+     */
+    private String label;
+
+    /**
+     * 模型填入的参数值
+     */
+    private String value;
 }

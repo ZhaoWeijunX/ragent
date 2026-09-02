@@ -20,6 +20,7 @@ package com.nageoffer.ai.ragent.agent.tool;
 import com.nageoffer.ai.ragent.agent.memory.AgentMemoryPipeline;
 import com.nageoffer.ai.ragent.agent.memory.AgentMemoryProperties;
 import com.nageoffer.ai.ragent.agent.service.AgentConversationService;
+import com.nageoffer.ai.ragent.agent.tool.AgentToolCatalog.McpToolBinding;
 import com.nageoffer.ai.ragent.rag.core.intent.IntentNode;
 import com.nageoffer.ai.ragent.rag.core.intent.IntentNodeRegistry;
 import com.nageoffer.ai.ragent.rag.core.mcp.McpToolExecutor;
@@ -28,6 +29,8 @@ import com.nageoffer.ai.ragent.rag.core.prompt.AgentPromptResolver;
 import com.nageoffer.ai.ragent.rag.core.prompt.AgentPromptSlot;
 import com.nageoffer.ai.ragent.rag.enums.IntentKind;
 import com.nageoffer.ai.ragent.rag.service.KnowledgeSearchFacade;
+import io.agentscope.core.permission.PermissionBehavior;
+import io.agentscope.core.tool.ToolBase;
 import io.agentscope.core.tool.Toolkit;
 import io.modelcontextprotocol.spec.McpSchema.CallToolResult;
 import io.modelcontextprotocol.spec.McpSchema.JsonSchema;
@@ -35,10 +38,12 @@ import io.modelcontextprotocol.spec.McpSchema.Tool;
 import io.modelcontextprotocol.spec.McpSchema.ToolAnnotations;
 import org.junit.jupiter.api.Test;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.entry;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -144,6 +149,52 @@ class AgentToolCatalogTest {
         assertThat(resolved.displayNameOf(MemoryFlushTool.TOOL_NAME)).isEqualTo(MemoryFlushTool.TOOL_NAME);
     }
 
+    /**
+     * 确认开关是人工勾的，会漏；工具作者写死的 readOnlyHint=false 不会
+     */
+    @Test
+    void shouldAskConfirmForDeclaredWriteToolWhenIntentNodeMisses() {
+        Toolkit toolkit = buildToolkitFor(
+                executor("write_query", "写工具", readOnlyHint(false)),
+                executor("read_query", "只读工具", readOnlyHint(true)),
+                executor("plain_query", "没声明的工具", null));
+
+        // 三个节点都没勾确认：自报的写工具照样拦下，没声明的仍听意图树，否则查询工具会集体开始弹卡片
+        assertThat(behaviorOf(toolkit, "write_query")).isEqualTo(PermissionBehavior.ASK);
+        assertThat(behaviorOf(toolkit, "read_query")).isEqualTo(PermissionBehavior.ALLOW);
+        assertThat(behaviorOf(toolkit, "plain_query")).isEqualTo(PermissionBehavior.ALLOW);
+    }
+
+    /**
+     * 确认卡的字段顺序跟 schema 走而不是跟模型输出走，两次调用才能按同一顺序比出差异项
+     */
+    @Test
+    void shouldTakeConfirmFieldLabelsFromSchemaTitle() {
+        Map<String, Object> properties = new LinkedHashMap<>();
+        properties.put("leaveType", Map.of("type", "string", "title", "假期类型"));
+        properties.put("reason", Map.of("type", "string"));
+        Tool tool = Tool.builder()
+                .name("leave_submit")
+                .description("提交请假申请")
+                .inputSchema(new JsonSchema("object", properties, List.of(), null, null, null))
+                .build();
+
+        AgentToolCatalog.ResolvedCatalog resolved = new AgentToolCatalog.ResolvedCatalog(
+                "知识库工具描述", null,
+                List.of(new McpToolBinding("leave_submit", "请假申请", "提交请假申请", true, executor(tool))),
+                List.of());
+
+        // 没写 title 的字段回落原名，总比在授权界面上凭空少一项强
+        assertThat(resolved.fieldLabelsOf("leave_submit"))
+                .containsExactly(entry("leaveType", "假期类型"), entry("reason", "reason"));
+        assertThat(resolved.fieldLabelsOf("search_knowledge")).isEmpty();
+    }
+
+    private PermissionBehavior behaviorOf(Toolkit toolkit, String toolId) {
+        ToolBase tool = (ToolBase) toolkit.getTool(toolId);
+        return tool.checkPermissions(Map.of(), null).block().getBehavior();
+    }
+
     private Toolkit buildToolkitFor(McpToolExecutor... executors) {
         List<McpToolExecutor> executorList = List.of(executors);
         IntentNodeRegistry intentNodeRegistry = mock(IntentNodeRegistry.class);
@@ -218,12 +269,15 @@ class AgentToolCatalogTest {
 
     private McpToolExecutor executor(String toolId, String description, ToolAnnotations annotations) {
         JsonSchema schema = new JsonSchema("object", Map.of(), List.of(), false, null, null);
-        Tool tool = Tool.builder()
+        return executor(Tool.builder()
                 .name(toolId)
                 .description(description)
                 .inputSchema(schema)
                 .annotations(annotations)
-                .build();
+                .build());
+    }
+
+    private McpToolExecutor executor(Tool tool) {
         return new McpToolExecutor() {
             @Override
             public Tool getToolDefinition() {

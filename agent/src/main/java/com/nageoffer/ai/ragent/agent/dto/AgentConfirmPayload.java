@@ -15,35 +15,15 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.rag.controller.request;
+package com.nageoffer.ai.ragent.agent.dto;
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import com.fasterxml.jackson.annotation.JsonInclude;
 
 import java.util.List;
 
-@Data
-@NoArgsConstructor
-@AllArgsConstructor
-@Builder
-public class IntentNodeUpdateRequest {
-
-    private String name;
-    private Integer level;
-    private String parentCode;
-    private String description;
-    private List<String> examples;
-    private String mcpToolId;
-    private Integer requireConfirm;
-    private String collectionName;
-    private List<String> collectionNames;
-    private Integer topK;
-    private Integer kind;
-    private Integer sortOrder;
-    private Integer enabled;
-    private String promptSnippet;
-    private String promptTemplate;
-    private String paramPromptTemplate;
+/**
+ * SSE confirm 事件载荷，前端据此展示确认卡片，messageId 用于后续确认请求
+ */
+@JsonInclude(JsonInclude.Include.NON_NULL)
+public record AgentConfirmPayload(String messageId, String title, List<AgentConfirmCall> calls) {
 }

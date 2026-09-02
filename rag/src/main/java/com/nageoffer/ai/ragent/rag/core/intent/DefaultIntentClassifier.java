@@ -44,6 +44,7 @@ import java.util.Deque;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.INTENT_CLASSIFIER_PROMPT_PATH;
@@ -303,6 +304,7 @@ public class DefaultIntentClassifier implements IntentClassifier, IntentNodeRegi
             node.setId(each.getIntentCode());
             node.setParentId(each.getParentCode());
             node.setMcpToolId(each.getMcpToolId());
+            node.setRequireConfirm(Objects.equals(each.getRequireConfirm(), 1));
             node.setParamPromptTemplate(each.getParamPromptTemplate());
             node.setExamples(parseExamples(each.getExamples()));
             if (CollUtil.isEmpty(each.getCollectionNames())) {
