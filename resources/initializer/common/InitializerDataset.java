@@ -233,6 +233,7 @@ final class InitializerDataset {
                         trimToNull(values.getProperty("description")),
                         split(values.getProperty("examples"), "\\|"),
                         trimToNull(values.getProperty("mcp-tool-id")),
+                        optionalBoolean(values, "require-confirm", false),
                         optionalInt(values, "top-k", file),
                         requiredInt(values, "sort-order", file),
                         optionalBoolean(values, "enabled", true),
@@ -365,7 +366,7 @@ final class InitializerDataset {
 
     record IntentDefinition(String code, String name, int level, String parentCode, int kind,
                             String knowledgeBaseRef, String description, List<String> examples,
-                            String mcpToolId, Integer topK, int sortOrder, boolean enabled,
+                            String mcpToolId, boolean requireConfirm, Integer topK, int sortOrder, boolean enabled,
                             String promptSnippet, String promptTemplate, String paramPromptTemplate) {
     }
 

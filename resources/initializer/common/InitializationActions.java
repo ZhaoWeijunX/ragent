@@ -218,6 +218,7 @@ final class InitializationActions {
                 payload.put("examples", intent.examples());
             }
             putIfNotNull(payload, "mcpToolId", intent.mcpToolId());
+            payload.put("requireConfirm", intent.requireConfirm() ? 1 : 0);
             putIfNotNull(payload, "topK", intent.topK());
             payload.put("kind", intent.kind());
             payload.put("sortOrder", intent.sortOrder());
