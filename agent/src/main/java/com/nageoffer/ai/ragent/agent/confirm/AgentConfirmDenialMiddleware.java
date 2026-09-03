@@ -53,7 +53,7 @@ public class AgentConfirmDenialMiddleware implements MiddlewareBase {
      */
     private static final String DENIAL_EXPLANATION = """
             用户在确认卡片上点了取消，这次操作没有执行。这不是权限不足，也不是系统故障。
-            请如实告诉用户操作已取消；等他确认后再重新发起。""";
+            请如实告诉用户操作已取消；等用户确认后再重新发起。""";
 
     @Override
     public Flux<AgentEvent> onReasoning(Agent agent, RuntimeContext runtimeContext, ReasoningInput input,

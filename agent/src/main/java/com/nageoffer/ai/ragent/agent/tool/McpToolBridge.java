@@ -19,8 +19,10 @@ package com.nageoffer.ai.ragent.agent.tool;
 
 import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.StrUtil;
+import com.nageoffer.ai.ragent.agent.skill.AgentSkillMaskingMiddleware;
 import com.nageoffer.ai.ragent.agent.tool.AgentToolCatalog.McpToolBinding;
 import com.nageoffer.ai.ragent.rag.core.mcp.McpToolExecutor;
+import io.agentscope.core.agent.RuntimeContext;
 import io.agentscope.core.message.TextBlock;
 import io.agentscope.core.message.ToolResultBlock;
 import io.agentscope.core.message.ToolResultState;
@@ -73,6 +75,7 @@ public class McpToolBridge extends ToolBase {
 
     /**
      * 需要确认时返回 ask，否则返回 allow
+     * 框架只取 behavior，message 既不进确认卡也不进模型上下文，这里的文案仅供排查时读
      */
     @Override
     public Mono<PermissionDecision> checkPermissions(Map<String, Object> toolInput, PermissionContextState context) {
@@ -91,8 +94,35 @@ public class McpToolBridge extends ToolBase {
 
     @Override
     public Mono<ToolResultBlock> callAsync(ToolCallParam param) {
+        String maskedBy = maskedBySkill(param);
+        if (maskedBy != null) {
+            log.info("技能未加载, 拒绝直接调用, toolId: {}, skillCode: {}", getName(), maskedBy);
+            return Mono.just(buildResult(toolCallId(param), """
+                    这个工具属于技能 %s，手册还没加载，本次调用没有执行。
+                    请先调用 load_skill 取 skill_code 为 %s 的手册，按手册里的步骤办。"""
+                    .formatted(maskedBy, maskedBy), true));
+        }
         return Mono.fromCallable(() -> execute(param))
                 .subscribeOn(Schedulers.boundedElastic());
+    }
+
+    /**
+     * schema 已遮蔽仍打过来的调用兜底：模型照着历史里的旧调用硬闯时退回让它先取手册
+     *
+     * @return 该工具所属且未加载的技能标识，未被遮蔽返回 null
+     */
+    private String maskedBySkill(ToolCallParam param) {
+        RuntimeContext runtimeContext = param == null ? null : param.getRuntimeContext();
+        Object masked = runtimeContext == null
+                ? null
+                : runtimeContext.get(AgentSkillMaskingMiddleware.MASKED_TOOLS_ATTRIBUTE);
+        return masked instanceof Map<?, ?> map && map.get(getName()) instanceof String skillCode
+                ? skillCode
+                : null;
+    }
+
+    private static String toolCallId(ToolCallParam param) {
+        return param == null || param.getToolUseBlock() == null ? null : param.getToolUseBlock().getId();
     }
 
     private static String resolveDescription(McpToolBinding binding) {
@@ -123,7 +153,7 @@ public class McpToolBridge extends ToolBase {
     }
 
     private ToolResultBlock execute(ToolCallParam param) {
-        String toolCallId = param.getToolUseBlock() == null ? null : param.getToolUseBlock().getId();
+        String toolCallId = toolCallId(param);
         try {
             CallToolResult result = executor.execute(new HashMap<>(param.getInput()));
             boolean isError = result != null && Boolean.TRUE.equals(result.isError());

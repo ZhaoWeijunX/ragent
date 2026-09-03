@@ -426,6 +426,26 @@ CREATE TABLE t_agent_prompt (
 CREATE INDEX idx_agent_prompt_agent ON t_agent_prompt (agent_id);
 COMMENT ON TABLE t_agent_prompt IS '智能体提示词槽位表';
 
+CREATE TABLE t_agent_skill (
+    id          VARCHAR(20)  NOT NULL PRIMARY KEY,
+    skill_code  VARCHAR(64)  NOT NULL,
+    name        VARCHAR(64)  NOT NULL,
+    description VARCHAR(512) NOT NULL,
+    content     TEXT         NOT NULL,
+    tool_ids    JSONB        NOT NULL DEFAULT '[]'::jsonb,
+    sort_order  INTEGER      NOT NULL DEFAULT 0,
+    enabled     SMALLINT     NOT NULL DEFAULT 1,
+    create_by   VARCHAR(20),
+    update_by   VARCHAR(20),
+    create_time TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    update_time TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted     SMALLINT     NOT NULL DEFAULT 0
+);
+-- 逻辑删除后 skill_code 应可重新占用，唯一性只约束未删除的行
+CREATE UNIQUE INDEX uk_agent_skill_code ON t_agent_skill (skill_code) WHERE deleted = 0;
+CREATE INDEX idx_agent_skill_enabled ON t_agent_skill (enabled, deleted);
+COMMENT ON TABLE t_agent_skill IS '智能体技能表';
+
 -- ============================================
 -- Agent Engine Tables (v2 ReAct，与 workflow 会话两套分立)
 -- ============================================
@@ -950,6 +970,21 @@ COMMENT ON COLUMN t_agent_prompt.update_by IS '更新人';
 COMMENT ON COLUMN t_agent_prompt.create_time IS '创建时间';
 COMMENT ON COLUMN t_agent_prompt.update_time IS '更新时间';
 COMMENT ON COLUMN t_agent_prompt.deleted IS '是否删除 0：正常 1：删除';
+
+-- t_agent_skill
+COMMENT ON COLUMN t_agent_skill.id IS '主键ID';
+COMMENT ON COLUMN t_agent_skill.skill_code IS '技能标识，模型按此名加载正文';
+COMMENT ON COLUMN t_agent_skill.name IS '技能展示名';
+COMMENT ON COLUMN t_agent_skill.description IS '技能适用场景，随清单一起交给模型判断是否加载';
+COMMENT ON COLUMN t_agent_skill.content IS '技能正文 Markdown，模型加载后按此执行';
+COMMENT ON COLUMN t_agent_skill.tool_ids IS '加载技能后才解锁的 MCP 工具 ID，取自意图树 MCP 节点';
+COMMENT ON COLUMN t_agent_skill.sort_order IS '排序，越小越靠前';
+COMMENT ON COLUMN t_agent_skill.enabled IS '是否启用 0：停用 1：启用';
+COMMENT ON COLUMN t_agent_skill.create_by IS '创建人';
+COMMENT ON COLUMN t_agent_skill.update_by IS '更新人';
+COMMENT ON COLUMN t_agent_skill.create_time IS '创建时间';
+COMMENT ON COLUMN t_agent_skill.update_time IS '更新时间';
+COMMENT ON COLUMN t_agent_skill.deleted IS '是否删除 0：正常 1：删除';
 
 -- t_agent_conversation
 COMMENT ON COLUMN t_agent_conversation.id IS '主键ID';

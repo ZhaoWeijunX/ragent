@@ -22,12 +22,15 @@ import com.nageoffer.ai.ragent.agent.config.ConditionalOnAgentEngine;
 import com.nageoffer.ai.ragent.agent.memory.AgentMemoryPipeline;
 import com.nageoffer.ai.ragent.agent.memory.AgentMemoryProperties;
 import com.nageoffer.ai.ragent.agent.service.AgentConversationService;
+import com.nageoffer.ai.ragent.agent.skill.SkillLoadTool;
 import com.nageoffer.ai.ragent.rag.core.intent.IntentNode;
 import com.nageoffer.ai.ragent.rag.core.intent.IntentNodeRegistry;
 import com.nageoffer.ai.ragent.rag.core.mcp.McpToolExecutor;
 import com.nageoffer.ai.ragent.rag.core.mcp.McpToolRegistry;
 import com.nageoffer.ai.ragent.rag.core.prompt.AgentPromptResolver;
 import com.nageoffer.ai.ragent.rag.core.prompt.AgentPromptSlot;
+import com.nageoffer.ai.ragent.rag.core.skill.AgentSkill;
+import com.nageoffer.ai.ragent.rag.core.skill.AgentSkillRegistry;
 import com.nageoffer.ai.ragent.rag.service.KnowledgeSearchFacade;
 import io.agentscope.core.tool.Toolkit;
 import io.modelcontextprotocol.spec.McpSchema.JsonSchema;
@@ -60,6 +63,7 @@ public class AgentToolCatalog {
     private final AgentPromptResolver agentPromptResolver;
     private final AgentMemoryProperties memoryProperties;
     private final AgentMemoryPipeline memoryPipeline;
+    private final AgentSkillRegistry skillRegistry;
 
     /**
      * 解析当前可用工具并生成快照，同一请求内指纹与 Toolkit 都从此快照派生
@@ -68,11 +72,12 @@ public class AgentToolCatalog {
         List<String> unavailableToolIds = new ArrayList<>();
         List<McpToolBinding> bindings = resolveMcpToolBindings(unavailableToolIds);
         return new ResolvedCatalog(resolveKnowledgeToolDescription(), resolveMemoryToolDescription(),
-                bindings, unavailableToolIds);
+                bindings, unavailableToolIds, skillRegistry.listEnabled());
     }
 
     /**
      * 根据快照构建 Toolkit
+     * 由技能解锁的工具照常注册，遮蔽交给 AgentSkillMaskingMiddleware 按会话逐轮判定
      */
     public Toolkit buildToolkit(ResolvedCatalog catalog) {
         Toolkit toolkit = new Toolkit();
@@ -82,6 +87,9 @@ public class AgentToolCatalog {
             toolkit.registerAgentTool(new MemoryFlushTool(catalog.memoryToolDescription, memoryPipeline));
         } else if (memoryProperties.isLongTermEnabled()) {
             log.warn("AGENT_MEMORY_TOOL_DESCRIPTION 提示词为空, 本次不挂载 {}", MemoryFlushTool.TOOL_NAME);
+        }
+        if (catalog.hasSkills) {
+            toolkit.registerAgentTool(new SkillLoadTool(skillRegistry, catalog.displayNames));
         }
         catalog.bindings.forEach(binding -> toolkit.registerAgentTool(new McpToolBridge(binding)));
         // 不可用工具只在构建 Toolkit 时报一次，避免每次解析都刷日志
@@ -182,6 +190,12 @@ public class AgentToolCatalog {
 
         private final List<McpToolBinding> bindings;
         private final List<String> unavailableToolIds;
+
+        /**
+         * 有启用技能时才挂 load_skill，没配技能的接入方看不到这个工具
+         */
+        private final boolean hasSkills;
+
         private final Map<String, String> displayNames;
         private final Map<String, Map<String, String>> fieldLabels;
         private final ToolCatalogFingerprint fingerprint;
@@ -190,16 +204,21 @@ public class AgentToolCatalog {
                 String knowledgeToolDescription,
                 String memoryToolDescription,
                 List<McpToolBinding> bindings,
-                List<String> unavailableToolIds) {
+                List<String> unavailableToolIds,
+                List<AgentSkill> skills) {
             this.knowledgeToolDescription = knowledgeToolDescription;
             this.memoryToolDescription = memoryToolDescription;
             this.bindings = List.copyOf(bindings);
             this.unavailableToolIds = List.copyOf(unavailableToolIds);
+            this.hasSkills = !skills.isEmpty();
 
             Map<String, String> names = new LinkedHashMap<>();
             names.put(KnowledgeSearchTool.TOOL_NAME, KnowledgeSearchTool.DISPLAY_NAME);
             if (memoryToolDescription != null) {
                 names.put(MemoryFlushTool.TOOL_NAME, MemoryFlushTool.DISPLAY_NAME);
+            }
+            if (hasSkills) {
+                names.put(SkillLoadTool.TOOL_NAME, SkillLoadTool.DISPLAY_NAME);
             }
             Map<String, Map<String, String>> labels = new LinkedHashMap<>();
             this.bindings.forEach(binding -> {
@@ -216,6 +235,10 @@ public class AgentToolCatalog {
                                     binding.description(),
                                     binding.requireConfirm(),
                                     binding.executor().getToolDefinition()))
+                            .toList(),
+                    skills.stream()
+                            .map(skill -> new SkillFingerprint(
+                                    skill.skillCode(), skill.name(), skill.description(), skill.toolIds()))
                             .toList());
         }
 
@@ -259,10 +282,26 @@ public class AgentToolCatalog {
     public record ToolCatalogFingerprint(
             String knowledgeToolDescription,
             String memoryToolDescription,
-            List<McpToolFingerprint> mcpTools) {
+            List<McpToolFingerprint> mcpTools,
+            List<SkillFingerprint> skills) {
 
         public ToolCatalogFingerprint {
             mcpTools = List.copyOf(mcpTools);
+            skills = List.copyOf(skills);
+        }
+    }
+
+    /**
+     * 技能指纹不含正文：正文由 load_skill 现取，改手册不必重建 Agent
+     */
+    public record SkillFingerprint(
+            String skillCode,
+            String name,
+            String description,
+            List<String> toolIds) {
+
+        public SkillFingerprint {
+            toolIds = List.copyOf(toolIds);
         }
     }
 

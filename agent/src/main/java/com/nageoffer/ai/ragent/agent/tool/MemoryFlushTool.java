@@ -138,7 +138,7 @@ public class MemoryFlushTool implements AgentTool {
             case CAPACITY_REJECTED -> buildResult(toolCallId, "记忆容量已达上限，本次内容未能写入", true);
             case DISABLED -> buildResult(toolCallId, "记忆功能当前未开启，本次内容不会被记住", true);
             // 快照过期是良性的：水位没推，同一区间下一轮 turn release 会重新抽一次
-            case CONFLICT -> buildResult(toolCallId, "记忆刚被另一次整理改动，本次未写入，稍后会自动重试", true);
+            case CONFLICT -> buildResult(toolCallId, "记忆刚被另一次整理改动，本次未写入，下次对话时会再试一次", true);
             case FAILED -> buildResult(toolCallId, "记忆整理失败，本次内容未能写入", true);
         };
     }

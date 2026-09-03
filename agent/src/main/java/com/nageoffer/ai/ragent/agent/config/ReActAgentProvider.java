@@ -21,6 +21,7 @@ import cn.hutool.core.util.StrUtil;
 import com.nageoffer.ai.ragent.agent.confirm.AgentConfirmDenialMiddleware;
 import com.nageoffer.ai.ragent.agent.memory.AgentContextCompactionMiddleware;
 import com.nageoffer.ai.ragent.agent.memory.AgentUserMemoryMiddleware;
+import com.nageoffer.ai.ragent.agent.skill.AgentSkillMaskingMiddleware;
 import com.nageoffer.ai.ragent.agent.state.PgAgentStateStore;
 import com.nageoffer.ai.ragent.agent.tool.AgentToolCatalog;
 import com.nageoffer.ai.ragent.agent.tool.AgentToolCatalog.ResolvedCatalog;
@@ -52,6 +53,7 @@ public class ReActAgentProvider {
     private final AgentUserMemoryMiddleware userMemoryMiddleware;
     private final AgentContextCompactionMiddleware contextCompactionMiddleware;
     private final AgentConfirmDenialMiddleware confirmDenialMiddleware;
+    private final AgentSkillMaskingMiddleware skillMaskingMiddleware;
 
     private volatile CachedAgent cached;
 
@@ -113,6 +115,8 @@ public class ReActAgentProvider {
                 .middleware(contextCompactionMiddleware)
                 // 排在压缩之后：被压进摘要的那条拒绝结果已经不在列表里，改写自然跳过
                 .middleware(confirmDenialMiddleware)
+                // 最内层：手册被压缩带走后遮蔽跟着复位，工具与手册同进同出
+                .middleware(skillMaskingMiddleware)
                 .build();
     }
 

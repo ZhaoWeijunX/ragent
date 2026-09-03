@@ -241,7 +241,7 @@ class AgentStreamEventBridgeTest {
         };
         return new ResolvedCatalog("知识库工具描述", null,
                 List.of(new McpToolBinding("leave_submit", "请假申请", "提交请假申请", true, executor)),
-                List.of());
+                List.of(), List.of());
     }
 
     @SuppressWarnings("unchecked")
@@ -253,7 +253,7 @@ class AgentStreamEventBridgeTest {
     }
 
     private AgentStreamEventBridge newBridge() {
-        return newBridge(new ResolvedCatalog("知识库工具描述", null, List.of(), List.of()));
+        return newBridge(new ResolvedCatalog("知识库工具描述", null, List.of(), List.of(), List.of()));
     }
 
     private AgentStreamEventBridge newBridge(ResolvedCatalog catalog) {

@@ -27,6 +27,7 @@ import com.nageoffer.ai.ragent.rag.core.mcp.McpToolExecutor;
 import com.nageoffer.ai.ragent.rag.core.mcp.McpToolRegistry;
 import com.nageoffer.ai.ragent.rag.core.prompt.AgentPromptResolver;
 import com.nageoffer.ai.ragent.rag.core.prompt.AgentPromptSlot;
+import com.nageoffer.ai.ragent.rag.core.skill.AgentSkillRegistry;
 import com.nageoffer.ai.ragent.rag.enums.IntentKind;
 import com.nageoffer.ai.ragent.rag.service.KnowledgeSearchFacade;
 import io.agentscope.core.permission.PermissionBehavior;
@@ -70,7 +71,8 @@ class AgentToolCatalogTest {
                 mcpToolRegistry,
                 agentPromptResolver,
                 memoryProperties(false),
-                mock(AgentMemoryPipeline.class));
+                mock(AgentMemoryPipeline.class),
+                mock(AgentSkillRegistry.class));
 
         AgentToolCatalog.ResolvedCatalog resolved = catalog.resolve();
         Toolkit toolkit = catalog.buildToolkit(resolved);
@@ -182,7 +184,7 @@ class AgentToolCatalogTest {
         AgentToolCatalog.ResolvedCatalog resolved = new AgentToolCatalog.ResolvedCatalog(
                 "知识库工具描述", null,
                 List.of(new McpToolBinding("leave_submit", "请假申请", "提交请假申请", true, executor(tool))),
-                List.of());
+                List.of(), List.of());
 
         // 没写 title 的字段回落原名，总比在授权界面上凭空少一项强
         assertThat(resolved.fieldLabelsOf("leave_submit"))
@@ -215,7 +217,8 @@ class AgentToolCatalogTest {
                 mcpToolRegistry,
                 agentPromptResolver,
                 memoryProperties(false),
-                mock(AgentMemoryPipeline.class));
+                mock(AgentMemoryPipeline.class),
+                mock(AgentSkillRegistry.class));
         return catalog.buildToolkit(catalog.resolve());
     }
 
@@ -240,7 +243,8 @@ class AgentToolCatalogTest {
                 mcpToolRegistry,
                 agentPromptResolver,
                 memoryProperties(longTermEnabled),
-                mock(AgentMemoryPipeline.class));
+                mock(AgentMemoryPipeline.class),
+                mock(AgentSkillRegistry.class));
     }
 
     private AgentMemoryProperties memoryProperties(boolean longTermEnabled) {

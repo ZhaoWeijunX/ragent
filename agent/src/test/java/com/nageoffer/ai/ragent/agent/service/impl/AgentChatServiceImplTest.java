@@ -97,7 +97,7 @@ class AgentChatServiceImplTest {
         gateReleased = new AtomicInteger();
         when(runGate.acquire(anyString(), anyString(), anyString())).thenReturn(gateReleased::incrementAndGet);
         when(agentProvider.getAgent()).thenReturn(new ActiveAgent(
-                agent, new ResolvedCatalog("知识库工具描述", null, List.of(), List.of())));
+                agent, new ResolvedCatalog("知识库工具描述", null, List.of(), List.of(), List.of())));
         when(conversationService.touchConversation(anyString(), anyString(), anyString())).thenReturn("会话标题");
         when(conversationService.addUserMessage(anyString(), anyString(), anyString())).thenReturn("m-3003");
         // 每轮收尾都会调一次，不给默认结局其余用例会在后台线程上吃 NPE
