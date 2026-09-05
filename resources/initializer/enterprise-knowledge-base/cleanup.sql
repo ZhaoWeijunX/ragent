@@ -23,6 +23,7 @@ TRUNCATE TABLE
     t_knowledge_document,
     t_knowledge_vector,
     t_intent_node,
+    t_agent_skill,
     t_query_term_mapping,
     t_sample_question,
     t_knowledge_base,

@@ -1,8 +1,8 @@
 # Ragent 数据初始化器
 
 把一个已经运行的 Ragent 环境，重置成模板声明的确定状态。当前模板是 `enterprise-knowledge-base`，
-执行成功后环境中存在模板定义的 2 个知识库、10 份文档、23 个意图节点和 15 条示例问题，且这 15 个
-问题都已被真实提问过一遍，答案和推荐追问都已落库。
+执行成功后环境中存在模板定义的 2 个知识库、10 份文档、29 个意图节点、2 份技能手册和 15 条示例
+问题，且这 15 个问题都已被真实提问过一遍，答案和推荐追问都已落库。
 
 它是一次性 Java 17 CLI，不启动 Spring、不监听端口，也不需要单独的 Maven 模块。
 
@@ -16,7 +16,7 @@
 - RagentAI、PostgreSQL、Redis 已启动；
 - 服务读的是 `bootstrap/src/main/resources/application.yaml`，也就是模板所指向的那一份；
 - 服务运行在 `ragent.demo-mode=false`，否则写接口会被拒绝；
-- `mcp-server` 已启动，模板里有 4 个意图节点挂着 MCP 工具，预热会真的调到它。
+- `mcp-server` 已启动，模板里有 9 个意图节点挂着 MCP 工具，预热会真的调到它。
 
 以下命令在项目根目录执行，先编译再初始化：
 
@@ -39,7 +39,7 @@ java -cp /tmp/ragent-initializer-classes \
 
 最后一步是预热：串行提问 `questions.properties` 里的每个问题，让会话、消息、检索链路和 RAG 追踪
 都产生真实数据。每个答案结束后还会调用一次推荐追问接口，把追问补进消息，否则历史会话点开是空的。
-这一步依赖模型，17 轮提问通常需要几分钟。只想拿到数据、不想等模型的话，加 `--skip-warmup`。
+这一步依赖模型，15 轮提问通常需要几分钟。只想拿到数据、不想等模型的话，加 `--skip-warmup`。
 
 编译这一步在源码变化后必须重跑。直接复用 `/tmp` 中的旧 class，会出现配置项缺失这类与当前源码
 不一致的错误。
@@ -47,7 +47,7 @@ java -cp /tmp/ragent-initializer-classes \
 不放心就先加 `--dry-run` 跑一遍。它照样连接 RagentAI、PostgreSQL 和 Redis 并执行全部预检，打印
 清理范围与后续创建动作，但不清理也不创建业务数据。
 
-改过 `docs/`、`intents/`、`prompts/` 或任何 properties 之后，先重算完整性基线，否则预检会以
+改过 `docs/`、`intents/`、`prompts/`、`skills/` 或任何 properties 之后，先重算完整性基线，否则预检会以
 `文件 checksum 不一致` 失败：
 
 ```bash
@@ -71,6 +71,7 @@ java -cp /tmp/ragent-initializer-classes \
 | `KnowledgeBaseInitMain` | 创建或复用知识库 | 是 |
 | `DocumentInitMain` | 上传、切分或替换文档 | 是 |
 | `IntentTreeInitMain` | 重建意图树 | 是 |
+| `AgentSkillInitMain` | 重建智能体技能，须先有意图树提供它解锁的 MCP 节点 | 是 |
 | `SampleQuestionInitMain` | 重建欢迎页示例问题 | 是 |
 | `VerifyMain` | 校验当前初始化结果 | 否 |
 | `WarmupMain` | 串行提问演示问题并补齐推荐追问，只补对话数据，不动知识库和意图 | 是 |
@@ -103,7 +104,10 @@ java -cp /tmp/ragent-initializer-classes \
 ```
 
 `InitializeMain` 依次执行：模板校验、环境预检、文档物理清理、数据库与 Redis 清理、知识库创建、
-文档上传与切分、意图树创建、示例问题写入、结果校验、演示问题预热。
+文档上传与切分、意图树创建、技能写入、示例问题写入、结果校验、演示问题预热。
+
+技能必须排在意图树之后：技能的 `tool-ids` 只能引用意图树里已启用的 MCP 节点，先写技能会被服务端
+直接拒掉。
 
 预热逐题调用 `/rag/v3/chat`，每题一个独立会话，上一题读完 SSE 才发下一题。问题之间没有先后依赖，
 所以提问顺序每次随机，让初始化产生的会话列表不与欢迎页示例问题一一对齐；实际顺序由日志中的
@@ -145,7 +149,8 @@ RagentAI 服务本身不读初始化锁，所以空闲检查只能证明检查�
 
 初始化结果完全由以下三部分决定：
 
-1. `enterprise-knowledge-base/` 描述目标状态，包括知识库、文档、意图、提示词、示例问题和清理白名单。
+1. `enterprise-knowledge-base/` 描述目标状态，包括知识库、文档、意图、提示词、技能、示例问题和
+   清理白名单。
 2. `bootstrap/src/main/resources/application.yaml` 描述当前运行环境，包括 RagentAI 地址、PostgreSQL、
    Redis、向量后端和对象存储后端。
 3. `enterprise-knowledge-base/initializer.properties` 描述本次初始化行为，包括 Admin 账号、超时、
@@ -175,6 +180,7 @@ resources/initializer/
     ├── docs/                       # 待上传文档
     ├── intents/                    # 意图节点定义
     ├── prompts/                    # 意图引用的提示词
+    ├── skills/                     # 技能定义及其正文手册
     ├── initializer.properties      # 环境入口与执行策略
     ├── knowledge-bases.properties  # 知识库定义及文档目录映射
     ├── questions.properties        # 示例问题、预热题目与同会话追问

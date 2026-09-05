@@ -17,7 +17,13 @@
 
 package com.nageoffer.ai.ragent.agent.config;
 
+import com.nageoffer.ai.ragent.agent.confirm.AgentConfirmDenialMiddleware;
+import com.nageoffer.ai.ragent.agent.memory.AgentContextCompactionMiddleware;
+import com.nageoffer.ai.ragent.agent.memory.AgentMemoryPipeline;
+import com.nageoffer.ai.ragent.agent.memory.AgentMemoryProperties;
+import com.nageoffer.ai.ragent.agent.memory.AgentUserMemoryMiddleware;
 import com.nageoffer.ai.ragent.agent.service.AgentConversationService;
+import com.nageoffer.ai.ragent.agent.skill.AgentSkillMaskingMiddleware;
 import com.nageoffer.ai.ragent.agent.state.PgAgentStateStore;
 import com.nageoffer.ai.ragent.agent.tool.AgentToolCatalog;
 import com.nageoffer.ai.ragent.agent.tool.KnowledgeSearchTool;
@@ -27,6 +33,7 @@ import com.nageoffer.ai.ragent.rag.core.mcp.McpToolExecutor;
 import com.nageoffer.ai.ragent.rag.core.mcp.McpToolRegistry;
 import com.nageoffer.ai.ragent.rag.core.prompt.AgentPromptResolver;
 import com.nageoffer.ai.ragent.rag.core.prompt.AgentPromptSlot;
+import com.nageoffer.ai.ragent.rag.core.skill.AgentSkillRegistry;
 import com.nageoffer.ai.ragent.rag.enums.IntentKind;
 import com.nageoffer.ai.ragent.rag.service.KnowledgeSearchFacade;
 import io.agentscope.extensions.model.openai.OpenAIChatModel;
@@ -72,14 +79,21 @@ class ReActAgentProviderTest {
                 mock(AgentConversationService.class),
                 intentNodeRegistry,
                 mcpToolRegistry,
-                agentPromptResolver));
+                agentPromptResolver,
+                new AgentMemoryProperties(),
+                mock(AgentMemoryPipeline.class),
+                mock(AgentSkillRegistry.class)));
         AgentProperties agentProperties = new AgentProperties();
         provider = new ReActAgentProvider(
                 agentPromptResolver,
                 toolCatalog,
                 mock(OpenAIChatModel.class),
                 mock(PgAgentStateStore.class),
-                agentProperties);
+                agentProperties,
+                mock(AgentUserMemoryMiddleware.class),
+                mock(AgentContextCompactionMiddleware.class),
+                mock(AgentConfirmDenialMiddleware.class),
+                mock(AgentSkillMaskingMiddleware.class));
     }
 
     @Test

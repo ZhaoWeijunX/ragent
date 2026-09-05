@@ -69,6 +69,30 @@ public enum AgentPromptSlot {
             "产物会以历史消息的身份回填进后续每一轮，而被它替代的原文届时已经删除；"
                     + "要求写清调用过哪些工具、得到什么结论、还剩什么没做，不必在这里规定回答风格"),
 
+    AGENT_MEMORY_EXTRACTION("长期记忆抽取", Group.AGENT,
+            Set.of(OrchestrationMode.AGENT),
+            "WorkFlow 模式不沉淀跨会话事实",
+            Set.of("{existing_memories}", "{recent_turns}", "{memory_max_chars}"),
+            "产物不进对话，由代码按 JSON 数组解析后直接写库，解析失败整批作废；"
+                    + "写清什么该记、什么不该记、以及怎么指认已有条目，不要在这里规定回答风格"),
+
+    AGENT_MEMORY_CONSOLIDATION("长期记忆受限合并", Group.AGENT,
+            Set.of(OrchestrationMode.AGENT),
+            "WorkFlow 模式不沉淀跨会话事实",
+            Set.of("{existing_memories}", "{target_chars}"),
+            "仅当记忆总量顶到上限时才调用一次；产物不进对话，由代码按 JSON 数组解析后整组替换旧条目；"
+                    + "写清什么算同一件事，以及绝不许为了压体量删掉一条独立记忆"),
+
+    /**
+     * 同 KNOWLEDGE_TOOL_DESCRIPTION：随工具定义下发，模型在调用前就要读懂
+     */
+    AGENT_MEMORY_TOOL_DESCRIPTION("记忆整理工具声明", Group.AGENT,
+            Set.of(OrchestrationMode.AGENT),
+            "WorkFlow 模式不注册记忆整理工具",
+            Set.of(),
+            "模型靠它判断这轮要不要整理记忆，此时还看不到整理结果；"
+                    + "「记住」和「忘掉」两类场景都要写到，具体记什么忘什么由抽取环节判断"),
+
     /**
      * 两种架构共用：WorkFlow 下由主链路合成，Agent 下由 RAG Tool 内部合成
      */

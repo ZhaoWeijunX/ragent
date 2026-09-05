@@ -17,10 +17,12 @@
 
 package com.nageoffer.ai.ragent.mcp.executor;
 
+import cn.hutool.core.map.MapUtil;
+import cn.hutool.core.util.StrUtil;
+import com.nageoffer.ai.ragent.mcp.config.McpToolAnnotations;
 import io.modelcontextprotocol.server.McpServerFeatures;
 import io.modelcontextprotocol.spec.McpSchema.Tool;
 import io.modelcontextprotocol.spec.McpSchema.JsonSchema;
-import io.modelcontextprotocol.spec.McpSchema.TextContent;
 import io.modelcontextprotocol.spec.McpSchema.CallToolRequest;
 import io.modelcontextprotocol.spec.McpSchema.CallToolResult;
 import lombok.extern.slf4j.Slf4j;
@@ -90,22 +92,23 @@ public class LeaveMcpExecutor {
                 .description("查询员工的假期额度与余额，支持年假、调休、病假、事假，"
                         + "年假返回全年额度、上年结转天数与截止日、已休天数和当前可用余额，也可返回请假明细")
                 .inputSchema(inputSchema)
+                .annotations(McpToolAnnotations.READ_ONLY)
                 .build();
     }
 
     private CallToolResult handleCall(CallToolRequest request) {
         long startMs = System.currentTimeMillis();
         try {
-            Map<String, Object> args = request.arguments() != null ? request.arguments() : Map.of();
-            String employeeName = stringArg(args, "employeeName");
-            String leaveType = stringArg(args, "leaveType");
-            Integer year = intArg(args, "year");
-            String queryType = stringArg(args, "queryType");
+            Map<String, Object> args = McpToolResults.args(request);
+            String employeeName = MapUtil.getStr(args, "employeeName");
+            String leaveType = MapUtil.getStr(args, "leaveType");
+            Integer year = MapUtil.getInt(args, "year");
+            String queryType = MapUtil.getStr(args, "queryType");
 
-            if (employeeName == null || employeeName.isBlank()) employeeName = DEFAULT_EMPLOYEE;
+            if (StrUtil.isBlank(employeeName)) employeeName = DEFAULT_EMPLOYEE;
             if (leaveType == null || !LEAVE_TYPES.contains(leaveType)) leaveType = "年假";
             if (year == null || year <= 0) year = LocalDate.now().getYear();
-            if (queryType == null || queryType.isBlank()) queryType = "balance";
+            if (StrUtil.isBlank(queryType)) queryType = "balance";
 
             LeaveProfile profile = getOrGenerateProfile(employeeName, year);
 
@@ -115,11 +118,11 @@ public class LeaveMcpExecutor {
 
             log.info("MCP 工具调用完成, toolId={}, queryType={}, employeeName={}, leaveType={}, year={}, elapsed={}ms",
                     TOOL_ID, queryType, employeeName, leaveType, year, System.currentTimeMillis() - startMs);
-            return successResult(result);
+            return McpToolResults.success(result);
         } catch (Exception e) {
             log.error("MCP 工具调用失败, toolId={}, elapsed={}ms",
                     TOOL_ID, System.currentTimeMillis() - startMs, e);
-            return errorResult("查询失败: " + e.getMessage());
+            return McpToolResults.error("查询失败: " + e.getMessage());
         }
     }
 
@@ -280,38 +283,6 @@ public class LeaveMcpExecutor {
 
     private static String days(double value) {
         return value == Math.floor(value) ? String.valueOf((long) value) : String.format("%.1f", value);
-    }
-
-    private static String stringArg(Map<String, Object> args, String key) {
-        Object val = args.get(key);
-        return val != null ? val.toString() : null;
-    }
-
-    private static Integer intArg(Map<String, Object> args, String key) {
-        Object val = args.get(key);
-        if (val instanceof Number n) return n.intValue();
-        if (val != null) {
-            try {
-                return Integer.parseInt(val.toString().trim());
-            } catch (NumberFormatException ignored) {
-                return null;
-            }
-        }
-        return null;
-    }
-
-    private static CallToolResult successResult(String text) {
-        return CallToolResult.builder()
-                .content(List.of(new TextContent(text)))
-                .isError(false)
-                .build();
-    }
-
-    private static CallToolResult errorResult(String message) {
-        return CallToolResult.builder()
-                .content(List.of(new TextContent(message)))
-                .isError(true)
-                .build();
     }
 
     private static class LeaveProfile {

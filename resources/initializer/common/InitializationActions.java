@@ -218,6 +218,7 @@ final class InitializationActions {
                 payload.put("examples", intent.examples());
             }
             putIfNotNull(payload, "mcpToolId", intent.mcpToolId());
+            payload.put("requireConfirm", intent.requireConfirm() ? 1 : 0);
             putIfNotNull(payload, "topK", intent.topK());
             payload.put("kind", intent.kind());
             payload.put("sortOrder", intent.sortOrder());
@@ -259,6 +260,43 @@ final class InitializationActions {
             payload.put("question", question.text());
             Object id = context.http().postJson("/sample-questions", payload);
             System.out.println("[sample-question] 已创建: " + question.ref() + " (" + id + ")");
+        }
+    }
+
+    /**
+     * 必须排在意图树之后：技能的 tool-ids 只能引用意图树里已启用的 MCP 节点，先播技能会被服务端直接拒掉
+     */
+    static void initializeSkills(InitializerContext context) throws Exception {
+        List<InitializerDataset.SkillDefinition> skills = context.dataset().skills();
+        if (skills.isEmpty()) {
+            System.out.println("[agent-skill] 数据集没有配置技能手册，跳过");
+            return;
+        }
+        if (context.dryRun()) {
+            for (InitializerDataset.SkillDefinition skill : skills) {
+                System.out.printf("[agent-skill][dry-run] create skillCode=%s tools=%s%n",
+                        skill.skillCode(), skill.toolIds());
+            }
+            return;
+        }
+        List<Map<String, Object>> existing = fetchAllPages(context, "/agent-skills");
+        for (Map<String, Object> item : existing) {
+            context.http().delete("/agent-skills/" + RagentHttpClient.encodePath(SimpleJson.string(item, "id")));
+        }
+        if (!existing.isEmpty()) {
+            System.out.println("[agent-skill] 已清理旧技能: " + existing.size());
+        }
+        for (InitializerDataset.SkillDefinition skill : skills) {
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("skillCode", skill.skillCode());
+            payload.put("name", skill.name());
+            putIfNotNull(payload, "description", skill.description());
+            payload.put("content", skill.content());
+            payload.put("toolIds", skill.toolIds());
+            payload.put("sortOrder", skill.sortOrder());
+            payload.put("enabled", skill.enabled());
+            Object id = context.http().postJson("/agent-skills", payload);
+            System.out.println("[agent-skill] 已创建: " + skill.skillCode() + " (" + id + ")");
         }
     }
 
@@ -516,8 +554,26 @@ final class InitializationActions {
             require(actualQuestionTexts.contains(definition.text()), "缺少示例问题: " + definition.ref());
         }
 
-        System.out.printf("[verify] 通过：knowledgeBases=%d, documents=%d, intents=%d, questions=%d%n",
-                baseByCollection.size(), documentCount, intents.size(), questions.size());
+        List<Map<String, Object>> skills = fetchAllPages(context, "/agent-skills");
+        require(skills.size() == context.config().getInt("verification.skill-count",
+                        context.dataset().skills().size()),
+                "技能总数校验失败，actual=" + skills.size());
+        Map<String, Map<String, Object>> skillByCode = new HashMap<>();
+        skills.forEach(skill -> skillByCode.put(SimpleJson.string(skill, "skillCode"), skill));
+        for (InitializerDataset.SkillDefinition definition : context.dataset().skills()) {
+            Map<String, Object> actual = skillByCode.get(definition.skillCode());
+            require(actual != null, "缺少技能: " + definition.skillCode());
+            List<Object> toolIds = SimpleJson.array(actual.get("toolIds"));
+            require(toolIds.size() == definition.toolIds().size(),
+                    "技能解锁的工具数量不一致: " + definition.skillCode());
+            for (String toolId : definition.toolIds()) {
+                require(toolIds.stream().map(String::valueOf).anyMatch(toolId::equals),
+                        "技能没有解锁预期工具: " + definition.skillCode() + " -> " + toolId);
+            }
+        }
+
+        System.out.printf("[verify] 通过：knowledgeBases=%d, documents=%d, intents=%d, questions=%d, skills=%d%n",
+                baseByCollection.size(), documentCount, intents.size(), questions.size(), skills.size());
     }
 
     private static void deleteAllDocuments(InitializerContext context) throws Exception {

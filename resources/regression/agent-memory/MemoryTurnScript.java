@@ -18,8 +18,8 @@ import java.util.Properties;
  */
 record MemoryTurnScript(String anchor, List<Turn> turns) {
 
-    // 已实现的记忆层，P1/P2 落地后加值即可
-    static final List<String> IMPLEMENTED_TIERS = List.of("short-term", "mid-term");
+    // 已实现的记忆层，三层齐了；未列出的层判失败只记 PENDING，不判死
+    static final List<String> IMPLEMENTED_TIERS = List.of("short-term", "mid-term", "long-term");
 
     static final String SESSION_MAIN = "main";
     static final String SESSION_FRESH = "fresh";

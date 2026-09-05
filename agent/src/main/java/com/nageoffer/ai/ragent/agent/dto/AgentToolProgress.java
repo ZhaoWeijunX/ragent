@@ -20,9 +20,9 @@ package com.nageoffer.ai.ragent.agent.dto;
 import com.fasterxml.jackson.annotation.JsonInclude;
 
 /**
- * tool 事件载荷：status 取 start / end，result 与 ok 仅 end 时携带
- * ok 取自框架 ToolResultState，前端据此渲染 完成 / 失败 状态
+ * SSE tool 事件载荷，status 为 start/end，result 和 ok 仅 end 时携带
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
-public record AgentToolProgress(String name, String displayName, String status, String result, Boolean ok) {
+public record AgentToolProgress(String toolCallId, String name, String displayName, String status,
+                                String result, Boolean ok) {
 }

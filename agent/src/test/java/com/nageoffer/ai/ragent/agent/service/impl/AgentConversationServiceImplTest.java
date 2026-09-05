@@ -25,6 +25,8 @@ import com.nageoffer.ai.ragent.agent.dao.entity.AgentConversationDO;
 import com.nageoffer.ai.ragent.agent.dao.entity.AgentMessageDO;
 import com.nageoffer.ai.ragent.agent.dao.mapper.AgentConversationMapper;
 import com.nageoffer.ai.ragent.agent.dao.mapper.AgentMessageMapper;
+import com.nageoffer.ai.ragent.agent.dto.AgentBlock;
+import com.nageoffer.ai.ragent.agent.dto.AgentConfirmSettlement;
 import com.nageoffer.ai.ragent.agent.enums.AgentMessageStatus;
 import com.nageoffer.ai.ragent.agent.service.handler.AgentRunGate;
 import com.nageoffer.ai.ragent.agent.state.PgAgentStateStore;
@@ -287,6 +289,36 @@ class AgentConversationServiceImplTest {
                 .content(content)
                 .messageStatus(AgentMessageStatus.NORMAL.name())
                 .build();
+    }
+
+    @Test
+    void shouldSettlePendingConfirmAndReleaseHold() {
+        AgentMessageDO message = assistantRow("m-1", "q-1", "这就去提交", AgentMessageStatus.AWAITING_CONFIRM);
+        message.setBlocks(List.of(AgentBlock.builder().kind("confirm").status("pending").build()));
+        when(messageMapper.selectOne(any())).thenReturn(message);
+        when(conversationMapper.selectOne(any())).thenReturn(existingConversation("请假"));
+
+        AgentConfirmSettlement settlement = service.settlePendingConfirm(CONVERSATION_ID, USER_ID, "m-1", true);
+
+        // 续跑要挂回同一次提问，否则用户会看到一问两卡
+        assertThat(settlement.replyToMessageId()).isEqualTo("q-1");
+        assertThat(message.getBlocks().get(0).getStatus()).isEqualTo("approved");
+        // 卡片有了终态就得一并松开挂起态，不然这条会话再也提不了新问题
+        assertThat(message.getMessageStatus()).isEqualTo(AgentMessageStatus.NORMAL.name());
+        verify(messageMapper).updateById(message);
+    }
+
+    @Test
+    void shouldSkipExpireWhenConfirmAlreadySettled() {
+        AgentMessageDO message = assistantRow("m-1", "q-1", "已提交", AgentMessageStatus.NORMAL);
+        message.setBlocks(List.of(AgentBlock.builder().kind("confirm").status("approved").build()));
+        when(messageMapper.selectOne(any())).thenReturn(message);
+
+        service.expirePendingConfirm(CONVERSATION_ID, USER_ID, "m-1");
+
+        // 收尾逻辑撞上已裁决的卡片要原样放过，改写成失效等于把办过的事说成没办
+        assertThat(message.getBlocks().get(0).getStatus()).isEqualTo("approved");
+        verify(messageMapper, never()).updateById(any(AgentMessageDO.class));
     }
 
     private static AgentMessageDO assistantRow(String id, String replyTo, String content, AgentMessageStatus status) {

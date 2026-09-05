@@ -23,8 +23,10 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.List;
+
 /**
- * Agent 运行轨迹块：按事件顺序排列的 reasoning / answer / tool 片段，随消息落库
+ * Agent 运行轨迹块：按事件顺序排列的 reasoning / answer / tool / confirm 片段，随消息落库
  */
 @Data
 @NoArgsConstructor
@@ -34,7 +36,7 @@ import lombok.NoArgsConstructor;
 public class AgentBlock {
 
     /**
-     * reasoning / answer / tool
+     * reasoning / answer / tool / confirm
      */
     private String kind;
 
@@ -59,7 +61,7 @@ public class AgentBlock {
     private String displayName;
 
     /**
-     * tool 终态 done / interrupted
+     * tool 终态 done / interrupted，confirm 终态 pending / approved / denied
      */
     private String status;
 
@@ -72,4 +74,9 @@ public class AgentBlock {
      * 供应商侧的 tool_call id，与上下文里 tool_use / tool_result 同源；端点不回时留空
      */
     private String toolCallId;
+
+    /**
+     * confirm 块待用户裁决的工具调用，整卡一次决策，不逐条勾选
+     */
+    private List<AgentConfirmCall> calls;
 }

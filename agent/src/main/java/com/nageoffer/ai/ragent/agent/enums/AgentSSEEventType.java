@@ -46,6 +46,11 @@ public enum AgentSSEEventType {
     HINT("hint"),
 
     /**
+     * 等待用户确认写操作 {messageId, title, calls}，与 finish 互斥
+     */
+    CONFIRM("confirm"),
+
+    /**
      * 回复完成
      */
     FINISH("finish"),

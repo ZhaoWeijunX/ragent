@@ -234,7 +234,6 @@ final class AgentMemoryRegressionMain {
         System.out.println("  执行架构        " + config.get("execution.engine-type", "(未知)")
                 + "（必须是 agent，workflow 档位没有 Agent 记忆）");
         System.out.println("  登录用户        " + config.require("auth.username") + " / userId=" + userId);
-        System.out.println("  记忆开关        " + config.get("agent.memory.enabled", "(未知)"));
         System.out.println("  上下文预算      " + config.get("agent.memory.context-window-chars", "(未知)")
                 + " 字符（服务端唯一要配的数，两道门按固定比例从它派生）");
         boolean summaryOn = summaryEnabled(context);

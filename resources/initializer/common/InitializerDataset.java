@@ -31,13 +31,16 @@ final class InitializerDataset {
     private final List<KnowledgeBaseDefinition> knowledgeBases;
     private final List<IntentDefinition> intents;
     private final List<QuestionDefinition> questions;
+    private final List<SkillDefinition> skills;
 
     private InitializerDataset(Path agentTypeDir, List<KnowledgeBaseDefinition> knowledgeBases,
-                               List<IntentDefinition> intents, List<QuestionDefinition> questions) {
+                               List<IntentDefinition> intents, List<QuestionDefinition> questions,
+                               List<SkillDefinition> skills) {
         this.agentTypeDir = agentTypeDir;
         this.knowledgeBases = knowledgeBases;
         this.intents = intents;
         this.questions = questions;
+        this.skills = skills;
     }
 
     static InitializerDataset load(Path agentTypeDir) throws IOException {
@@ -48,7 +51,8 @@ final class InitializerDataset {
         List<KnowledgeBaseDefinition> knowledgeBases = loadKnowledgeBases(normalized);
         List<IntentDefinition> intents = loadIntents(normalized, knowledgeBases);
         List<QuestionDefinition> questions = loadQuestions(normalized);
-        InitializerDataset dataset = new InitializerDataset(normalized, knowledgeBases, intents, questions);
+        List<SkillDefinition> skills = loadSkills(normalized);
+        InitializerDataset dataset = new InitializerDataset(normalized, knowledgeBases, intents, questions, skills);
         dataset.validate();
         return dataset;
     }
@@ -67,6 +71,10 @@ final class InitializerDataset {
 
     List<QuestionDefinition> questions() {
         return questions;
+    }
+
+    List<SkillDefinition> skills() {
+        return skills;
     }
 
     int documentCount() throws IOException {
@@ -182,6 +190,25 @@ final class InitializerDataset {
                 throw new IllegalArgumentException("演示问题 ref 重复: " + question.ref());
             }
         }
+
+        Set<String> availableTools = new HashSet<>();
+        for (IntentDefinition intent : intents) {
+            if (intent.enabled() && intent.mcpToolId() != null) {
+                availableTools.add(intent.mcpToolId());
+            }
+        }
+        Set<String> skillCodes = new HashSet<>();
+        for (SkillDefinition skill : skills) {
+            if (!skillCodes.add(skill.skillCode())) {
+                throw new IllegalArgumentException("技能 skill-code 重复: " + skill.skillCode());
+            }
+            for (String toolId : skill.toolIds()) {
+                if (!availableTools.contains(toolId)) {
+                    throw new IllegalArgumentException("技能解锁的工具不在本数据集已启用的 MCP 意图节点中: "
+                            + skill.skillCode() + " -> " + toolId);
+                }
+            }
+        }
     }
 
     private static List<KnowledgeBaseDefinition> loadKnowledgeBases(Path agentTypeDir) throws IOException {
@@ -233,6 +260,7 @@ final class InitializerDataset {
                         trimToNull(values.getProperty("description")),
                         split(values.getProperty("examples"), "\\|"),
                         trimToNull(values.getProperty("mcp-tool-id")),
+                        optionalBoolean(values, "require-confirm", false),
                         optionalInt(values, "top-k", file),
                         requiredInt(values, "sort-order", file),
                         optionalBoolean(values, "enabled", true),
@@ -264,6 +292,39 @@ final class InitializerDataset {
                     split(properties.getProperty(prefix + "follow-ups"), "\\|")
             ));
         }
+        return List.copyOf(result);
+    }
+
+    /**
+     * 技能是写给模型看的办事手册，正文体量远超单行 properties，所以正文单独放 .md，properties 只留元数据
+     */
+    private static List<SkillDefinition> loadSkills(Path agentTypeDir) throws IOException {
+        Path skillsDir = agentTypeDir.resolve("skills");
+        if (!Files.isDirectory(skillsDir)) {
+            return List.of();
+        }
+        List<SkillDefinition> result = new ArrayList<>();
+        try (Stream<Path> paths = Files.list(skillsDir)) {
+            for (Path file : paths.filter(path -> path.getFileName().toString().endsWith(".properties"))
+                    .sorted().toList()) {
+                Properties values = InitializerConfig.loadProperties(file);
+                String content = readOptionalText(agentTypeDir,
+                        required(values, "content-file", file.toString()));
+                if (content == null || content.isBlank()) {
+                    throw new IllegalArgumentException("技能正文为空: " + file);
+                }
+                result.add(new SkillDefinition(
+                        required(values, "skill-code", file.toString()),
+                        required(values, "name", file.toString()),
+                        trimToNull(values.getProperty("description")),
+                        content,
+                        split(values.getProperty("tool-ids"), ","),
+                        requiredInt(values, "sort-order", file),
+                        optionalBoolean(values, "enabled", true)
+                ));
+            }
+        }
+        result.sort(Comparator.comparingInt(SkillDefinition::sortOrder));
         return List.copyOf(result);
     }
 
@@ -365,8 +426,12 @@ final class InitializerDataset {
 
     record IntentDefinition(String code, String name, int level, String parentCode, int kind,
                             String knowledgeBaseRef, String description, List<String> examples,
-                            String mcpToolId, Integer topK, int sortOrder, boolean enabled,
+                            String mcpToolId, boolean requireConfirm, Integer topK, int sortOrder, boolean enabled,
                             String promptSnippet, String promptTemplate, String paramPromptTemplate) {
+    }
+
+    record SkillDefinition(String skillCode, String name, String description, String content,
+                           List<String> toolIds, int sortOrder, boolean enabled) {
     }
 
     record QuestionDefinition(String ref, String title, String description, String text, List<String> followUps) {

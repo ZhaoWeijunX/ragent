@@ -48,9 +48,9 @@ agent:
   max-retries: 2        # 单次模型调用失败重试次数
   sse-timeout-ms: 900000
   memory:
-    enabled: true
-    context-window-chars: 1200000
+    context-window-chars: 100000
     summary-enabled: true
+    long-term-enabled: true
     evictable-tools: [ search_knowledge ]
 
 rag:

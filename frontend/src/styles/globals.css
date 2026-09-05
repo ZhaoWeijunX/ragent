@@ -2731,6 +2731,109 @@ html.dark *::-webkit-scrollbar-thumb:hover {
       grid-template-columns: 252px minmax(0, 1fr);
     }
   }
+
+  /* 技能编辑：左侧元信息与工具，右侧正文，与提示词页同一套分栏骨架 */
+
+  .admin-layout .agent-skill-page {
+    @apply flex flex-col gap-4;
+  }
+
+  .admin-layout .agent-skill-page__header {
+    @apply shrink-0;
+  }
+
+  .admin-layout .agent-skill-layout {
+    @apply grid gap-4;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .admin-layout .agent-skill-side {
+    @apply flex flex-col gap-4 overflow-y-auto rounded-xl border border-slate-200 bg-white p-4;
+  }
+
+  .admin-layout .agent-skill-field {
+    @apply space-y-1.5;
+  }
+
+  .admin-layout .agent-skill-field__label {
+    @apply block text-[13px] font-medium text-slate-700;
+  }
+
+  .admin-layout .agent-skill-field__hint {
+    @apply text-[11px] leading-relaxed text-slate-400;
+  }
+
+  .admin-layout .agent-skill-tools {
+    @apply max-h-[320px] space-y-1 overflow-y-auto rounded-lg border border-slate-200 p-1;
+  }
+
+  .admin-layout .agent-skill-tool {
+    @apply flex cursor-pointer items-start gap-2 rounded-lg px-2 py-2 transition-colors hover:bg-slate-50;
+  }
+
+  .admin-layout .agent-skill-tool--checked {
+    @apply bg-indigo-50/70 hover:bg-indigo-50;
+  }
+
+  .admin-layout .agent-skill-pane {
+    @apply flex min-h-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white;
+  }
+
+  .admin-layout .agent-skill-pane__header {
+    @apply flex shrink-0 items-center justify-between gap-3 border-b border-slate-100 px-4 py-3;
+  }
+
+  .admin-layout .agent-skill-pane__hint {
+    @apply flex shrink-0 items-start gap-2 border-b border-slate-100 bg-slate-50/70 px-4 py-2 text-xs leading-relaxed text-slate-500;
+  }
+
+  .admin-layout .agent-skill-pane__hint > svg {
+    @apply mt-0.5;
+  }
+
+  .admin-layout .agent-skill-pane__footer {
+    @apply flex shrink-0 items-center justify-between border-t border-slate-100 px-4 py-2 text-xs text-slate-500;
+  }
+
+  /* 窄屏下退化成上下排布，正文给个固定高度，否则 flex-1 撑不出编辑区 */
+  @media (max-width: 1099px) {
+    .admin-layout .agent-skill-pane {
+      min-height: 420px;
+    }
+  }
+
+  @media (min-width: 1100px) {
+    .admin-layout .admin-main:has(.agent-skill-page) {
+      height: 100vh;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .admin-layout .admin-main:has(.agent-skill-page) .admin-content {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      padding: 20px 32px 20px;
+    }
+
+    .admin-layout .admin-main:has(.agent-skill-page) .admin-breadcrumbs {
+      margin-bottom: 8px;
+    }
+
+    .admin-layout .agent-skill-page {
+      flex: 1;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .admin-layout .agent-skill-layout {
+      flex: 1;
+      min-height: 0;
+      grid-template-columns: 360px minmax(0, 1fr);
+    }
+  }
 }
 
 .chat-surface {
@@ -4128,6 +4231,7 @@ textarea {
 }
 
 .agent-app .agent-status-ok,
+.agent-app .agent-status-idle,
 .agent-app .agent-status-run,
 .agent-app .agent-status-err {
   font-size: var(--agent-t-xs);
@@ -4135,7 +4239,8 @@ textarea {
 }
 
 /* 「完成」是默认结局 不值一处强调色；「运行中」才是正在发生的事 */
-.agent-app .agent-status-ok {
+.agent-app .agent-status-ok,
+.agent-app .agent-status-idle {
   color: var(--agent-muted);
 }
 
@@ -4278,6 +4383,130 @@ textarea {
   white-space: pre-wrap;
   word-break: break-word;
   overflow-x: auto;
+}
+
+/* 写操作确认卡：唯一会拦住流程要人点头的东西 给它描边而非下沉底
+   底色走橙雾而不是灰：这一行在等人 属"正在发生的事" 与运行中同一族 */
+.agent-app .agent-row[data-channel="confirm"] .agent-node,
+.agent-app .agent-row[data-channel="confirm"] .agent-channel {
+  color: var(--agent-signal-ink);
+}
+
+.agent-app .agent-confirm {
+  border: 1px solid var(--agent-signal);
+  border-radius: var(--agent-radius);
+  background: var(--agent-orange-mist);
+  margin-top: 2px;
+  padding: var(--agent-s3);
+}
+
+/* 裁决落定后卡片退成中性：已经发生的事不再占强调色的配额 */
+.agent-app .agent-confirm:not(:has(.agent-confirm-actions)) {
+  border-color: var(--agent-grid-strong);
+  background: var(--agent-sunk);
+}
+
+.agent-app .agent-confirm-lead {
+  margin: 0;
+  font-size: var(--agent-t-sm);
+  line-height: 1.6;
+  color: var(--agent-ink);
+}
+
+/* 批次结论跟在引导语后：两项一成一败时 只看芯片会以为全办成了 */
+.agent-app .agent-confirm-summary {
+  color: var(--agent-muted);
+}
+
+.agent-app .agent-confirm-head {
+  margin-top: var(--agent-s3);
+}
+
+.agent-app .agent-confirm-list {
+  list-style: none;
+  margin: var(--agent-s3) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--agent-s2);
+}
+
+.agent-app .agent-confirm-name {
+  display: flex;
+  align-items: baseline;
+  gap: var(--agent-s2);
+  font-family: var(--agent-font-mono);
+  font-size: var(--agent-t-xs);
+}
+
+.agent-app .agent-confirm-no {
+  color: var(--agent-muted);
+}
+
+/* 入参走标签值两列：授权界面读的是中文字段 不是 JSON 键 */
+.agent-app .agent-confirm-fields {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px var(--agent-s3);
+  margin: 4px 0 0;
+  font-size: var(--agent-t-sm);
+  line-height: 1.6;
+}
+
+.agent-app .agent-confirm-fields dt {
+  color: var(--agent-muted);
+  white-space: nowrap;
+}
+
+.agent-app .agent-confirm-fields dd {
+  margin: 0;
+  color: var(--agent-ink);
+  overflow-wrap: anywhere;
+}
+
+/* 原始 JSON 退成折叠兜底：中文视图漏掉的参数在这查得到 但不该抢首屏 */
+.agent-app .agent-confirm-raw {
+  margin-top: var(--agent-s3);
+}
+
+/* 入参照抄工具块的 pre：同一种「机器原文」在一屏里只该有一种长相 */
+.agent-app .agent-confirm-raw .agent-pre {
+  margin-top: 4px;
+  border: var(--agent-hair);
+  border-radius: var(--agent-radius);
+}
+
+.agent-app .agent-confirm-actions {
+  display: flex;
+  gap: var(--agent-s2);
+  margin-top: var(--agent-s3);
+}
+
+.agent-app .agent-confirm-btn {
+  padding: 5px 14px;
+  border: 1px solid var(--agent-grid-strong);
+  border-radius: var(--agent-radius);
+  background: var(--agent-surface);
+  font-family: var(--agent-font-sans);
+  font-size: var(--agent-t-sm);
+  color: var(--agent-ink);
+  transition: filter 0.12s, background 0.12s, border-color 0.12s;
+}
+
+/* 「确认执行」是这一屏唯一的主动作 走深档橙配白字（本色橙白字只有 3.1:1） */
+.agent-app .agent-confirm-btn[data-primary="true"] {
+  border-color: var(--agent-signal-ink);
+  background: var(--agent-signal-ink);
+  color: #fff;
+}
+
+.agent-app .agent-confirm-btn:hover:not(:disabled) {
+  filter: brightness(1.06);
+}
+
+.agent-app .agent-confirm-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 /* 思考：正在想时展开实时可见 块结束折成一行摘要 点开重看 */

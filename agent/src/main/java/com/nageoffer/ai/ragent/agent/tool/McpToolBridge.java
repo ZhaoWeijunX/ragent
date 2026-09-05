@@ -19,17 +19,22 @@ package com.nageoffer.ai.ragent.agent.tool;
 
 import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.StrUtil;
+import com.nageoffer.ai.ragent.agent.skill.AgentSkillMaskingMiddleware;
+import com.nageoffer.ai.ragent.agent.tool.AgentToolCatalog.McpToolBinding;
 import com.nageoffer.ai.ragent.rag.core.mcp.McpToolExecutor;
+import io.agentscope.core.agent.RuntimeContext;
 import io.agentscope.core.message.TextBlock;
 import io.agentscope.core.message.ToolResultBlock;
 import io.agentscope.core.message.ToolResultState;
-import io.agentscope.core.tool.AgentTool;
+import io.agentscope.core.permission.PermissionContextState;
+import io.agentscope.core.permission.PermissionDecision;
+import io.agentscope.core.tool.ToolBase;
 import io.agentscope.core.tool.ToolCallParam;
 import io.modelcontextprotocol.spec.McpSchema.CallToolResult;
 import io.modelcontextprotocol.spec.McpSchema.JsonSchema;
 import io.modelcontextprotocol.spec.McpSchema.TextContent;
+import io.modelcontextprotocol.spec.McpSchema.Tool;
 import io.modelcontextprotocol.spec.McpSchema.ToolAnnotations;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
@@ -40,35 +45,94 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
- * MCP 工具桥：把 rag 已连接的 MCP 执行器适配为 AgentScope 原生工具
- * 不走 AgentScope 自带 MCP 客户端（SDK 版本被压制），路由描述优先取意图树配置
+ * 将 MCP 执行器适配为 AgentScope 工具，继承 ToolBase 以接入权限检查
  */
 @Slf4j
-@RequiredArgsConstructor
-public class McpToolBridge implements AgentTool {
+public class McpToolBridge extends ToolBase {
 
     private final McpToolExecutor executor;
 
     /**
-     * 意图树中面向主 Agent 路由的描述，空则回落 MCP 服务端原始描述
+     * 意图树配置的执行前确认开关
      */
-    private final String descriptionOverride;
+    private final boolean requireConfirm;
 
-    @Override
-    public String getName() {
-        return executor.getToolId();
+    /**
+     * MCP 服务端声明的 readOnlyHint，null 表示未声明
+     */
+    private final Boolean readOnlyHint;
+
+    public McpToolBridge(McpToolBinding binding) {
+        super(ToolBase.builder()
+                .name(binding.toolId())
+                .description(resolveDescription(binding))
+                .inputSchema(buildInputSchema(binding.executor()))
+                .readOnly(Boolean.TRUE.equals(resolveReadOnlyHint(binding.executor()))));
+        this.executor = binding.executor();
+        this.requireConfirm = binding.requireConfirm();
+        this.readOnlyHint = resolveReadOnlyHint(binding.executor());
     }
 
+    /**
+     * 需要确认时返回 ask，否则返回 allow
+     * 框架只取 behavior，message 既不进确认卡也不进模型上下文，这里的文案仅供排查时读
+     */
     @Override
-    public String getDescription() {
-        if (StrUtil.isNotBlank(descriptionOverride)) {
-            return descriptionOverride;
+    public Mono<PermissionDecision> checkPermissions(Map<String, Object> toolInput, PermissionContextState context) {
+        if (!needsConfirm()) {
+            return Mono.just(PermissionDecision.allow("该工具未配置执行前确认"));
         }
-        return StrUtil.emptyIfNull(executor.getToolDefinition().description());
+        return Mono.just(PermissionDecision.ask("该操作会产生实际业务影响，执行前需要你确认"));
+    }
+
+    /**
+     * 意图树勾选或 readOnlyHint 显式为 false 时需要确认
+     */
+    private boolean needsConfirm() {
+        return requireConfirm || Boolean.FALSE.equals(readOnlyHint);
     }
 
     @Override
-    public Map<String, Object> getParameters() {
+    public Mono<ToolResultBlock> callAsync(ToolCallParam param) {
+        String maskedBy = maskedBySkill(param);
+        if (maskedBy != null) {
+            log.info("技能未加载, 拒绝直接调用, toolId: {}, skillCode: {}", getName(), maskedBy);
+            return Mono.just(buildResult(toolCallId(param), """
+                    这个工具属于技能 %s，手册还没加载，本次调用没有执行。
+                    请先调用 load_skill 取 skill_code 为 %s 的手册，按手册里的步骤办。"""
+                    .formatted(maskedBy, maskedBy), true));
+        }
+        return Mono.fromCallable(() -> execute(param))
+                .subscribeOn(Schedulers.boundedElastic());
+    }
+
+    /**
+     * schema 已遮蔽仍打过来的调用兜底：模型照着历史里的旧调用硬闯时退回让它先取手册
+     *
+     * @return 该工具所属且未加载的技能标识，未被遮蔽返回 null
+     */
+    private String maskedBySkill(ToolCallParam param) {
+        RuntimeContext runtimeContext = param == null ? null : param.getRuntimeContext();
+        Object masked = runtimeContext == null
+                ? null
+                : runtimeContext.get(AgentSkillMaskingMiddleware.MASKED_TOOLS_ATTRIBUTE);
+        return masked instanceof Map<?, ?> map && map.get(getName()) instanceof String skillCode
+                ? skillCode
+                : null;
+    }
+
+    private static String toolCallId(ToolCallParam param) {
+        return param == null || param.getToolUseBlock() == null ? null : param.getToolUseBlock().getId();
+    }
+
+    private static String resolveDescription(McpToolBinding binding) {
+        if (StrUtil.isNotBlank(binding.description())) {
+            return binding.description();
+        }
+        return StrUtil.emptyIfNull(binding.executor().getToolDefinition().description());
+    }
+
+    private static Map<String, Object> buildInputSchema(McpToolExecutor executor) {
         JsonSchema schema = executor.getToolDefinition().inputSchema();
         Map<String, Object> parameters = new LinkedHashMap<>();
         parameters.put("type", schema == null || StrUtil.isBlank(schema.type()) ? "object" : schema.type());
@@ -80,23 +144,16 @@ public class McpToolBridge implements AgentTool {
     }
 
     /**
-     * 透传 MCP 的 readOnlyHint，服务端没声明就按写工具处理
-     * 缺省取 false 是因为猜错的两个方向不对等：把写工具当只读会放过重复副作用
+     * 取 MCP annotations 的 readOnlyHint，未声明返回 null
      */
-    @Override
-    public boolean isReadOnly() {
-        ToolAnnotations annotations = executor.getToolDefinition().annotations();
-        return annotations != null && Boolean.TRUE.equals(annotations.readOnlyHint());
-    }
-
-    @Override
-    public Mono<ToolResultBlock> callAsync(ToolCallParam param) {
-        return Mono.fromCallable(() -> execute(param))
-                .subscribeOn(Schedulers.boundedElastic());
+    private static Boolean resolveReadOnlyHint(McpToolExecutor executor) {
+        Tool definition = executor.getToolDefinition();
+        ToolAnnotations annotations = definition.annotations();
+        return annotations == null ? null : annotations.readOnlyHint();
     }
 
     private ToolResultBlock execute(ToolCallParam param) {
-        String toolCallId = param.getToolUseBlock() == null ? null : param.getToolUseBlock().getId();
+        String toolCallId = toolCallId(param);
         try {
             CallToolResult result = executor.execute(new HashMap<>(param.getInput()));
             boolean isError = result != null && Boolean.TRUE.equals(result.isError());

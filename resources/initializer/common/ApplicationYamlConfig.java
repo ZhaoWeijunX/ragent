@@ -57,11 +57,12 @@ final class ApplicationYamlConfig {
 
         // 记忆回归台要在报告里同时给出「服务端在用的阈值」和「本次实测量」，阈值只能来自这一份 yaml
         // 四道门已收敛成窗口的固定比例，这里只搬窗口本身；派生用的比例在 AgentMemoryRegressionMain 里另有一份手抄副本
-        result.setProperty("agent.memory.enabled", value(yaml, "agent.memory.enabled", "true"));
         result.setProperty("agent.memory.context-window-chars",
                 value(yaml, "agent.memory.context-window-chars", "0"));
         result.setProperty("agent.memory.summary-enabled",
                 value(yaml, "agent.memory.summary-enabled", "true"));
+        result.setProperty("agent.memory.long-term-enabled",
+                value(yaml, "agent.memory.long-term-enabled", "true"));
         return result;
     }
 

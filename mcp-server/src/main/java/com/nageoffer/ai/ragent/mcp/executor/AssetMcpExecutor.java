@@ -17,10 +17,12 @@
 
 package com.nageoffer.ai.ragent.mcp.executor;
 
+import cn.hutool.core.map.MapUtil;
+import cn.hutool.core.util.StrUtil;
+import com.nageoffer.ai.ragent.mcp.config.McpToolAnnotations;
 import io.modelcontextprotocol.server.McpServerFeatures;
 import io.modelcontextprotocol.spec.McpSchema.Tool;
 import io.modelcontextprotocol.spec.McpSchema.JsonSchema;
-import io.modelcontextprotocol.spec.McpSchema.TextContent;
 import io.modelcontextprotocol.spec.McpSchema.CallToolRequest;
 import io.modelcontextprotocol.spec.McpSchema.CallToolResult;
 import lombok.extern.slf4j.Slf4j;
@@ -72,7 +74,7 @@ public class AssetMcpExecutor {
             "测试手机", List.of("小米 13 测试机", "华为 Mate 60 测试机", "iPhone 14 测试机")
     );
     private static final List<String> LOCATIONS = List.of(
-            "西溪园区 A 楼 7F", "西溪园区 B 楼 3F", "紫金港园区 C 楼 5F", "居家办公"
+            "西溪园区A楼7F", "西溪园区B楼3F", "紫金港园区C楼5F", "居家办公"
     );
 
     private List<AssetRecord> cachedData;
@@ -125,21 +127,22 @@ public class AssetMcpExecutor {
                 .description("查询员工名下的公司 IT 资产，包括笔记本电脑、台式机、显示器、扩展坞等，支持按类别和状态筛选，"
                         + "可返回资产汇总、资产明细以及是否达到换新年限")
                 .inputSchema(inputSchema)
+                .annotations(McpToolAnnotations.READ_ONLY)
                 .build();
     }
 
     private CallToolResult handleCall(CallToolRequest request) {
         long startMs = System.currentTimeMillis();
         try {
-            Map<String, Object> args = request.arguments() != null ? request.arguments() : Map.of();
-            String employeeName = stringArg(args, "employeeName");
-            String assetType = stringArg(args, "assetType");
-            String status = stringArg(args, "status");
-            String queryType = stringArg(args, "queryType");
-            Integer limit = intArg(args, "limit");
+            Map<String, Object> args = McpToolResults.args(request);
+            String employeeName = MapUtil.getStr(args, "employeeName");
+            String assetType = MapUtil.getStr(args, "assetType");
+            String status = MapUtil.getStr(args, "status");
+            String queryType = MapUtil.getStr(args, "queryType");
+            Integer limit = MapUtil.getInt(args, "limit");
 
-            if (employeeName == null || employeeName.isBlank()) employeeName = DEFAULT_EMPLOYEE;
-            if (queryType == null || queryType.isBlank()) queryType = "summary";
+            if (StrUtil.isBlank(employeeName)) employeeName = DEFAULT_EMPLOYEE;
+            if (StrUtil.isBlank(queryType)) queryType = "summary";
             if (limit == null || limit <= 0) limit = 20;
 
             List<AssetRecord> allData = getOrGenerateData(employeeName);
@@ -153,11 +156,11 @@ public class AssetMcpExecutor {
 
             log.info("MCP 工具调用完成, toolId={}, queryType={}, employeeName={}, assetType={}, elapsed={}ms",
                     TOOL_ID, queryType, employeeName, assetType, System.currentTimeMillis() - startMs);
-            return successResult(result);
+            return McpToolResults.success(result);
         } catch (Exception e) {
             log.error("MCP 工具调用失败, toolId={}, elapsed={}ms",
                     TOOL_ID, System.currentTimeMillis() - startMs, e);
-            return errorResult("查询失败: " + e.getMessage());
+            return McpToolResults.error("查询失败: " + e.getMessage());
         }
     }
 
@@ -306,31 +309,6 @@ public class AssetMcpExecutor {
         if (years == 0) return rest + " 个月";
         if (rest == 0) return years + " 年";
         return years + " 年 " + rest + " 个月";
-    }
-
-    private static String stringArg(Map<String, Object> args, String key) {
-        Object val = args.get(key);
-        return val != null ? val.toString() : null;
-    }
-
-    private static Integer intArg(Map<String, Object> args, String key) {
-        Object val = args.get(key);
-        if (val instanceof Number n) return n.intValue();
-        return null;
-    }
-
-    private static CallToolResult successResult(String text) {
-        return CallToolResult.builder()
-                .content(List.of(new TextContent(text)))
-                .isError(false)
-                .build();
-    }
-
-    private static CallToolResult errorResult(String message) {
-        return CallToolResult.builder()
-                .content(List.of(new TextContent(message)))
-                .isError(true)
-                .build();
     }
 
     private static class AssetRecord {
